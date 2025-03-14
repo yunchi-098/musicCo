@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Şarkı Kuyruğu</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="refresh" content="30"> <!-- 30 saniyede bir otomatik yenile -->
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; max-width: 600px; margin: 0 auto; }
+        h1 { color: #1DB954; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
+        a { color: #1DB954; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <h1>Şarkı Kuyruğu</h1>
+    
+    {% if queue %}
+    <table>
+        <thead>
+            <tr>
+                <th>Sıra</th>
+                <th>Şarkı</th>
+                <th>Sanatçı</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for song in queue %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ song.name }}</td>
+                <td>{{ song.artist }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>Şu anda kuyrukta şarkı yok.</p>
+    {% endif %}
+    
+    <p><a href="/">Ana Sayfaya Dön</a></p>
+</body>
+</html>

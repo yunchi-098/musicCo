@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mekan Müzik İsteği</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; max-width: 600px; margin: 0 auto; }
+        h1 { color: #1DB954; /* Spotify yeşili */ }
+        select, input, button { padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-box; }
+        button { background-color: #1DB954; color: rgb(50, 46, 46); border: none; cursor: pointer; }
+        .result-item { border: 1px solid #ddd; padding: 10px; margin: 10px 0; display: flex; align-items: center; }
+        .result-image { width: 60px; height: 60px; margin-right: 10px; }
+        .result-info { flex-grow: 1; }
+        .result-add { background-color: #1DB954; color: white; border: none; padding: 8px; cursor: pointer; }
+        #status-message { margin: 10px 0; padding: 10px; border-radius: 4px; }
+        .error { background-color: #232020; color: #d83030; }
+        .success { background-color: #ddffdd; color: #30d843; }
+    </style>
+</head>
+<body>
+    <h1>Müzik İsteği Yap</h1>
+    <p>Çalmasını istediğiniz şarkıyı arayın ve kuyruğa ekleyin:</p>
+    
+    <form id="search-form">
+        <select id="genre-filter" name="genre_filter">
+            {% for genre in allowed_genres %}
+            <option value="{{ genre }}">{{ genre|title }}</option>
+            {% endfor %}
+        </select>
+        <input type="text" id="search-query" name="search_query" placeholder="Şarkı veya sanatçı adı...">
+        <button type="submit">Ara</button>
+    </form>
+    
+    <div id="status-message" style="display: none;"></div>
+    
+    <div id="search-results"></div>
+    
+    <p><a href="/queue">Şarkı Kuyruğunu Görüntüle</a></p>
+    
+    <script>
+        document.getElementById('search-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const searchQuery = document.getElementById('search-query').value;
+            const genreFilter = document.getElementById('genre-filter').value;
+            
+            if (!searchQuery) {
+                showStatus('Lütfen bir arama terimi girin', 'error');
+                return;
+            }
+            
+            fetch('/search', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `search_query=${encodeURIComponent(searchQuery)}&genre_filter=${encodeURIComponent(genreFilter)}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showStatus(data.error, 'error');
+                    return;
+                }
+                
+                const resultsContainer = document.getElementById('search-results');
+                resultsContainer.innerHTML = '';
+                
+                if (data.results.length === 0) {
+                    resultsContainer.innerHTML = '<p>Sonuç bulunamadı.</p>';
+                    return;
+                }
+                
+                data.results.forEach(track => {
+                    const resultItem = document.createElement('div');
+                    resultItem.className = 'result-item';
+                    
+                    resultItem.innerHTML = `
+                        <img class="result-image" src="${track.image || 'https://via.placeholder.com/60'}" alt="${track.name}">
+                        <div class="result-info">
+                            <h3>${track.name}</h3>
+                            <p>${track.artist} - ${track.album}</p>
+                        </div>
+                        <button class="result-add" data-id="${track.id}">Ekle</button>
+                    `;
+                    
+                    resultsContainer.appendChild(resultItem);
+                });
+                
+                // Ekle düğmelerine tıklama olayı ekle
+                document.querySelectorAll('.result-add').forEach(button => {
+                    button.addEventListener('click', function() {
+                        const trackId = this.getAttribute('data-id');
+                        addToQueue(trackId);
+                    });
+                });
+            })
+            .catch(error => {
+                showStatus('Bir hata oluştu: ' + error, 'error');
+            });
+        });
+        
+        function addToQueue(trackId) {
+            fetch('/add-to-queue', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ track_id: trackId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showStatus(data.error, 'error');
+                } else {
+                    showStatus('Şarkı kuyruğa eklendi!', 'success');
+                }
+            })
+            .catch(error => {
+                showStatus('Bir hata oluştu: ' + error, 'error');
+            });
+        }
+        
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('status-message');
+            statusDiv.textContent = message;
+            statusDiv.className = type;
+            statusDiv.style.display = 'block';
+            
+            // 5 saniye sonra mesajı gizle
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Yönetici Kontrol Paneli</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; max-width: 800px; margin: 0 auto; }
+        h1, h2 { color: #1DB954; }
+        input, select, button { padding: 10px; margin: 5px 0; box-sizing: border-box; }
+        button { background-color: #1DB954; color: white; border: none; cursor: pointer; }
+        .section { border: 1px solid #ddd; padding: 15px; margin: 15px 0; }
+        .checkbox-group { display: flex; flex-wrap: wrap; }
+        .checkbox-item { margin-right: 15px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
+    </style>
+</head>
+<body>
+    <h1>Yönetici Kontrol Paneli</h1>
+    
+    {% if not session.get('token_info') %}
+    <div class="section">
+        <h2>Spotify Bağlantısı</h2>
+        <p>Spotify hesabınıza bağlanmanız gerekiyor:</p>
+        <a href="/spotify-auth"><button>Spotify'a Bağlan</button></a>
+    </div>
+    {% else %}
+    <div class="section">
+        <h2>Ayarlar</h2>
+        <form action="/update-settings" method="post">
+            <div>
+                <label for="max_queue_length">Maksimum Kuyruk Uzunluğu:</label>
+                <input type="number" id="max_queue_length" name="max_queue_length" value="{{ settings.max_queue_length }}" min="1">
+            </div>
+            
+            <div>
+                <label for="max_user_requests">Kullanıcı Başına Maksimum İstek:</label>
+                <input type="number" id="max_user_requests" name="max_user_requests" value="{{ settings.max_user_requests }}" min="1">
+            </div>
+            
+            <div>
+                <label for="active_device_id">Aktif Cihaz:</label>
+                <select id="active_device_id" name="active_device_id">
+                    <option value="">Cihaz Seçin</option>
+                    {% for device in devices %}
+                    <option value="{{ device.id }}" {% if device.id == settings.active_device_id %}selected{% endif %}>
+                        {{ device.name }} ({{ device.type }})
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div>
+                <h3>İzin Verilen Müzik Türleri:</h3>
+                <div class="checkbox-group">
+                    {% for genre in all_genres %}
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="genre_{{ genre }}" name="genre_{{ genre }}" 
+                               {% if genre in settings.active_genres %}checked{% endif %}>
+                        <label for="genre_{{ genre }}">{{ genre|title }}</label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            
+            <button type="submit">Ayarları Kaydet</button>
+        </form>
+    </div>
+    
+    <div class="section">
+        <h2>Şarkı Kuyruğu</h2>
+        {% if queue %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Şarkı</th>
+                    <th>Sanatçı</th>
+                    <th>Ekleyen</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for song in queue %}
+                <tr>
+                    <td>{{ song.name }}</td>
+                    <td>{{ song.artist }}</td>
+                    <td>{{ song.added_by }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p>Şu anda kuyrukta şarkı yok.</p>
+        {% endif %}
+    </div>
+    {% endif %}
+</body>
+</html>
