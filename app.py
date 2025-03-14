@@ -83,7 +83,7 @@ def get_spotify_auth():
         client_secret=SPOTIFY_CLIENT_SECRET,
         redirect_uri=SPOTIFY_REDIRECT_URI,
         scope=SPOTIFY_SCOPE,
-        open_browser=False,  # Tarayıcı açılmasını önle
+        open_browser=True,  # Tarayıcı açılmasını önle
         cache_path=None  # Spotipy'nin kendi önbelleğini kullanmıyoruz
     )
 
