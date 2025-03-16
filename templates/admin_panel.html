@@ -649,71 +649,57 @@
       });
       // Çıkış cihazlarını yönetme fonksiyonları
       function loadOutputDevices() {
-        fetch('/api/output-devices')
-          .then(response => response.json())
-          .then(data => {
-            console.log('Ses çıkış cihazları:', data);
+    fetch('/api/output-devices')
+      .then(response => response.json())
+      .then(data => {
+        console.log('Ses çıkış cihazları:', data);
+        
+        const devicesList = document.getElementById('outputDevicesList');
+        devicesList.innerHTML = '';
+        
+        if (data.devices && data.devices.length > 0) {
+          data.devices.forEach(device => {
+            const deviceTypeIcon = device.type === 'bluetooth' ? 
+              '<i class="fab fa-bluetooth-b"></i>' : 
+              '<i class="fas fa-headphones"></i>';
             
-            const devicesList = document.getElementById('outputDevicesList');
-            devicesList.innerHTML = '';
+            const isActive = device.is_default ? 'device-active' : 'device-inactive';
             
-            if (data.devices && data.devices.length > 0) {
-              data.devices.forEach(device => {
-                const deviceTypeIcon = device.type === 'bluetooth' ? 
-                  '<i class="fab fa-bluetooth-b"></i>' : 
-                  '<i class="fas fa-headphones"></i>';
-                
-                const isActive = device.is_default ? 'device-active' : 'device-inactive';
-                
-                const li = document.createElement('li');
-                li.className = 'device-item';
-                li.innerHTML = `
-                  <div>
-                    ${deviceTypeIcon} ${device.description || device.name}
-                    ${device.is_default ? '<span class="badge badge-success">Aktif</span>' : ''}
-                    <small class="device-type">${device.type}</small>
-                  </div>
-                  ${!device.is_default ? 
-                    `<button class="btn btn-sm" data-index="${device.index}">Buna Geç</button>` : 
-                    ''}
-                `;
-                devicesList.appendChild(li);
-              });
-              
-              // Cihaz geçişi için event listener'ları ekle
-              const buttons = devicesList.querySelectorAll('button[data-index]');
-              buttons.forEach(button => {
-                button.addEventListener('click', function() {
-                  const deviceIndex = this.getAttribute('data-index');
-                  setOutputDevice(deviceIndex);
-                });
-              });
-            } else {
-              const li = document.createElement('li');
-              li.className = 'device-item';
-              li.textContent = 'Kullanılabilir cihaz bulunamadı';
-              devicesList.appendChild(li);
-              
-              // Add a message explaining possible causes
-              const explanationDiv = document.createElement('div');
-              explanationDiv.className = 'alert alert-info mt-3';
-              explanationDiv.innerHTML = `
-                <p><strong>Olası nedenler:</strong></p>
-                <ul>
-                  <li>PulseAudio ses sistemi kurulu olmayabilir (Linux sistemleri için)</li>
-                  <li>Sistem ses çıkış cihazlarına erişim izni olmayabilir</li>
-                  <li>Ses sürücüleri düzgün yüklenmemiş olabilir</li>
-                </ul>
-              `;
-              devicesList.parentNode.appendChild(explanationDiv);
-            }
-          })
-          .catch(err => {
-            console.error('Ses çıkış cihazları alınamadı:', err);
-            const devicesList = document.getElementById('outputDevicesList');
-            devicesList.innerHTML = `<li class="device-item">Hata: Ses çıkış cihazları alınamadı (${err.message})</li>`;
+            const li = document.createElement('li');
+            li.className = `device-item ${isActive}`;
+            li.innerHTML = `
+              <div>
+                ${deviceTypeIcon} ${device.description || device.name}
+                ${device.is_default ? '<span class="badge badge-success">Aktif</span>' : ''}
+                <small class="device-type">${device.type}</small>
+              </div>
+              ${!device.is_default ? 
+                `<button class="btn btn-sm switch-device-btn" data-index="${device.index}">Buna Geç</button>` : 
+                '<span class="badge badge-success">Aktif</span>'}
+            `;
+            devicesList.appendChild(li);
           });
-      }
+          
+          // Cihaz geçişi için event listener'ları ekle
+          const buttons = devicesList.querySelectorAll('button.switch-device-btn');
+          buttons.forEach(button => {
+            button.addEventListener('click', function() {
+              const deviceIndex = this.getAttribute('data-index');
+              this.disabled = true;
+              this.innerHTML = 'İşleniyor...';
+              setOutputDevice(deviceIndex);
+            });
+          });
+        } else {
+          devicesList.innerHTML = '<li class="device-item">Kullanılabilir cihaz bulunamadı</li>';
+        }
+      })
+      .catch(err => {
+        console.error('Ses çıkış cihazları alınamadı:', err);
+        const devicesList = document.getElementById('outputDevicesList');
+        devicesList.innerHTML = `<li class="device-item">Hata: Ses çıkış cihazları alınamadı (${err.message})</li>`;
+      });
+  }
       // Cihaz değiştirme fonksiyonu
      // Make sure this function is working correctly
      function setOutputDevice(deviceIndex) {
