@@ -66,9 +66,13 @@ class AudioManager:
                         device_data['type'] = 'bluetooth'
             
             # Son cihazı ekle
-            if device_data:
-                devices.append(device_data)
-                
+                if device_data:
+                    devices.append(device_data)
+                    result = subprocess.run(['pacmd', 'list-sinks'], capture_output=True, text=True)
+        
+                # Cihaz türünü belirle
+                if 'device.bus' in line and 'bluetooth' in line:
+                    device_data['type'] = 'bluetooth'
             return devices
         except Exception as e:
             logger.error(f"Ses çıkış cihazları listelenirken hata: {e}")
