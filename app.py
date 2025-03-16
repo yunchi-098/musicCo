@@ -114,9 +114,17 @@ def get_spotify_client():
             save_token(token_info)
         
         # Yeni bir Spotify istemcisi oluştur
-        spotify_client = spotipy.Spotify(auth=token_info['access_token'])
-        logger.info("Spotify istemcisi başarıyla oluşturuldu.")
-        return spotify_client
+        new_spotify_client = spotipy.Spotify(auth=token_info['access_token'])
+        
+        # Test amaçlı basit bir sorgu yap
+        try:
+            new_spotify_client.current_user()
+            spotify_client = new_spotify_client  # Global değişkeni güncelle
+            logger.info("Spotify istemcisi başarıyla oluşturuldu.")
+            return spotify_client
+        except Exception as e:
+            logger.error(f"Yeni oluşturulan istemci ile doğrulama hatası: {e}")
+            return None
     except Exception as e:
         logger.error(f"Token işlemi sırasında hata: {e}")
         return None
@@ -157,28 +165,26 @@ def admin_login():
 def admin_panel():
     spotify = get_spotify_client()
     devices = []
-    
-    # Eğer token yoksa yönlendirme yap
     if not spotify:
         logger.warning("Admin paneline erişim için Spotify yetkilendirmesi gerekli")
         return redirect(url_for('spotify_auth'))
-    
     try:
         result = spotify.devices()
         devices = result.get('devices', [])
         logger.info(f"Bulunan cihazlar: {len(devices)}")
     except Exception as e:
         logger.error(f"Cihazları listelerken hata: {e}")
-        # Token hatası durumunda yeniden yetkilendirme gerekebilir
         if "unauthorized" in str(e).lower():
             return redirect(url_for('spotify_auth'))
-    
+    # Spotify token'ınız geçerliyse durumu belirten flag ekleyin:
+    spotify_authenticated = True
     return render_template(
         'admin_panel.html', 
         settings=settings,
         devices=devices,
         queue=song_queue,
-        all_genres=ALLOWED_GENRES
+        all_genres=ALLOWED_GENRES,
+        spotify_authenticated=spotify_authenticated
     )
 
 @app.route('/update-settings', methods=['POST'])
@@ -202,13 +208,8 @@ def spotify_auth():
         auth_manager = get_spotify_auth()
         auth_url = auth_manager.get_authorize_url()
         logger.info(f"Spotify yetkilendirme URL'si: {auth_url}")
-        html = f"""
-        <h1>Spotify Yetkilendirme</h1>
-        <p>Aşağıdaki bağlantıya tıklayarak Spotify yetkilendirme sayfasına gidin:</p>
-        <a href="{auth_url}" target="_blank">Spotify'da Yetkilendir</a>
-        <p>Yetkilendirme tamamlandıktan sonra callback URL'ye yönlendirileceksiniz.</p>
-        """
-        return html
+        # Redirect directly to the Spotify authorization URL
+        return redirect(auth_url)
     except Exception as e:
         logger.error(f"Spotify yetkilendirme hatası: {e}")
         return f"Hata: {str(e)}"
@@ -239,8 +240,13 @@ def callback():
             # Token'ı dosyaya kaydet
             save_token(token_info)
             
+            # ÖNEMLİ: Global değişkeni güncelle
             global spotify_client
             spotify_client = spotify
+            
+            # Session'a başarılı yetkilendirme durumunu kaydet
+            session['spotify_authenticated'] = True
+            session['spotify_user'] = user_profile.get('display_name')
             
             logger.info("Spotify yetkilendirme başarılı, token kaydedildi")
             
@@ -263,6 +269,8 @@ def logout():
     
     # Admin oturumunu sonlandır
     session.pop('admin_logged_in', None)
+    session.pop('spotify_authenticated', None)
+    session.pop('spotify_user', None)
     session.clear()
     
     # Token dosyasını sil (opsiyonel)
@@ -382,23 +390,84 @@ def clear_queue():
 @app.route('/check-auth-status')
 def check_auth_status():
     is_admin = session.get('admin_logged_in', False)
-    spotify = get_spotify_client()
+    is_spotify_authenticated = session.get('token_info', False)
+    spotify_user = session.get('spotify_user', None)
     
+    # Session'daki bilgilere dayanarak durum kontrolü
+    if is_spotify_authenticated and spotify_user:
+        return jsonify({
+            'admin_logged_in': is_admin,
+            'spotify_authenticated': True,
+            'user': spotify_user
+        })
+    
+    # Session'da bilgi yok, token dosyasını ve istemciyi kontrol et
+    spotify = get_spotify_client()
     if spotify:
         try:
             user = spotify.current_user()
+            # Session'a bilgileri kaydet
+            session['spotify_authenticated'] = True
+            session['spotify_user'] = user.get('display_name')
             return jsonify({
                 'admin_logged_in': is_admin,
                 'spotify_authenticated': True,
                 'user': user.get('display_name')
             })
-        except:
-            pass
+        except Exception as e:
+            logger.error(f"Spotify kullanıcı bilgisi alırken hata: {e}")
     
     return jsonify({
         'admin_logged_in': is_admin,
         'spotify_authenticated': False
     })
+
+@app.route('/refresh-token')
+@admin_login_required
+def refresh_token():
+    """
+    Token'ı manuel olarak yenileme endpoint'i
+    """
+    global spotify_client
+    spotify_client = None  # Mevcut istemciyi temizle
+    
+    token_info = load_token()
+    if not token_info:
+        logger.warning("Yenilenecek token bulunamadı.")
+        return redirect(url_for('spotify_auth'))
+    
+    auth_manager = get_spotify_auth()
+    try:
+        if 'refresh_token' not in token_info:
+            logger.error("Token bilgisinde refresh_token eksik.")
+            # Token dosyasını sil ve yeniden yetkilendirmeye yönlendir
+            if os.path.exists(TOKEN_FILE):
+                os.remove(TOKEN_FILE)
+            return redirect(url_for('spotify_auth'))
+        
+        new_token = auth_manager.refresh_access_token(token_info['refresh_token'])
+        save_token(new_token)
+        
+        # Yeni token ile istemciyi başlat
+        spotify_client = spotipy.Spotify(auth=new_token['access_token'])
+        
+        # Session'ı güncelle
+        try:
+            user = spotify_client.current_user()
+            session['spotify_authenticated'] = True
+            session['spotify_user'] = user.get('display_name')
+            logger.info("Token başarıyla yenilendi!")
+        except Exception as e:
+            logger.error(f"Yeni token ile kullanıcı doğrulama hatası: {e}")
+            return redirect(url_for('spotify_auth'))
+        
+        return redirect(url_for('admin_panel'))
+    except Exception as e:
+        logger.error(f"Token yenileme hatası: {e}")
+        # Token dosyasını sil ve yeniden yetkilendirmeye yönlendir
+        if os.path.exists(TOKEN_FILE):
+            os.remove(TOKEN_FILE)
+        return redirect(url_for('spotify_auth'))
 
 def play_queue():
     global spotify_client
@@ -468,6 +537,8 @@ def start_queue_player():
 
 # Uygulama başlatıldığında token kontrolü
 def check_token_on_startup():
+    global spotify_client  # Move this to the top of the function
+    
     token_info = load_token()
     if token_info:
         auth_manager = get_spotify_auth()
@@ -475,25 +546,44 @@ def check_token_on_startup():
             # Token geçerli mi kontrol et
             if auth_manager.is_token_expired(token_info):
                 logger.info("Başlangıçta bulunan token süresi dolmuş, yenileniyor...")
-                new_token = auth_manager.refresh_access_token(token_info['refresh_token'])
-                save_token(new_token)
-                logger.info("Token başarıyla yenilendi")
-                
-                # Global Spotify istemcisini başlat
-                global spotify_client
-                spotify_client = spotipy.Spotify(auth=new_token['access_token'])
-                logger.info("Spotify istemcisi başlatıldı")
+                try:
+                    new_token = auth_manager.refresh_access_token(token_info['refresh_token'])
+                    save_token(new_token)
+                    logger.info("Token başarıyla yenilendi")
+                    
+                    # Global Spotify istemcisini başlat
+                    spotify_client = spotipy.Spotify(auth=new_token['access_token'])
+                    
+                    # Token doğrulama testi
+                    spotify_client.current_user()
+                    logger.info("Spotify istemcisi başlatıldı ve doğrulandı")
+                    return True
+                except Exception as e:
+                    logger.error(f"Token yenileme hatası: {e}")
+                    # Token dosyasını sil, yeniden yetkilendirme gerekecek
+                    if os.path.exists(TOKEN_FILE):
+                        os.remove(TOKEN_FILE)
+                    return False
             else:
                 # Token hala geçerli
                 spotify_client = spotipy.Spotify(auth=token_info['access_token'])
-                logger.info("Mevcut token ile Spotify istemcisi başlatıldı")
                 
-            # Token doğrulama testi
-            spotify_client.current_user()
-            logger.info("Token doğrulandı")
-            return True
+                # Token doğrulama testi
+                try:
+                    spotify_client.current_user()
+                    logger.info("Mevcut token ile Spotify istemcisi başlatıldı ve doğrulandı")
+                    return True
+                except Exception as e:
+                    logger.error(f"Token doğrulama hatası: {e}")
+                    # Token dosyasını sil, yeniden yetkilendirme gerekecek
+                    if os.path.exists(TOKEN_FILE):
+                        os.remove(TOKEN_FILE)
+                    return False
         except Exception as e:
             logger.error(f"Başlangıç token kontrolünde hata: {e}")
+            # Token dosyasını sil, yeniden yetkilendirme gerekecek
+            if os.path.exists(TOKEN_FILE):
+                os.remove(TOKEN_FILE)
     else:
         logger.warning("Başlangıçta token bulunamadı")
     return False

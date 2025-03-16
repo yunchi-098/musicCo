@@ -1,97 +1,635 @@
 <!DOCTYPE html>
-<html>
+<html lang="tr">
 <head>
-    <title>Yönetici Kontrol Paneli</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; max-width: 800px; margin: 0 auto; }
-        h1, h2 { color: #1DB954; }
-        input, select, button { padding: 10px; margin: 5px 0; box-sizing: border-box; }
-        button { background-color: #1DB954; color: white; border: none; cursor: pointer; }
-        .section { border: 1px solid #ddd; padding: 15px; margin: 15px 0; }
-        .checkbox-group { display: flex; flex-wrap: wrap; }
-        .checkbox-item { margin-right: 15px; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Paneli - Mekan Müzik Uygulaması</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    :root {
+      --primary-color: #1DB954; /* Spotify yeşili */
+      --secondary-color: #191414; /* Spotify siyahı */
+      --light-bg: #f5f5f5;
+      --border-radius: 8px;
+      --box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: var(--light-bg);
+      margin: 0;
+      padding: 0;
+      color: #333;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    header {
+      background-color: var(--secondary-color);
+      color: white;
+      padding: 15px 0;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    
+    .header-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .logo {
+      display: flex;
+      align-items: center;
+    }
+    
+    .logo i {
+      margin-right: 10px;
+      font-size: 24px;
+      color: var(--primary-color);
+    }
+    
+    nav {
+      display: flex;
+      gap: 15px;
+    }
+    
+    nav a {
+      color: white;
+      text-decoration: none;
+      padding: 8px 15px;
+      border-radius: var(--border-radius);
+      transition: background-color 0.3s;
+      display: flex;
+      align-items: center;
+    }
+    
+    nav a i {
+      margin-right: 5px;
+    }
+    
+    nav a:hover {
+      background-color: rgba(255,255,255,0.1);
+    }
+    
+    .dashboard {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      margin-top: 20px;
+    }
+    
+    .card {
+      background-color: white;
+      border-radius: var(--border-radius);
+      box-shadow: var(--box-shadow);
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 10px;
+    }
+    
+    .card-header h2 {
+      font-size: 18px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+    }
+    
+    .card-header h2 i {
+      margin-right: 10px;
+      color: var(--primary-color);
+    }
+    
+    .spotify-status {
+      display: flex;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    
+    .status-indicator {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-right: 10px;
+    }
+    
+    .status-connected {
+      background-color: var(--primary-color);
+    }
+    
+    .status-disconnected {
+      background-color: #ff5252;
+    }
+    
+    .btn {
+      background-color: var(--primary-color);
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: var(--border-radius);
+      cursor: pointer;
+      font-weight: 600;
+      transition: background-color 0.3s;
+      display: inline-flex;
+      align-items: center;
+      text-decoration: none;
+    }
+    
+    .btn i {
+      margin-right: 5px;
+    }
+    
+    .btn:hover {
+      background-color: #18a448;
+    }
+    
+    .btn-danger {
+      background-color: #ff5252;
+    }
+    
+    .btn-danger:hover {
+      background-color: #ff0000;
+    }
+    
+    .btn-secondary {
+      background-color: #6c757d;
+    }
+    
+    .btn-secondary:hover {
+      background-color: #5a6268;
+    }
+    
+    form {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 15px;
+    }
+    
+    .form-group {
+      margin-bottom: 15px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 500;
+    }
+    
+    input[type="text"],
+    input[type="number"],
+    select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: var(--border-radius);
+      font-size: 14px;
+    }
+    
+    .checkbox-group {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+    
+    .checkbox-item {
+      display: flex;
+      align-items: center;
+    }
+    
+    .checkbox-item input {
+      margin-right: 5px;
+    }
+    
+    .device-list {
+      list-style: none;
+    }
+    
+    .device-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px;
+      border-bottom: 1px solid #eee;
+    }
+    
+    .device-item:last-child {
+      border-bottom: none;
+    }
+    
+    .device-status {
+      display: flex;
+      align-items: center;
+    }
+    
+    .device-active {
+      color: var(--primary-color);
+    }
+    
+    .device-inactive {
+      color: #6c757d;
+    }
+    
+    .queue-list {
+      list-style-position: inside;
+      margin-top: 10px;
+    }
+    
+    .queue-item {
+      padding: 10px;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .queue-item:last-child {
+      border-bottom: none;
+    }
+    
+    .queue-controls {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    
+    .genre-fieldset {
+      border: 1px solid #ddd;
+      border-radius: var(--border-radius);
+      padding: 15px;
+    }
+    
+    .genre-fieldset legend {
+      padding: 0 10px;
+      font-weight: 500;
+    }
+    
+    @media (max-width: 768px) {
+      .dashboard {
+        grid-template-columns: 1fr;
+      }
+      
+      .checkbox-group {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+    
+    /* Aktif ve pasif cihazlar için rozetler */
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    
+    .badge-success {
+      background-color: var(--primary-color);
+      color: white;
+    }
+    
+    .badge-secondary {
+      background-color: #6c757d;
+      color: white;
+    }
+    
+    /* Müzik çalma kontrollerini ekle */
+    .player-controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 15px;
+      gap: 10px;
+    }
+    
+    .control-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background-color: var(--secondary-color);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      cursor: pointer;
+      transition: transform 0.2s, background-color 0.3s;
+    }
+    
+    .control-btn:hover {
+      background-color: var(--primary-color);
+      transform: scale(1.1);
+    }
+    
+    .control-btn.play-pause {
+      width: 50px;
+      height: 50px;
+    }
+    
+    /* Çalan şarkı bilgisi */
+    .now-playing {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      margin-top: 15px;
+      padding: 10px;
+      background-color: #f8f9fa;
+      border-radius: var(--border-radius);
+    }
+    
+    .album-art {
+      width: 60px;
+      height: 60px;
+      border-radius: 4px;
+      object-fit: cover;
+    }
+    
+    .song-info {
+      flex-grow: 1;
+    }
+    
+    .song-title {
+      font-weight: 600;
+      margin-bottom: 5px;
+    }
+    
+    .song-artist {
+      color: #6c757d;
+      font-size: 14px;
+    }
+  </style>
 </head>
 <body>
-    <h1>Yönetici Kontrol Paneli</h1>
-    
-    {% if not session.get('token_info') %}
-    <div class="section">
-        <h2>Spotify Bağlantısı</h2>
-        <p>Spotify hesabınıza bağlanmanız gerekiyor:</p>
-        <a href="/spotify-auth"><button>Spotify'a Bağlan</button></a>
+  <header>
+    <div class="container header-content">
+      <div class="logo">
+        <i class="fas fa-music"></i>
+        <h1>Mekan Müzik Admin</h1>
+      </div>
+      <nav>
+        <a href="{{ url_for('index') }}"><i class="fas fa-home"></i> Ana Sayfa</a>
+        <a href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt"></i> Çıkış Yap</a>
+      </nav>
     </div>
-    {% else %}
-    <div class="section">
-        <h2>Ayarlar</h2>
-        <form action="/update-settings" method="post">
-            <div>
-                <label for="max_queue_length">Maksimum Kuyruk Uzunluğu:</label>
-                <input type="number" id="max_queue_length" name="max_queue_length" value="{{ settings.max_queue_length }}" min="1">
+  </header>
+  
+  <div class="container">
+    <div class="dashboard">
+      <!-- Spotify Bağlantı Durumu Kartı -->
+      <div class="card">
+        <div class="card-header">
+          <h2><i class="fab fa-spotify"></i> Spotify Bağlantı Durumu</h2>
+        </div>
+        <div class="card-content">
+          {% if spotify_authenticated %}
+            <div class="spotify-status">
+              <span class="status-indicator status-connected"></span>
+              <p><strong>Bağlantı durumu:</strong> Aktif</p>
+            </div>
+            <p><strong>Hesap:</strong> {{ user.display_name if user is defined else "Bilinmiyor" }}</p>
+            <div style="margin-top: 15px;">
+              <button class="btn btn-secondary" onclick="refreshToken()">
+                <i class="fas fa-sync-alt"></i> Yenile
+              </button>
+            </div>
+          {% else %}
+            <div class="spotify-status">
+              <span class="status-indicator status-disconnected"></span>
+              <p><strong>Bağlantı durumu:</strong> Bağlantı yok</p>
+            </div>
+            <div style="margin-top: 15px;">
+              <a href="{{ url_for('spotify_auth') }}" class="btn">
+                <i class="fab fa-spotify"></i> Spotify Bağla
+              </a>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+      
+      <!-- Şu Anda Çalan Şarkı Kartı -->
+      <div class="card">
+        <div class="card-header">
+          <h2><i class="fas fa-play-circle"></i> Şu Anda Çalıyor</h2>
+        </div>
+        <div class="card-content">
+          {% if current_track %}
+            <div class="now-playing">
+              <img src="{{ current_track.album_art }}" alt="Album Kapağı" class="album-art">
+              <div class="song-info">
+                <div class="song-title">{{ current_track.name }}</div>
+                <div class="song-artist">{{ current_track.artist }}</div>
+              </div>
             </div>
             
-            <div>
-                <label for="max_user_requests">Kullanıcı Başına Maksimum İstek:</label>
-                <input type="number" id="max_user_requests" name="max_user_requests" value="{{ settings.max_user_requests }}" min="1">
+            <div class="player-controls">
+              <button class="control-btn" onclick="previousTrack()">
+                <i class="fas fa-step-backward"></i>
+              </button>
+              <button class="control-btn play-pause" onclick="togglePlayPause()">
+                <i class="fas fa-play"></i>
+              </button>
+              <button class="control-btn" onclick="nextTrack()">
+                <i class="fas fa-step-forward"></i>
+              </button>
+            </div>
+          {% else %}
+            <p>Şu anda çalan bir şarkı yok.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    
+    <!-- Ayarlar Kartı -->
+    <div class="card">
+      <div class="card-header">
+        <h2><i class="fas fa-cog"></i> Sistem Ayarları</h2>
+      </div>
+      <div class="card-content">
+        <form action="{{ url_for('update_settings') }}" method="POST">
+          <div class="form-row" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+            <div class="form-group">
+              <label for="max_queue_length">Maksimum Kuyruk Uzunluğu:</label>
+              <input type="number" id="max_queue_length" name="max_queue_length" value="{{ settings.max_queue_length }}" min="1">
             </div>
             
-            <div>
-                <label for="active_device_id">Aktif Cihaz:</label>
-                <select id="active_device_id" name="active_device_id">
-                    <option value="">Cihaz Seçin</option>
-                    {% for device in devices %}
+            <div class="form-group">
+              <label for="max_user_requests">Kullanıcı Başına Maksimum İstek:</label>
+              <input type="number" id="max_user_requests" name="max_user_requests" value="{{ settings.max_user_requests }}" min="1">
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label for="active_device_id">Aktif Cihaz ID:</label>
+            <select id="active_device_id" name="active_device_id">
+                <option value="">Cihaz Seçin</option>
+                {% if devices %}
+                  {% for device in devices %}
                     <option value="{{ device.id }}" {% if device.id == settings.active_device_id %}selected{% endif %}>
-                        {{ device.name }} ({{ device.type }})
+                      {{ device.name }} {% if device.is_active %}(Aktif){% endif %}
                     </option>
-                    {% endfor %}
-                </select>
+                  {% endfor %}
+                {% endif %}
+              </select>
             </div>
             
-            <div>
-                <h3>İzin Verilen Müzik Türleri:</h3>
+            <div class="form-group">
+              <fieldset class="genre-fieldset">
+                <legend>Aktif Müzik Türleri</legend>
                 <div class="checkbox-group">
-                    {% for genre in all_genres %}
+                  {% for genre in all_genres %}
                     <div class="checkbox-item">
-                        <input type="checkbox" id="genre_{{ genre }}" name="genre_{{ genre }}" 
-                               {% if genre in settings.active_genres %}checked{% endif %}>
-                        <label for="genre_{{ genre }}">{{ genre|title }}</label>
+                      <input type="checkbox" id="genre_{{ genre }}" name="genre_{{ genre }}" {% if genre in settings.active_genres %}checked{% endif %}>
+                      <label for="genre_{{ genre }}">{{ genre }}</label>
                     </div>
-                    {% endfor %}
+                  {% endfor %}
                 </div>
+              </fieldset>
             </div>
             
-            <button type="submit">Ayarları Kaydet</button>
-        </form>
+            <div class="form-group">
+              <button type="submit" class="btn">
+                <i class="fas fa-save"></i> Ayarları Kaydet
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+      
+      <!-- Spotify Cihazları Kartı -->
+      <div class="card">
+        <div class="card-header">
+          <h2><i class="fas fa-tablet-alt"></i> Spotify Cihazları</h2>
+          <button class="btn btn-secondary" onclick="refreshDevices()">
+            <i class="fas fa-sync-alt"></i> Yenile
+          </button>
+        </div>
+        <div class="card-content">
+          {% if devices %}
+            <ul class="device-list">
+              {% for device in devices %}
+                <li class="device-item">
+                  <div>
+                    <i class="fas {% if device.type == 'Computer' %}fa-laptop{% elif device.type == 'Smartphone' %}fa-mobile-alt{% else %}fa-tablet-alt{% endif %} mr-2"></i>
+                    {{ device.name }}
+                  </div>
+                  <div class="device-status">
+                    {% if device.is_active %}
+                      <span class="badge badge-success">Aktif</span>
+                    {% else %}
+                      <span class="badge badge-secondary">Pasif</span>
+                    {% endif %}
+                  </div>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p>Hiç cihaz bulunamadı. Lütfen Spotify uygulamasını açıp bir cihazda aktif hale getirin.</p>
+          {% endif %}
+        </div>
+      </div>
+      
+      <!-- Şarkı Kuyruğu Kartı -->
+      <div class="card">
+        <div class="card-header">
+          <h2><i class="fas fa-list"></i> Şarkı Kuyruğu</h2>
+        </div>
+        <div class="card-content">
+          {% if queue %}
+            <ol class="queue-list">
+              {% for song in queue %}
+                <li class="queue-item">
+                  <div>
+                    <strong>{{ song.name }}</strong> - {{ song.artist }}
+                    <small>(Ekleyen: {{ song.added_by }})</small>
+                  </div>
+                  <div>
+                    <button class="btn btn-secondary btn-sm" onclick="removeSong('{{ song.id }}')">
+                      <i class="fas fa-times"></i>
+                    </button>
+                  </div>
+                </li>
+              {% endfor %}
+            </ol>
+            <div class="queue-controls">
+              <a href="{{ url_for('clear_queue') }}" class="btn btn-danger">
+                <i class="fas fa-trash"></i> Kuyruğu Temizle
+              </a>
+              <button class="btn" onclick="playQueue()">
+                <i class="fas fa-play"></i> Kuyruğu Çal
+              </button>
+            </div>
+          {% else %}
+            <p>Kuyruk boş. Kullanıcılar henüz şarkı eklemedi.</p>
+          {% endif %}
+        </div>
+      </div>
     </div>
     
-    <div class="section">
-        <h2>Şarkı Kuyruğu</h2>
-        {% if queue %}
-        <table>
-            <thead>
-                <tr>
-                    <th>Şarkı</th>
-                    <th>Sanatçı</th>
-                    <th>Ekleyen</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for song in queue %}
-                <tr>
-                    <td>{{ song.name }}</td>
-                    <td>{{ song.artist }}</td>
-                    <td>{{ song.added_by }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% else %}
-        <p>Şu anda kuyrukta şarkı yok.</p>
-        {% endif %}
-    </div>
-    {% endif %}
-</body>
-</html>
+    <script>
+      // Cihazları yenileme fonksiyonu
+      function refreshDevices() {
+        window.location.href = "{{ url_for('refresh_devices') }}";
+      }
+      
+      // Spotify token yenileme fonksiyonu
+      function refreshToken() {
+        window.location.href = "{{ url_for('refresh_token') }}";
+      }
+      
+      // Şarkı kaldırma fonksiyonu
+      function removeSong(songId) {
+        if (confirm('Bu şarkıyı kuyruktan kaldırmak istediğinize emin misiniz?')) {
+          window.location.href = "{{ url_for('remove_song', song_id='') }}" + songId;
+        }
+      }
+      
+      // Kuyruğu çalma fonksiyonu
+      function playQueue() {
+        window.location.href = "{{ url_for('play_queue') }}";
+      }
+      
+      // Önceki şarkıya geçme fonksiyonu
+      function previousTrack() {
+        window.location.href = "{{ url_for('previous_track') }}";
+      }
+      
+      // Sonraki şarkıya geçme fonksiyonu
+      function nextTrack() {
+        window.location.href = "{{ url_for('next_track') }}";
+      }
+      
+      // Çalma/durdurma fonksiyonu
+      function togglePlayPause() {
+        window.location.href = "{{ url_for('toggle_play_pause') }}";
+      }
+      
+      // Sayfa yüklendikten sonra çalışacak fonksiyonlar
+      document.addEventListener('DOMContentLoaded', function() {
+        // Belirli bir süre sonra sayfayı otomatik yenileme
+        setTimeout(function() {
+          window.location.reload();
+        }, 60000); // 60 saniyede bir yenile
+      });
+    </script>
+  </body>
+  </html>
