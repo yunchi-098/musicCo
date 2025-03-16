@@ -21,7 +21,7 @@ app.secret_key = 'mekanmuzikuygulamasi'  # Gerçek uygulamada güvenli bir şeki
 # Spotify API bilgileri
 SPOTIFY_CLIENT_ID = '332e5f2c9fe44d9b9ef19c49d0caeb78'
 SPOTIFY_CLIENT_SECRET = 'bbb19ad9c7d04d738f61cd0bd4f47426'
-SPOTIFY_REDIRECT_URI = 'http://localhost:8080/callback'
+SPOTIFY_REDIRECT_URI = 'http://192.168.1.103:8080/callback'
 SPOTIFY_SCOPE = 'user-read-playback-state user-modify-playback-state playlist-read-private'
 
 # Token bilgisini saklayacağımız dosya
