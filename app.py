@@ -19,7 +19,7 @@ class AudioManager:
                 logger.error("pacmd komut bulunamadı. PulseAudio yüklü değil.")
                 return []
             
-            # Ses çıkış cihazlarını alma
+            # Get audio output devices
             result = subprocess.run(
                 ['pacmd', 'list-sinks'], 
                 capture_output=True, 
@@ -36,14 +36,14 @@ class AudioManager:
             for line in result.stdout.splitlines():
                 line = line.strip()
                 
-                # Yeni bir sink başlangıcı
+                # New sink start
                 if line.startswith('* index:') or line.startswith('  index:'):
-                    # Önceki cihazı kaydet
+                    # Save previous device
                     if device_data:
-                        devices.append(device_data)
+                        devices.append(device_data.copy())
                         device_data = {}
                     
-                    # Yeni cihaz başlat
+                    # Start new device
                     is_default = line.startswith('*')
                     idx = line.split(':')[1].strip()
                     device_data = {
@@ -54,7 +54,7 @@ class AudioManager:
                         'type': 'unknown'
                     }
                 
-                # Cihaz bilgilerini çıkart
+                # Extract device information
                 elif device_data:
                     if 'name:' in line:
                         device_data['name'] = line.split('name:')[1].strip().strip('"<>')
@@ -65,19 +65,14 @@ class AudioManager:
                     elif 'device.bus' in line and 'bluetooth' in line:
                         device_data['type'] = 'bluetooth'
             
-            # Son cihazı ekle
-                if device_data:
-                    devices.append(device_data)
-                    result = subprocess.run(['pacmd', 'list-sinks'], capture_output=True, text=True)
-        
-                # Cihaz türünü belirle
-                if 'device.bus' in line and 'bluetooth' in line:
-                    device_data['type'] = 'bluetooth'
+            # Add the last device
+            if device_data:
+                devices.append(device_data.copy())
+            
             return devices
         except Exception as e:
             logger.error(f"Ses çıkış cihazları listelenirken hata: {e}")
             return []
-        
     @staticmethod
     def set_default_output(device_index):
         try:
