@@ -8,7 +8,6 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
 import subprocess
-
 class AudioManager:
     @staticmethod
     def get_output_devices():
@@ -73,6 +72,7 @@ class AudioManager:
         except Exception as e:
             logger.error(f"Ses çıkış cihazları listelenirken hata: {e}")
             return []
+
     @staticmethod
     def set_default_output(device_index):
         try:
@@ -93,7 +93,192 @@ class AudioManager:
         except Exception as e:
             logger.error(f"Varsayılan ses çıkış cihazı ayarlanırken hata: {e}")
             return False
-# Loglama yapılandırması
+            
+    @staticmethod
+    def scan_bluetooth_devices():
+        """Bluetooth cihazlarını tarar ve listeler"""
+        try:
+            logger.info("Bluetooth cihazları taranıyor...")
+            
+            # Önce bluetoothctl'nin yüklü olduğunu kontrol et
+            check_bt = subprocess.run(['which', 'bluetoothctl'], capture_output=True, text=True)
+            if check_bt.returncode != 0:
+                logger.error("bluetoothctl bulunamadı. Bluetooth yüklü değil.")
+                return []
+                
+            # Bluetooth servisinin çalıştığını kontrol et
+            service_check = subprocess.run(['systemctl', 'is-active', 'bluetooth'], capture_output=True, text=True)
+            if service_check.stdout.strip() != 'active':
+                logger.error("Bluetooth servisi çalışmıyor.")
+                return []
+            
+            # Önceki eşleşmiş cihazları al
+            paired_devices = subprocess.run(['bluetoothctl', 'paired-devices'], capture_output=True, text=True)
+            paired_list = []
+            
+            for line in paired_devices.stdout.splitlines():
+                if "Device" in line:
+                    parts = line.strip().split(' ', 2)
+                    if len(parts) >= 3:
+                        mac = parts[1]
+                        name = parts[2]
+                        paired_list.append({
+                            'mac': mac,
+                            'name': name,
+                            'paired': True,
+                            'connected': False
+                        })
+            
+            # Bağlı cihazları kontrol et
+            for device in paired_list:
+                info = subprocess.run(['bluetoothctl', 'info', device['mac']], capture_output=True, text=True)
+                device['connected'] = 'Connected: yes' in info.stdout
+            
+            return paired_list
+            
+        except Exception as e:
+            logger.error(f"Bluetooth taraması sırasında hata: {e}")
+            return []
+            
+    @staticmethod
+    def connect_bluetooth_device(mac_address):
+        """Belirtilen Bluetooth cihazına bağlanır"""
+        try:
+            logger.info(f"Bluetooth cihazına bağlanılıyor: {mac_address}")
+            
+            # Önce cihazın eşleşmiş olduğunu kontrol et
+            paired_check = subprocess.run(
+                ['bluetoothctl', 'paired-devices'], 
+                capture_output=True, 
+                text=True
+            )
+            
+            is_paired = False
+            for line in paired_check.stdout.splitlines():
+                if mac_address in line:
+                    is_paired = True
+                    break
+            
+            if not is_paired:
+                logger.error(f"Cihaz eşleşmemiş: {mac_address}")
+                return False
+            
+            # Cihazı bağla
+            connect = subprocess.run(
+                ['bluetoothctl', 'connect', mac_address],
+                capture_output=True,
+                text=True
+            )
+            
+            if "Connection successful" in connect.stdout:
+                logger.info(f"Bluetooth cihazına başarıyla bağlandı: {mac_address}")
+                
+                # Bağlantı başarılı, PulseAudio'nun cihazı tanımasını bekle
+                time.sleep(2)
+                
+                # Bluetooth sink'i bul
+                sinks = subprocess.run(['pacmd', 'list-sinks'], capture_output=True, text=True)
+                bluetooth_sink = None
+                
+                # MAC adresinin PulseAudio formatına dönüştür (: yerine _)
+                formatted_mac = mac_address.replace(':', '_')
+                
+                for line in sinks.stdout.splitlines():
+                    if formatted_mac in line:
+                        # Bluetooth cihazını bulduk, şimdi indeksini alalım
+                        for bline in sinks.stdout.splitlines():
+                            if ('* index:' in bline or '  index:' in bline) and bluetooth_sink is None:
+                                idx = bline.split(':')[1].strip()
+                                bluetooth_sink = idx
+                            elif bluetooth_sink and formatted_mac in bline:
+                                break
+                
+                if bluetooth_sink:
+                    # Cihazı varsayılan olarak ayarla
+                    return AudioManager.set_default_output(bluetooth_sink)
+                else:
+                    logger.error(f"Bluetooth sink bulunamadı: {mac_address}")
+                    return False
+            else:
+                logger.error(f"Bluetooth cihazına bağlanılamadı: {mac_address}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Bluetooth bağlantısı sırasında hata: {e}")
+            return False
+            
+    @staticmethod
+    def disconnect_bluetooth_device(mac_address):
+        """Belirtilen Bluetooth cihazının bağlantısını keser"""
+        try:
+            logger.info(f"Bluetooth cihazı bağlantısı kesiliyor: {mac_address}")
+            
+            # Cihaz bağlantısını kes
+            disconnect = subprocess.run(
+                ['bluetoothctl', 'disconnect', mac_address],
+                capture_output=True,
+                text=True
+            )
+            
+            if "Successful disconnected" in disconnect.stdout:
+                logger.info(f"Bluetooth cihazı bağlantısı başarıyla kesildi: {mac_address}")
+                
+                # Analog ses çıkışına dön (varsayılan olarak)
+                AudioManager.set_default_output(1)  # 1 genellikle analog çıkıştır
+                return True
+            else:
+                logger.error(f"Bluetooth cihazı bağlantısı kesilemedi: {mac_address}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Bluetooth bağlantısını kesme hatası: {e}")
+            return False
+            
+    @staticmethod
+    def pair_bluetooth_device(mac_address):
+        """Yeni bir Bluetooth cihazını eşleştirir"""
+        try:
+            logger.info(f"Yeni Bluetooth cihazı eşleştiriliyor: {mac_address}")
+            
+            # Cihazı keşfet
+            subprocess.run(['bluetoothctl', 'scan', 'on'], timeout=10)
+            
+            # Eşleştirme işlemi
+            pair = subprocess.run(
+                ['bluetoothctl', 'pair', mac_address],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            if "Pairing successful" in pair.stdout:
+                # Eşleşme başarılı, cihazı güvenilir olarak işaretle
+                trust = subprocess.run(
+                    ['bluetoothctl', 'trust', mac_address],
+                    capture_output=True,
+                    text=True
+                )
+                
+                if "Trusted: yes" in trust.stdout:
+                    logger.info(f"Bluetooth cihazı başarıyla eşleştirildi ve güvenilir olarak işaretlendi: {mac_address}")
+                    
+                    # Şimdi cihazı bağla
+                    return AudioManager.connect_bluetooth_device(mac_address)
+                else:
+                    logger.warning(f"Cihaz eşleştirildi ancak güvenilir olarak işaretlenemedi: {mac_address}")
+                    return False
+            else:
+                logger.error(f"Bluetooth cihazı eşleştirilemedi: {mac_address}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Bluetooth eşleştirme hatası: {e}")
+            # Taramayı kapatalım
+            subprocess.run(['bluetoothctl', 'scan', 'off'])
+            return False
+        finally:
+            # Her durumda taramayı kapat
+            subprocess.run(['bluetoothctl', 'scan', 'off'])
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -412,6 +597,65 @@ def api_output_devices():
     return jsonify({
         'devices': devices
     })
+@app.route('/api/disconnect-bluetooth', methods=['POST'])
+@admin_login_required
+def api_disconnect_bluetooth():
+    try:
+        data = request.get_json()
+        if not data or 'mac_address' not in data:
+            logger.error("Eksik mac_address parametresi")
+            return jsonify({'success': False, 'error': 'MAC adresi gerekli'}), 400
+        
+        mac_address = data['mac_address']
+        logger.info(f"Bluetooth cihazı bağlantısını kesme isteği: {mac_address}")
+        
+        success = AudioManager.disconnect_bluetooth_device(mac_address)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f"Bluetooth cihazı bağlantısı kesildi: {mac_address}",
+                'devices': AudioManager.get_output_devices()
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Bluetooth cihazı bağlantısı kesilemedi',
+                'devices': AudioManager.get_output_devices()
+            }), 500
+    except Exception as e:
+        logger.error(f"Bluetooth bağlantısını kesme isteği sırasında hata: {e}")
+        return jsonify({'success': False, 'error': f'Hata: {str(e)}'}), 500
+
+@app.route('/api/pair-bluetooth', methods=['POST'])
+@admin_login_required
+def api_pair_bluetooth():
+    try:
+        data = request.get_json()
+        if not data or 'mac_address' not in data:
+            logger.error("Eksik mac_address parametresi")
+            return jsonify({'success': False, 'error': 'MAC adresi gerekli'}), 400
+        
+        mac_address = data['mac_address']
+        logger.info(f"Bluetooth cihazı eşleştirme isteği: {mac_address}")
+        
+        success = AudioManager.pair_bluetooth_device(mac_address)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f"Bluetooth cihazı eşleştirildi ve bağlandı: {mac_address}",
+                'devices': AudioManager.get_output_devices()
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Bluetooth cihazı eşleştirilemedi',
+                'devices': AudioManager.scan_bluetooth_devices()
+            }), 500
+    except Exception as e:
+        logger.error(f"Bluetooth eşleştirme isteği sırasında hata: {e}")
+        return jsonify({'success': False, 'error': f'Hata: {str(e)}'}), 500
 
 @app.route('/api/set-output-device', methods=['POST'])
 @admin_login_required
