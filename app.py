@@ -76,9 +76,10 @@ class AudioManager:
     @staticmethod
     def set_default_output(device_index):
         try:
+            # Set default sink
             subprocess.run(['pacmd', 'set-default-sink', str(device_index)])
             
-            # Tüm çalan sesleri yeni cihaza yönlendir
+            # Move all playing sounds to the new device
             result = subprocess.run(['pacmd', 'list-sink-inputs'], capture_output=True, text=True)
             for line in result.stdout.splitlines():
                 if 'index:' in line and not line.startswith('*'):
@@ -404,6 +405,7 @@ def callback():
 @app.route('/api/output-devices')
 def api_output_devices():
     devices = AudioManager.get_output_devices()
+    logger.info(f"Found {len(devices)} output devices: {devices}")
     return jsonify({
         'devices': devices
     })

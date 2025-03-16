@@ -715,27 +715,28 @@
           });
       }
       // Cihaz değiştirme fonksiyonu
-      function setOutputDevice(deviceIndex) {
-        fetch('/api/set-output-device', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ device_index: deviceIndex }),
-        })
-        .then(response => response.json())
-        .then(data => {
-          console.log('Cihaz değiştirildi:', data);
-          if (data.success) {
-            loadOutputDevices();
-          } else {
-            alert('Cihaz değiştirme başarısız oldu.');
-          }
-        })
-        .catch(err => {
-          console.error('Cihaz değiştirme hatası:', err);
-        });
-      }
+     // Make sure this function is working correctly
+function setOutputDevice(deviceIndex) {
+  fetch('/api/set-output-device', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ device_index: deviceIndex }),
+  })
+  .then(response => response.json())
+  .then(data => {
+    console.log('Cihaz değiştirildi:', data);
+    if (data.success) {
+      loadOutputDevices();  // Reload the devices list
+    } else {
+      alert('Cihaz değiştirme başarısız oldu.');
+    }
+  })
+  .catch(err => {
+    console.error('Cihaz değiştirme hatası:', err);
+  });
+}
 
       // Şu anda çalan şarkıyı güncelle
       function updateNowPlaying() {
