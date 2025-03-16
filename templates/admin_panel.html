@@ -716,7 +716,11 @@
       }
       // Cihaz değiştirme fonksiyonu
      // Make sure this function is working correctly
-function setOutputDevice(deviceIndex) {
+     function setOutputDevice(deviceIndex) {
+  // Create a FormData object
+  const formData = new FormData();
+  formData.append('device_index', deviceIndex);
+  
   fetch('/api/set-output-device', {
     method: 'POST',
     headers: {
@@ -724,17 +728,24 @@ function setOutputDevice(deviceIndex) {
     },
     body: JSON.stringify({ device_index: deviceIndex }),
   })
-  .then(response => response.json())
+  .then(response => {
+    if (!response.ok) {
+      throw new Error('Network response was not ok');
+    }
+    return response.json();
+  })
   .then(data => {
     console.log('Cihaz değiştirildi:', data);
     if (data.success) {
       loadOutputDevices();  // Reload the devices list
+      alert('Ses çıkış cihazı başarıyla ayarlandı!');
     } else {
-      alert('Cihaz değiştirme başarısız oldu.');
+      alert('Cihaz değiştirme başarısız oldu: ' + (data.error || 'Bilinmeyen hata'));
     }
   })
   .catch(err => {
     console.error('Cihaz değiştirme hatası:', err);
+    alert('Cihaz değiştirme hatası: ' + err.message);
   });
 }
 

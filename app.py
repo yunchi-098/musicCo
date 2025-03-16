@@ -76,15 +76,18 @@ class AudioManager:
     @staticmethod
     def set_default_output(device_index):
         try:
+            # Ensure device_index is properly handled as a string
+            device_index_str = str(device_index).strip()
+            
             # Set default sink
-            subprocess.run(['pacmd', 'set-default-sink', str(device_index)])
+            subprocess.run(['pacmd', 'set-default-sink', device_index_str], check=True)
             
             # Move all playing sounds to the new device
             result = subprocess.run(['pacmd', 'list-sink-inputs'], capture_output=True, text=True)
             for line in result.stdout.splitlines():
-                if 'index:' in line and not line.startswith('*'):
+                if 'index:' in line and not 'device.string' in line:
                     idx = line.split(':')[1].strip()
-                    subprocess.run(['pacmd', 'move-sink-input', idx, str(device_index)])
+                    subprocess.run(['pacmd', 'move-sink-input', idx, device_index_str])
             
             return True
         except Exception as e:
@@ -413,15 +416,34 @@ def api_output_devices():
 @app.route('/api/set-output-device', methods=['POST'])
 @admin_login_required
 def set_output_device():
-    device_index = request.json.get('device_index')
-    if not device_index:
-        return jsonify({'error': 'Cihaz indeksi gerekli'}), 400
-    
-    success = AudioManager.set_default_output(device_index)
-    return jsonify({
-        'success': success,
-        'devices': AudioManager.get_output_devices()
-    })
+    try:
+        data = request.get_json()
+        if not data or 'device_index' not in data:
+            logger.error("Eksik device_index parametresi")
+            return jsonify({'success': False, 'error': 'Cihaz indeksi gerekli'}), 400
+        
+        device_index = data['device_index']
+        logger.info(f"Cihaz değiştirme isteği: {device_index}")
+        
+        success = AudioManager.set_default_output(device_index)
+        
+        if success:
+            logger.info(f"Cihaz başarıyla değiştirildi: {device_index}")
+            return jsonify({
+                'success': True,
+                'message': f"Cihaz değiştirildi: {device_index}",
+                'devices': AudioManager.get_output_devices()
+            })
+        else:
+            logger.error(f"Cihaz değiştirilemedi: {device_index}")
+            return jsonify({
+                'success': False,
+                'error': 'Cihaz değiştirilemedi',
+                'devices': AudioManager.get_output_devices()
+            }), 500
+    except Exception as e:
+        logger.error(f"Cihaz değiştirme isteği sırasında hata: {e}")
+        return jsonify({'success': False, 'error': f'Hata: {str(e)}'}), 500
 
 @app.route('/logout')
 def logout():
