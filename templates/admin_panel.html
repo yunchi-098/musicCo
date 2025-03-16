@@ -648,7 +648,8 @@
         }, 60000); // 60 saniyede bir yenile
       });
       // Çıkış cihazlarını yönetme fonksiyonları
-      function loadOutputDevices() {
+
+  function loadOutputDevices() {
     fetch('/api/output-devices')
       .then(response => response.json())
       .then(data => {
@@ -656,22 +657,17 @@
         
         const devicesList = document.getElementById('outputDevicesList');
         devicesList.innerHTML = '';
-        
+
         if (data.devices && data.devices.length > 0) {
           data.devices.forEach(device => {
-            const deviceTypeIcon = device.type === 'bluetooth' ? 
-              '<i class="fab fa-bluetooth-b"></i>' : 
-              '<i class="fas fa-headphones"></i>';
-            
             const isActive = device.is_default ? 'device-active' : 'device-inactive';
             
             const li = document.createElement('li');
             li.className = `device-item ${isActive}`;
             li.innerHTML = `
               <div>
-                ${deviceTypeIcon} ${device.description || device.name}
+                ${device.description || device.name}
                 ${device.is_default ? '<span class="badge badge-success">Aktif</span>' : ''}
-                <small class="device-type">${device.type}</small>
               </div>
               ${!device.is_default ? 
                 `<button class="btn btn-sm switch-device-btn" data-index="${device.index}">Buna Geç</button>` : 
@@ -679,64 +675,52 @@
             `;
             devicesList.appendChild(li);
           });
-          
-          // Cihaz geçişi için event listener'ları ekle
+
+          // Cihaz değiştirme butonlarına event listener ekle
           const buttons = devicesList.querySelectorAll('button.switch-device-btn');
           buttons.forEach(button => {
             button.addEventListener('click', function() {
               const deviceIndex = this.getAttribute('data-index');
-              this.disabled = true;
-              this.innerHTML = 'İşleniyor...';
               setOutputDevice(deviceIndex);
             });
           });
         } else {
-          devicesList.innerHTML = '<li class="device-item">Kullanılabilir cihaz bulunamadı</li>';
+          devicesList.innerHTML = '<li class="device-item">Cihaz bulunamadı</li>';
         }
       })
       .catch(err => {
         console.error('Ses çıkış cihazları alınamadı:', err);
-        const devicesList = document.getElementById('outputDevicesList');
-        devicesList.innerHTML = `<li class="device-item">Hata: Ses çıkış cihazları alınamadı (${err.message})</li>`;
       });
   }
-      // Cihaz değiştirme fonksiyonu
-     // Make sure this function is working correctly
-     function setOutputDevice(deviceIndex) {
-  // Create a FormData object
-  const formData = new FormData();
-  formData.append('device_index', deviceIndex);
-  
-  fetch('/api/set-output-device', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ device_index: deviceIndex }),
-  })
-  .then(response => {
-    if (!response.ok) {
-      throw new Error('Network response was not ok');
-    }
-    return response.json();
-  })
-  .then(data => {
-    console.log('Cihaz değiştirildi:', data);
-    if (data.success) {
-      loadOutputDevices();  // Reload the devices list
-      alert('Ses çıkış cihazı başarıyla ayarlandı!');
-    } else {
-      alert('Cihaz değiştirme başarısız oldu: ' + (data.error || 'Bilinmeyen hata'));
-    }
-  })
-  .catch(err => {
-    console.error('Cihaz değiştirme hatası:', err);
-    alert('Cihaz değiştirme hatası: ' + err.message);
-  });
-}
 
-      // Şu anda çalan şarkıyı güncelle
-      function updateNowPlaying() {
+  function setOutputDevice(deviceIndex) {
+    fetch('/api/set-output-device', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device_index: deviceIndex })
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        alert('Ses çıkış cihazı başarıyla değiştirildi!');
+        loadOutputDevices();  // Listeyi güncelle
+      } else {
+        alert('Cihaz değiştirilemedi: ' + data.error);
+      }
+    })
+    .catch(err => {
+      console.error('Cihaz değiştirme hatası:', err);
+      alert('Cihaz değiştirme hatası: ' + err.message);
+    });
+  }
+
+  // Sayfa yüklendiğinde cihazları yükle
+  document.addEventListener('DOMContentLoaded', function() {
+    loadOutputDevices();
+  });
+
+
+function updateNowPlaying() {
         fetch('/api/current-playback')
           .then(response => response.json())
           .then(data => {

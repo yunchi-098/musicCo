@@ -8,41 +8,26 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
 import subprocess
+import logging
+
 class AudioManager:
     @staticmethod
     def get_output_devices():
+        """Mevcut ses çıkış cihazlarını getirir."""
         try:
-            # First check if pacmd is available
-            check_pacmd = subprocess.run(['which', 'pacmd'], capture_output=True, text=True)
-            if check_pacmd.returncode != 0:
-                logger.error("pacmd komut bulunamadı. PulseAudio yüklü değil.")
-                return []
-            
-            # Get audio output devices
-            result = subprocess.run(
-                ['pacmd', 'list-sinks'], 
-                capture_output=True, 
-                text=True
-            )
-            
+            result = subprocess.run(['pacmd', 'list-sinks'], capture_output=True, text=True)
             if result.returncode != 0:
-                logger.error(f"pacmd komutu çalıştırılırken hata oluştu: {result.stderr}")
+                logging.error(f"pacmd komutu çalıştırılırken hata: {result.stderr}")
                 return []
             
             devices = []
             device_data = {}
-            
+
             for line in result.stdout.splitlines():
                 line = line.strip()
-                
-                # New sink start
-                if line.startswith('* index:') or line.startswith('  index:'):
-                    # Save previous device
+                if line.startswith('* index:') or line.startswith('index:'):
                     if device_data:
                         devices.append(device_data.copy())
-                        device_data = {}
-                    
-                    # Start new device
                     is_default = line.startswith('*')
                     idx = line.split(':')[1].strip()
                     device_data = {
@@ -52,233 +37,37 @@ class AudioManager:
                         'description': '',
                         'type': 'unknown'
                     }
-                
-                # Extract device information
                 elif device_data:
                     if 'name:' in line:
                         device_data['name'] = line.split('name:')[1].strip().strip('"<>')
                     elif 'device.description' in line:
                         device_data['description'] = line.split('=')[1].strip().strip('"')
-                    elif 'device.string' in line and 'alsa' in line:
-                        device_data['type'] = 'aux'
-                    elif 'device.bus' in line and 'bluetooth' in line:
-                        device_data['type'] = 'bluetooth'
             
-            # Add the last device
             if device_data:
                 devices.append(device_data.copy())
-            
             return devices
         except Exception as e:
-            logger.error(f"Ses çıkış cihazları listelenirken hata: {e}")
+            logging.error(f"Ses çıkış cihazları listelenirken hata: {e}")
             return []
 
     @staticmethod
     def set_default_output(device_index):
+        """Belirtilen cihazı varsayılan çıkış cihazı olarak ayarlar."""
         try:
-            # Ensure device_index is properly handled as a string
-            device_index_str = str(device_index).strip()
+            # Varsayılan çıkış cihazını değiştir
+            subprocess.run(['pacmd', 'set-default-sink', str(device_index)], check=True)
             
-            # Set default sink
-            subprocess.run(['pacmd', 'set-default-sink', device_index_str], check=True)
-            
-            # Move all playing sounds to the new device
+            # Tüm oynatılan sesleri yeni çıkış cihazına taşı
             result = subprocess.run(['pacmd', 'list-sink-inputs'], capture_output=True, text=True)
             for line in result.stdout.splitlines():
-                if 'index:' in line and not 'device.string' in line:
+                if 'index:' in line:
                     idx = line.split(':')[1].strip()
-                    subprocess.run(['pacmd', 'move-sink-input', idx, device_index_str])
-            
+                    subprocess.run(['pacmd', 'move-sink-input', idx, str(device_index)])
+
             return True
         except Exception as e:
-            logger.error(f"Varsayılan ses çıkış cihazı ayarlanırken hata: {e}")
+            logging.error(f"Varsayılan ses çıkış cihazı ayarlanırken hata: {e}")
             return False
-            
-    @staticmethod
-    def scan_bluetooth_devices():
-        """Bluetooth cihazlarını tarar ve listeler"""
-        try:
-            logger.info("Bluetooth cihazları taranıyor...")
-            
-            # Önce bluetoothctl'nin yüklü olduğunu kontrol et
-            check_bt = subprocess.run(['which', 'bluetoothctl'], capture_output=True, text=True)
-            if check_bt.returncode != 0:
-                logger.error("bluetoothctl bulunamadı. Bluetooth yüklü değil.")
-                return []
-                
-            # Bluetooth servisinin çalıştığını kontrol et
-            service_check = subprocess.run(['systemctl', 'is-active', 'bluetooth'], capture_output=True, text=True)
-            if service_check.stdout.strip() != 'active':
-                logger.error("Bluetooth servisi çalışmıyor.")
-                return []
-            
-            # Önceki eşleşmiş cihazları al
-            paired_devices = subprocess.run(['bluetoothctl', 'paired-devices'], capture_output=True, text=True)
-            paired_list = []
-            
-            for line in paired_devices.stdout.splitlines():
-                if "Device" in line:
-                    parts = line.strip().split(' ', 2)
-                    if len(parts) >= 3:
-                        mac = parts[1]
-                        name = parts[2]
-                        paired_list.append({
-                            'mac': mac,
-                            'name': name,
-                            'paired': True,
-                            'connected': False
-                        })
-            
-            # Bağlı cihazları kontrol et
-            for device in paired_list:
-                info = subprocess.run(['bluetoothctl', 'info', device['mac']], capture_output=True, text=True)
-                device['connected'] = 'Connected: yes' in info.stdout
-            
-            return paired_list
-            
-        except Exception as e:
-            logger.error(f"Bluetooth taraması sırasında hata: {e}")
-            return []
-            
-    @staticmethod
-    def connect_bluetooth_device(mac_address):
-        """Belirtilen Bluetooth cihazına bağlanır"""
-        try:
-            logger.info(f"Bluetooth cihazına bağlanılıyor: {mac_address}")
-            
-            # Önce cihazın eşleşmiş olduğunu kontrol et
-            paired_check = subprocess.run(
-                ['bluetoothctl', 'paired-devices'], 
-                capture_output=True, 
-                text=True
-            )
-            
-            is_paired = False
-            for line in paired_check.stdout.splitlines():
-                if mac_address in line:
-                    is_paired = True
-                    break
-            
-            if not is_paired:
-                logger.error(f"Cihaz eşleşmemiş: {mac_address}")
-                return False
-            
-            # Cihazı bağla
-            connect = subprocess.run(
-                ['bluetoothctl', 'connect', mac_address],
-                capture_output=True,
-                text=True
-            )
-            
-            if "Connection successful" in connect.stdout:
-                logger.info(f"Bluetooth cihazına başarıyla bağlandı: {mac_address}")
-                
-                # Bağlantı başarılı, PulseAudio'nun cihazı tanımasını bekle
-                time.sleep(2)
-                
-                # Bluetooth sink'i bul
-                sinks = subprocess.run(['pacmd', 'list-sinks'], capture_output=True, text=True)
-                bluetooth_sink = None
-                
-                # MAC adresinin PulseAudio formatına dönüştür (: yerine _)
-                formatted_mac = mac_address.replace(':', '_')
-                
-                for line in sinks.stdout.splitlines():
-                    if formatted_mac in line:
-                        # Bluetooth cihazını bulduk, şimdi indeksini alalım
-                        for bline in sinks.stdout.splitlines():
-                            if ('* index:' in bline or '  index:' in bline) and bluetooth_sink is None:
-                                idx = bline.split(':')[1].strip()
-                                bluetooth_sink = idx
-                            elif bluetooth_sink and formatted_mac in bline:
-                                break
-                
-                if bluetooth_sink:
-                    # Cihazı varsayılan olarak ayarla
-                    return AudioManager.set_default_output(bluetooth_sink)
-                else:
-                    logger.error(f"Bluetooth sink bulunamadı: {mac_address}")
-                    return False
-            else:
-                logger.error(f"Bluetooth cihazına bağlanılamadı: {mac_address}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"Bluetooth bağlantısı sırasında hata: {e}")
-            return False
-            
-    @staticmethod
-    def disconnect_bluetooth_device(mac_address):
-        """Belirtilen Bluetooth cihazının bağlantısını keser"""
-        try:
-            logger.info(f"Bluetooth cihazı bağlantısı kesiliyor: {mac_address}")
-            
-            # Cihaz bağlantısını kes
-            disconnect = subprocess.run(
-                ['bluetoothctl', 'disconnect', mac_address],
-                capture_output=True,
-                text=True
-            )
-            
-            if "Successful disconnected" in disconnect.stdout:
-                logger.info(f"Bluetooth cihazı bağlantısı başarıyla kesildi: {mac_address}")
-                
-                # Analog ses çıkışına dön (varsayılan olarak)
-                AudioManager.set_default_output(1)  # 1 genellikle analog çıkıştır
-                return True
-            else:
-                logger.error(f"Bluetooth cihazı bağlantısı kesilemedi: {mac_address}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"Bluetooth bağlantısını kesme hatası: {e}")
-            return False
-            
-    @staticmethod
-    def pair_bluetooth_device(mac_address):
-        """Yeni bir Bluetooth cihazını eşleştirir"""
-        try:
-            logger.info(f"Yeni Bluetooth cihazı eşleştiriliyor: {mac_address}")
-            
-            # Cihazı keşfet
-            subprocess.run(['bluetoothctl', 'scan', 'on'], timeout=10)
-            
-            # Eşleştirme işlemi
-            pair = subprocess.run(
-                ['bluetoothctl', 'pair', mac_address],
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            
-            if "Pairing successful" in pair.stdout:
-                # Eşleşme başarılı, cihazı güvenilir olarak işaretle
-                trust = subprocess.run(
-                    ['bluetoothctl', 'trust', mac_address],
-                    capture_output=True,
-                    text=True
-                )
-                
-                if "Trusted: yes" in trust.stdout:
-                    logger.info(f"Bluetooth cihazı başarıyla eşleştirildi ve güvenilir olarak işaretlendi: {mac_address}")
-                    
-                    # Şimdi cihazı bağla
-                    return AudioManager.connect_bluetooth_device(mac_address)
-                else:
-                    logger.warning(f"Cihaz eşleştirildi ancak güvenilir olarak işaretlenemedi: {mac_address}")
-                    return False
-            else:
-                logger.error(f"Bluetooth cihazı eşleştirilemedi: {mac_address}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"Bluetooth eşleştirme hatası: {e}")
-            # Taramayı kapatalım
-            subprocess.run(['bluetoothctl', 'scan', 'off'])
-            return False
-        finally:
-            # Her durumda taramayı kapat
-            subprocess.run(['bluetoothctl', 'scan', 'off'])
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -658,36 +447,27 @@ def api_pair_bluetooth():
         return jsonify({'success': False, 'error': f'Hata: {str(e)}'}), 500
 
 @app.route('/api/set-output-device', methods=['POST'])
-@admin_login_required
 def set_output_device():
+    """Belirtilen cihazı varsayılan çıkış cihazı olarak ayarlar."""
     try:
         data = request.get_json()
         if not data or 'device_index' not in data:
-            logger.error("Eksik device_index parametresi")
             return jsonify({'success': False, 'error': 'Cihaz indeksi gerekli'}), 400
-        
+
         device_index = data['device_index']
-        logger.info(f"Cihaz değiştirme isteği: {device_index}")
-        
         success = AudioManager.set_default_output(device_index)
-        
+
         if success:
-            logger.info(f"Cihaz başarıyla değiştirildi: {device_index}")
             return jsonify({
                 'success': True,
                 'message': f"Cihaz değiştirildi: {device_index}",
                 'devices': AudioManager.get_output_devices()
             })
         else:
-            logger.error(f"Cihaz değiştirilemedi: {device_index}")
-            return jsonify({
-                'success': False,
-                'error': 'Cihaz değiştirilemedi',
-                'devices': AudioManager.get_output_devices()
-            }), 500
+            return jsonify({'success': False, 'error': 'Cihaz değiştirilemedi'}), 500
     except Exception as e:
-        logger.error(f"Cihaz değiştirme isteği sırasında hata: {e}")
-        return jsonify({'success': False, 'error': f'Hata: {str(e)}'}), 500
+        logging.error(f"Cihaz değiştirme isteği sırasında hata: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/logout')
 def logout():
