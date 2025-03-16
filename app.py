@@ -165,28 +165,100 @@ def admin_login():
 def admin_panel():
     spotify = get_spotify_client()
     devices = []
+    spotify_authenticated = False  # Default to False
     if not spotify:
         logger.warning("Admin paneline erişim için Spotify yetkilendirmesi gerekli")
         return redirect(url_for('spotify_auth'))
+
     try:
         result = spotify.devices()
         devices = result.get('devices', [])
         logger.info(f"Bulunan cihazlar: {len(devices)}")
+        spotify_authenticated = True
     except Exception as e:
         logger.error(f"Cihazları listelerken hata: {e}")
         if "unauthorized" in str(e).lower():
             return redirect(url_for('spotify_auth'))
-    # Spotify token'ınız geçerliyse durumu belirten flag ekleyin:
-    spotify_authenticated = True
+
     return render_template(
         'admin_panel.html', 
         settings=settings,
         devices=devices,
         queue=song_queue,
         all_genres=ALLOWED_GENRES,
-        spotify_authenticated=spotify_authenticated
+        spotify_authenticated=spotify_authenticated,
+        active_device_id=settings.get('active_device_id')
     )
 
+@app.route('/refresh-devices')
+@admin_login_required
+def refresh_devices():
+    """
+    Spotify cihazlarını yenileme endpoint'i
+    """
+    spotify = get_spotify_client()
+    if not spotify:
+        logger.warning("Cihazları yenilemek için Spotify yetkilendirmesi gerekli")
+        return redirect(url_for('spotify_auth'))
+    
+    try:
+        result = spotify.devices()
+        devices = result.get('devices', [])
+        logger.info(f"Cihazlar yenilendi: {len(devices)} cihaz bulundu")
+        
+        if settings['active_device_id']:
+            device_exists = any(device['id'] == settings['active_device_id'] for device in devices)
+            if not device_exists:
+                logger.warning(f"Aktif cihaz ({settings['active_device_id']}) artık mevcut değil")
+                settings['active_device_id'] = None
+                with open(SETTINGS_FILE, 'w') as f:
+                    json.dump(settings, f)
+        
+        return redirect(url_for('admin_panel'))
+    except Exception as e:
+        logger.error(f"Cihazları yenilerken hata: {e}")
+        if "unauthorized" in str(e).lower():
+            return redirect(url_for('spotify_auth'))
+        return redirect(url_for('admin_panel'))
+
+@app.route('/remove-song/<song_id>', methods=['POST'])
+@admin_login_required
+def remove_song(song_id):
+    global song_queue
+    song_queue = [song for song in song_queue if song['id'] != song_id]
+    logger.info(f"Şarkı kuyruktan kaldırıldı: {song_id}")
+    return redirect(url_for('admin_panel'))
+
+@app.route('/add-song', methods=['POST'])
+@admin_login_required
+def add_song():
+    song_id = request.form.get('song_id')
+    if not song_id:
+        logger.warning("Eksik şarkı ID'si")
+        return redirect(url_for('admin_panel'))
+    
+    spotify = get_spotify_client()
+    if not spotify:
+        logger.warning("Şarkı eklemek için Spotify yetkilendirmesi gerekli")
+        return redirect(url_for('spotify_auth'))
+    
+    try:
+        song_info = spotify.track(song_id)
+        song_name = song_info['name']
+        
+        song_queue.append({
+            'id': song_id,
+            'name': song_name,
+            'artist': song_info['artists'][0]['name']
+        })
+        logger.info(f"Şarkı kuyruğa eklendi: {song_id} - {song_name}")
+        return redirect(url_for('admin_panel'))
+    except Exception as e:
+        logger.error(f"Şarkı eklerken hata: {e}")
+        if "unauthorized" in str(e).lower():
+            return redirect(url_for('spotify_auth'))
+        return redirect(url_for('admin_panel'))
+   
 @app.route('/update-settings', methods=['POST'])
 @admin_login_required
 def update_settings():
@@ -208,7 +280,6 @@ def spotify_auth():
         auth_manager = get_spotify_auth()
         auth_url = auth_manager.get_authorize_url()
         logger.info(f"Spotify yetkilendirme URL'si: {auth_url}")
-        # Redirect directly to the Spotify authorization URL
         return redirect(auth_url)
     except Exception as e:
         logger.error(f"Spotify yetkilendirme hatası: {e}")
@@ -216,9 +287,6 @@ def spotify_auth():
 
 @app.route('/callback')
 def callback():
-    # Callback için admin kontrolü yapma (Spotify tarafından geldiği için)
-    # Ancak, session'ı kontrol et - eğer admin giriş yapmamışsa işlem sonrası 
-    # admin sayfasına yönlendir
     admin_logged_in = session.get('admin_logged_in', False)
     
     auth_manager = get_spotify_auth()
@@ -228,29 +296,18 @@ def callback():
     
     code = request.args.get('code')
     try:
-        # Yetkilendirme kodu ile token al
         token_info = auth_manager.get_access_token(code)
-        
-        # Token doğrulaması
         spotify = spotipy.Spotify(auth=token_info['access_token'])
         try:
             user_profile = spotify.current_user()
             logger.info(f"Token doğrulandı. Kullanıcı: {user_profile.get('display_name')}")
-            
-            # Token'ı dosyaya kaydet
             save_token(token_info)
-            
-            # ÖNEMLİ: Global değişkeni güncelle
             global spotify_client
             spotify_client = spotify
-            
-            # Session'a başarılı yetkilendirme durumunu kaydet
             session['spotify_authenticated'] = True
             session['spotify_user'] = user_profile.get('display_name')
-            
             logger.info("Spotify yetkilendirme başarılı, token kaydedildi")
             
-            # Admin giriş yapmışsa admin paneline, değilse ana sayfaya yönlendir
             if admin_logged_in:
                 return redirect(url_for('admin_panel'))
             else:
@@ -266,14 +323,11 @@ def callback():
 def logout():
     global spotify_client
     spotify_client = None
-    
-    # Admin oturumunu sonlandır
     session.pop('admin_logged_in', None)
     session.pop('spotify_authenticated', None)
     session.pop('spotify_user', None)
     session.clear()
     
-    # Token dosyasını sil (opsiyonel)
     if os.path.exists(TOKEN_FILE):
         try:
             os.remove(TOKEN_FILE)
@@ -393,7 +447,6 @@ def check_auth_status():
     is_spotify_authenticated = session.get('token_info', False)
     spotify_user = session.get('spotify_user', None)
     
-    # Session'daki bilgilere dayanarak durum kontrolü
     if is_spotify_authenticated and spotify_user:
         return jsonify({
             'admin_logged_in': is_admin,
@@ -401,12 +454,10 @@ def check_auth_status():
             'user': spotify_user
         })
     
-    # Session'da bilgi yok, token dosyasını ve istemciyi kontrol et
     spotify = get_spotify_client()
     if spotify:
         try:
             user = spotify.current_user()
-            # Session'a bilgileri kaydet
             session['spotify_authenticated'] = True
             session['spotify_user'] = user.get('display_name')
             return jsonify({
@@ -440,7 +491,6 @@ def refresh_token():
     try:
         if 'refresh_token' not in token_info:
             logger.error("Token bilgisinde refresh_token eksik.")
-            # Token dosyasını sil ve yeniden yetkilendirmeye yönlendir
             if os.path.exists(TOKEN_FILE):
                 os.remove(TOKEN_FILE)
             return redirect(url_for('spotify_auth'))
@@ -448,10 +498,8 @@ def refresh_token():
         new_token = auth_manager.refresh_access_token(token_info['refresh_token'])
         save_token(new_token)
         
-        # Yeni token ile istemciyi başlat
         spotify_client = spotipy.Spotify(auth=new_token['access_token'])
         
-        # Session'ı güncelle
         try:
             user = spotify_client.current_user()
             session['spotify_authenticated'] = True
@@ -464,21 +512,25 @@ def refresh_token():
         return redirect(url_for('admin_panel'))
     except Exception as e:
         logger.error(f"Token yenileme hatası: {e}")
-        # Token dosyasını sil ve yeniden yetkilendirmeye yönlendir
         if os.path.exists(TOKEN_FILE):
             os.remove(TOKEN_FILE)
         return redirect(url_for('spotify_auth'))
 
-def play_queue():
+# -----------------------------------------------------------------------------
+# BACKGROUND THREAD: Şarkı Kuyruğu Oynatıcısı
+# -----------------------------------------------------------------------------
+def background_queue_player():
+    """
+    Bu fonksiyon arka planda çalışır ve kuyruğa eklenen şarkıları kontrol edip çalar.
+    """
     global spotify_client
     
     while True:
-        # Spotify istemcisini düzenli olarak kontrol et ve gerekirse yenile
         spotify = get_spotify_client()
         
         if not spotify:
             logger.warning("Spotify istemcisi bulunamadı, çalma yapılamıyor")
-            time.sleep(10)  # Daha uzun bir bekleme süresi
+            time.sleep(10)
             continue
         
         if song_queue and settings['active_device_id']:
@@ -486,14 +538,12 @@ def play_queue():
                 current_playback = spotify.current_playback()
             except Exception as e:
                 logger.error(f"Playback durumu kontrol hatası: {e}")
-                # Token yenilemeyi zorla
                 spotify_client = None
                 time.sleep(5)
                 continue
 
             if current_playback is None or not current_playback.get('is_playing'):
-                # Eğer çalan bir şarkı yoksa, sıradaki şarkıyı başlat
-                if song_queue:  # Kuyruk hala dolu mu kontrol et
+                if song_queue:
                     next_song = song_queue.pop(0)
                     try:
                         spotify.start_playback(
@@ -501,25 +551,17 @@ def play_queue():
                             uris=[f"spotify:track:{next_song['id']}"]
                         )
                         logger.info(f"Şarkı çalıyor: {next_song['name']} - {next_song['artist']}")
-                        # İlgili kullanıcının istek sayısını azalt
-                        user_ip = next_song['added_by']
+                        user_ip = next_song.get('added_by')
                         if user_ip in user_requests:
                             user_requests[user_ip] = max(0, user_requests[user_ip] - 1)
                     except Exception as e:
                         logger.error(f"Şarkı çalma hatası: {e}")
-                        # Hata türüne göre işlem yap
-                        if "not active" in str(e).lower():
-                            logger.warning("Cihaz aktif değil. Cihaz durumunu kontrol edin.")
-                            # Cihazlar listesini güncelle?
-                        else:
-                            # Şarkıyı tekrar kuyruğa ekle
-                            song_queue.insert(0, next_song)
+                        song_queue.insert(0, next_song)
             else:
-                # Mevcut şarkının ilerlemesini kontrol et
                 progress = current_playback.get('progress_ms', 0)
                 duration = current_playback.get('item', {}).get('duration_ms', 0)
                 remaining = duration - progress
-                if remaining < 5000 and song_queue:  # Son 5 saniye ve kuyrukta şarkı var
+                if remaining < 5000 and song_queue:
                     logger.info("Şarkı bitmeye yakın, sıradaki şarkı hazırlanıyor")
         else:
             if not settings['active_device_id']:
@@ -527,61 +569,81 @@ def play_queue():
             elif not song_queue:
                 logger.debug("Şarkı kuyruğu boş")
         
-        time.sleep(3)  # Biraz daha sık kontrol et
+        time.sleep(3)
 
 def start_queue_player():
-    thread = threading.Thread(target=play_queue)
+    thread = threading.Thread(target=background_queue_player)
     thread.daemon = True
     thread.start()
     logger.info("Arka plan şarkı çalma görevi başlatıldı")
 
-# Uygulama başlatıldığında token kontrolü
+@app.route('/play_queue', endpoint='play_queue')
+def play_queue_dummy():
+    # Dummy endpoint to satisfy url_for('play_queue') calls from your template.
+    return jsonify({'message': 'Şarkı kuyruğu arka planda çalıyor'}), 200
+
+@app.route('/previous_track', endpoint='previous_track')
+def previous_track_dummy():
+    # Dummy endpoint for previous track functionality
+    return jsonify({'message': 'Önceki şarkı işlevi henüz uygulanmadı.'}), 200
+
+@app.route('/next_track', endpoint='next_track')
+def next_track_dummy():
+    # Dummy endpoint for next track functionality
+    return jsonify({'message': 'Sonraki şarkı işlevi henüz uygulanmadı.'}), 200
+
+@app.route('/toggle_play_pause', endpoint='toggle_play_pause')
+def toggle_play_pause_dummy():
+    # Dummy endpoint for play/pause functionality
+    return jsonify({'message': 'Çalma/durdurma işlevi henüz uygulanmadı.'}), 200
+
+
+# -----------------------------------------------------------------------------
+# DUMMY ENDPOINT: play_queue
+# -----------------------------------------------------------------------------
+# Eğer bir template veya başka bir yerden url_for('play_queue') çağrısı yapılıyorsa,
+# bu endpoint tanımlandığından BuildError önlenecektir.
+@app.route('/play_queue')
+def play_queue_endpoint():
+    return jsonify({'message': 'Şarkı kuyruğu arka planda çalıyor'}), 200
+
+# -----------------------------------------------------------------------------
+# Uygulama Başlangıcı: Token kontrolü ve arka plan görevlerinin başlatılması
+# -----------------------------------------------------------------------------
 def check_token_on_startup():
-    global spotify_client  # Move this to the top of the function
-    
+    global spotify_client
     token_info = load_token()
     if token_info:
         auth_manager = get_spotify_auth()
         try:
-            # Token geçerli mi kontrol et
             if auth_manager.is_token_expired(token_info):
                 logger.info("Başlangıçta bulunan token süresi dolmuş, yenileniyor...")
                 try:
                     new_token = auth_manager.refresh_access_token(token_info['refresh_token'])
                     save_token(new_token)
                     logger.info("Token başarıyla yenilendi")
-                    
-                    # Global Spotify istemcisini başlat
                     spotify_client = spotipy.Spotify(auth=new_token['access_token'])
-                    
-                    # Token doğrulama testi
                     spotify_client.current_user()
                     logger.info("Spotify istemcisi başlatıldı ve doğrulandı")
                     return True
                 except Exception as e:
                     logger.error(f"Token yenileme hatası: {e}")
-                    # Token dosyasını sil, yeniden yetkilendirme gerekecek
                     if os.path.exists(TOKEN_FILE):
                         os.remove(TOKEN_FILE)
                     return False
             else:
-                # Token hala geçerli
                 spotify_client = spotipy.Spotify(auth=token_info['access_token'])
-                
-                # Token doğrulama testi
                 try:
                     spotify_client.current_user()
                     logger.info("Mevcut token ile Spotify istemcisi başlatıldı ve doğrulandı")
                     return True
                 except Exception as e:
                     logger.error(f"Token doğrulama hatası: {e}")
-                    # Token dosyasını sil, yeniden yetkilendirme gerekecek
                     if os.path.exists(TOKEN_FILE):
                         os.remove(TOKEN_FILE)
                     return False
         except Exception as e:
             logger.error(f"Başlangıç token kontrolünde hata: {e}")
-            # Token dosyasını sil, yeniden yetkilendirme gerekecek
             if os.path.exists(TOKEN_FILE):
                 os.remove(TOKEN_FILE)
     else:
@@ -592,11 +654,7 @@ if __name__ == '__main__':
     logger.info("------- Uygulama başlatılıyor -------")
     logger.info(f"Yüklenen ayarlar: {settings}")
     
-    # Başlangıçta token kontrolü yap
     check_token_on_startup()
-    
-    # Kuyruk oynatıcısını başlat
     start_queue_player()
     
-    # Flask uygulamasını başlat
     app.run(host='0.0.0.0', port=8080, debug=True)
