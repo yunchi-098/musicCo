@@ -7,6 +7,89 @@ from flask import Flask, request, render_template, redirect, url_for, session, j
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
+import subprocess
+
+class AudioManager:
+    @staticmethod
+    def get_output_devices():
+        try:
+            # First check if pacmd is available
+            check_pacmd = subprocess.run(['which', 'pacmd'], capture_output=True, text=True)
+            if check_pacmd.returncode != 0:
+                logger.error("pacmd komut bulunamadı. PulseAudio yüklü değil.")
+                return []
+            
+            # Ses çıkış cihazlarını alma
+            result = subprocess.run(
+                ['pacmd', 'list-sinks'], 
+                capture_output=True, 
+                text=True
+            )
+            
+            if result.returncode != 0:
+                logger.error(f"pacmd komutu çalıştırılırken hata oluştu: {result.stderr}")
+                return []
+            
+            devices = []
+            device_data = {}
+            
+            for line in result.stdout.splitlines():
+                line = line.strip()
+                
+                # Yeni bir sink başlangıcı
+                if line.startswith('* index:') or line.startswith('  index:'):
+                    # Önceki cihazı kaydet
+                    if device_data:
+                        devices.append(device_data)
+                        device_data = {}
+                    
+                    # Yeni cihaz başlat
+                    is_default = line.startswith('*')
+                    idx = line.split(':')[1].strip()
+                    device_data = {
+                        'index': idx,
+                        'is_default': is_default,
+                        'name': '',
+                        'description': '',
+                        'type': 'unknown'
+                    }
+                
+                # Cihaz bilgilerini çıkart
+                elif device_data:
+                    if 'name:' in line:
+                        device_data['name'] = line.split('name:')[1].strip().strip('"<>')
+                    elif 'device.description' in line:
+                        device_data['description'] = line.split('=')[1].strip().strip('"')
+                    elif 'device.string' in line and 'alsa' in line:
+                        device_data['type'] = 'aux'
+                    elif 'device.bus' in line and 'bluetooth' in line:
+                        device_data['type'] = 'bluetooth'
+            
+            # Son cihazı ekle
+            if device_data:
+                devices.append(device_data)
+                
+            return devices
+        except Exception as e:
+            logger.error(f"Ses çıkış cihazları listelenirken hata: {e}")
+            return []
+        
+    @staticmethod
+    def set_default_output(device_index):
+        try:
+            subprocess.run(['pacmd', 'set-default-sink', str(device_index)])
+            
+            # Tüm çalan sesleri yeni cihaza yönlendir
+            result = subprocess.run(['pacmd', 'list-sink-inputs'], capture_output=True, text=True)
+            for line in result.stdout.splitlines():
+                if 'index:' in line and not line.startswith('*'):
+                    idx = line.split(':')[1].strip()
+                    subprocess.run(['pacmd', 'move-sink-input', idx, str(device_index)])
+            
+            return True
+        except Exception as e:
+            logger.error(f"Varsayılan ses çıkış cihazı ayarlanırken hata: {e}")
+            return False
 # Loglama yapılandırması
 logging.basicConfig(
     level=logging.DEBUG,
@@ -318,6 +401,26 @@ def callback():
     except Exception as e:
         logger.error(f"Token alırken hata: {e}")
         return redirect(url_for('admin'))
+    
+@app.route('/api/output-devices')
+def api_output_devices():
+    devices = AudioManager.get_output_devices()
+    return jsonify({
+        'devices': devices
+    })
+
+@app.route('/api/set-output-device', methods=['POST'])
+@admin_login_required
+def set_output_device():
+    device_index = request.json.get('device_index')
+    if not device_index:
+        return jsonify({'error': 'Cihaz indeksi gerekli'}), 400
+    
+    success = AudioManager.set_default_output(device_index)
+    return jsonify({
+        'success': success,
+        'devices': AudioManager.get_output_devices()
+    })
 
 @app.route('/logout')
 def logout():

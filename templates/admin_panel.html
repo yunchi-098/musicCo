@@ -377,6 +377,27 @@
       color: #6c757d;
       font-size: 14px;
     }
+      /* Cihaz listesi için ek stiller */
+    .device-type {
+      display: block;
+      font-size: 12px;
+      color: #6c757d;
+    }
+
+    /* Albüm kapağı için düzenleme */
+    #nowPlayingCover img {
+      width: 60px;
+      height: 60px;
+      border-radius: 4px;
+      object-fit: cover;
+    }
+
+    /* Çalan şarkı bilgisi için düzenleme */
+    #nowPlayingInfo {
+      display: flex;
+      align-items: center;
+      margin-bottom: 15px;
+    }
   </style>
 </head>
 <body>
@@ -427,38 +448,34 @@
       </div>
       
       <!-- Şu Anda Çalan Şarkı Kartı -->
+      <!-- Şu Anda Çalan Şarkı Kartı -->
       <div class="card">
         <div class="card-header">
-          <h2><i class="fas fa-play-circle"></i> Şu Anda Çalıyor</h2>
+          <h2><i class="fas fa-devices"></i> Çalınabilecek Cihazlar</h2>
         </div>
         <div class="card-content">
-          {% if current_track %}
-            <div class="now-playing">
-              <img src="{{ current_track.album_art }}" alt="Album Kapağı" class="album-art">
-              <div class="song-info">
-                <div class="song-title">{{ current_track.name }}</div>
-                <div class="song-artist">{{ current_track.artist }}</div>
-              </div>
+          <div class="row mb-3">
+            <div class="col-md-8">
+              
             </div>
-            
-            <div class="player-controls">
-              <button class="control-btn" onclick="previousTrack()">
-                <i class="fas fa-step-backward"></i>
-              </button>
-              <button class="control-btn play-pause" onclick="togglePlayPause()">
-                <i class="fas fa-play"></i>
-              </button>
-              <button class="control-btn" onclick="nextTrack()">
-                <i class="fas fa-step-forward"></i>
+            <div class="col-md-4">
+              <button id="refreshDevicesBtn" class="btn btn-secondary btn-sm mb-2">
+                <i class="fas fa-sync-alt"></i> Cihazları Yenile
               </button>
             </div>
-          {% else %}
-            <p>Şu anda çalan bir şarkı yok.</p>
-          {% endif %}
-        </div>
-      </div>
+          </div>
+    
+    <h6>Ses Çıkış Cihazları:</h6>
+    <div id="outputDevicesContainer">
+      <ul id="outputDevicesList" class="device-list">
+        <!-- Cihazlar buraya JavaScript ile eklenecek -->
+      </ul>
     </div>
     
+  
+    </div>
+  </div>
+</div>
     <!-- Ayarlar Kartı -->
     <div class="card">
       <div class="card-header">
@@ -629,6 +646,139 @@
         setTimeout(function() {
           window.location.reload();
         }, 60000); // 60 saniyede bir yenile
+      });
+      // Çıkış cihazlarını yönetme fonksiyonları
+      function loadOutputDevices() {
+        fetch('/api/output-devices')
+          .then(response => response.json())
+          .then(data => {
+            console.log('Ses çıkış cihazları:', data);
+            
+            const devicesList = document.getElementById('outputDevicesList');
+            devicesList.innerHTML = '';
+            
+            if (data.devices && data.devices.length > 0) {
+              data.devices.forEach(device => {
+                const deviceTypeIcon = device.type === 'bluetooth' ? 
+                  '<i class="fab fa-bluetooth-b"></i>' : 
+                  '<i class="fas fa-headphones"></i>';
+                
+                const isActive = device.is_default ? 'device-active' : 'device-inactive';
+                
+                const li = document.createElement('li');
+                li.className = 'device-item';
+                li.innerHTML = `
+                  <div>
+                    ${deviceTypeIcon} ${device.description || device.name}
+                    ${device.is_default ? '<span class="badge badge-success">Aktif</span>' : ''}
+                    <small class="device-type">${device.type}</small>
+                  </div>
+                  ${!device.is_default ? 
+                    `<button class="btn btn-sm" data-index="${device.index}">Buna Geç</button>` : 
+                    ''}
+                `;
+                devicesList.appendChild(li);
+              });
+              
+              // Cihaz geçişi için event listener'ları ekle
+              const buttons = devicesList.querySelectorAll('button[data-index]');
+              buttons.forEach(button => {
+                button.addEventListener('click', function() {
+                  const deviceIndex = this.getAttribute('data-index');
+                  setOutputDevice(deviceIndex);
+                });
+              });
+            } else {
+              const li = document.createElement('li');
+              li.className = 'device-item';
+              li.textContent = 'Kullanılabilir cihaz bulunamadı';
+              devicesList.appendChild(li);
+              
+              // Add a message explaining possible causes
+              const explanationDiv = document.createElement('div');
+              explanationDiv.className = 'alert alert-info mt-3';
+              explanationDiv.innerHTML = `
+                <p><strong>Olası nedenler:</strong></p>
+                <ul>
+                  <li>PulseAudio ses sistemi kurulu olmayabilir (Linux sistemleri için)</li>
+                  <li>Sistem ses çıkış cihazlarına erişim izni olmayabilir</li>
+                  <li>Ses sürücüleri düzgün yüklenmemiş olabilir</li>
+                </ul>
+              `;
+              devicesList.parentNode.appendChild(explanationDiv);
+            }
+          })
+          .catch(err => {
+            console.error('Ses çıkış cihazları alınamadı:', err);
+            const devicesList = document.getElementById('outputDevicesList');
+            devicesList.innerHTML = `<li class="device-item">Hata: Ses çıkış cihazları alınamadı (${err.message})</li>`;
+          });
+      }
+      // Cihaz değiştirme fonksiyonu
+      function setOutputDevice(deviceIndex) {
+        fetch('/api/set-output-device', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ device_index: deviceIndex }),
+        })
+        .then(response => response.json())
+        .then(data => {
+          console.log('Cihaz değiştirildi:', data);
+          if (data.success) {
+            loadOutputDevices();
+          } else {
+            alert('Cihaz değiştirme başarısız oldu.');
+          }
+        })
+        .catch(err => {
+          console.error('Cihaz değiştirme hatası:', err);
+        });
+      }
+
+      // Şu anda çalan şarkıyı güncelle
+      function updateNowPlaying() {
+        fetch('/api/current-playback')
+          .then(response => response.json())
+          .then(data => {
+            if (data && data.item) {
+              const track = data.item;
+              document.getElementById('nowPlayingSong').textContent = track.name;
+              document.getElementById('nowPlayingArtist').textContent = track.artists.map(a => a.name).join(', ');
+              
+              const coverImg = document.querySelector('#nowPlayingCover img');
+              if (track.album.images && track.album.images.length > 0) {
+                coverImg.src = track.album.images[0].url;
+                coverImg.style.display = 'block';
+              } else {
+                coverImg.style.display = 'none';
+              }
+            } else {
+              document.getElementById('nowPlayingSong').textContent = 'Şarkı çalmıyor';
+              document.getElementById('nowPlayingArtist').textContent = '-';
+              document.querySelector('#nowPlayingCover img').style.display = 'none';
+            }
+          })
+          .catch(err => {
+            console.error('Çalan şarkı bilgisi alınamadı:', err);
+          });
+      }
+
+      // Sayfa yüklendikten sonra çalışacak fonksiyonlara ekleyin
+      document.addEventListener('DOMContentLoaded', function() {
+        // Mevcut event listener'ları koruyup yenilerini ekleyin
+        loadOutputDevices();
+        updateNowPlaying();
+        
+        // Her 30 saniyede bir çalan şarkıyı güncelle
+        setInterval(updateNowPlaying, 30000);
+        
+        // Yenileme butonu için event listener
+        document.getElementById('refreshDevicesBtn').addEventListener('click', function() {
+          loadOutputDevices();
+          updateNowPlaying();
+        });
       });
     </script>
   </body>
