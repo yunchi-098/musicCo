@@ -286,31 +286,30 @@ def admin_login():
 def admin_panel():
     spotify = get_spotify_client()
     devices = []
-    spotify_authenticated = False  # Default to False
+    spotify_authenticated = False
+    output_devices = AudioManager.get_output_devices()  # <--- BU SATIRI EKLEYİN
+
     if not spotify:
-        logger.warning("Admin paneline erişim için Spotify yetkilendirmesi gerekli")
         return redirect(url_for('spotify_auth'))
 
     try:
         result = spotify.devices()
         devices = result.get('devices', [])
-        logger.info(f"Bulunan cihazlar: {len(devices)}")
         spotify_authenticated = True
     except Exception as e:
-        logger.error(f"Cihazları listelerken hata: {e}")
         if "unauthorized" in str(e).lower():
             return redirect(url_for('spotify_auth'))
 
     return render_template(
-        'admin_panel.html', 
+        'admin_panel.html',
         settings=settings,
         devices=devices,
         queue=song_queue,
         all_genres=ALLOWED_GENRES,
         spotify_authenticated=spotify_authenticated,
-        active_device_id=settings.get('active_device_id')
+        active_device_id=settings.get('active_device_id'),
+        output_devices=output_devices  # <--- BU SATIRI EKLEYİN
     )
-
 @app.route('/refresh-devices')
 @admin_login_required
 def refresh_devices():
