@@ -254,15 +254,25 @@
         }
 
         function setOutputDevice(deviceIndex) {
-            $.post('/api/set-output-device', { device_index: deviceIndex }, function(data) {
-                if(data.success) {
-                    alert('Çıkış cihazı başarıyla değiştirildi!');
-                    location.reload();
-                } else {
-                    alert('Hata: ' + data.error);
+            $.ajax({
+                url: '/api/set-output-device',
+                type: 'POST',
+                contentType: 'application/json',  // JSON veri gönderimi
+                data: JSON.stringify({ device_index: deviceIndex }),
+                success: function(data) {
+                    if (data.success) {
+                        alert('Çıkış cihazı başarıyla değiştirildi!');
+                        location.reload();
+                    } else {
+                        alert('Hata: ' + data.error);
+                    }
+                },
+                error: function(xhr) {
+                    alert(`Hata: ${xhr.responseJSON.error}`);
                 }
             });
         }
+
 
         // Initial load
         $(document).ready(function() {
