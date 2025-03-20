@@ -574,27 +574,34 @@ def api_pair_bluetooth():
 
 @app.route('/api/set-output-device', methods=['POST'])
 def set_output_device():
-    """Belirtilen cihazı varsayılan çıkış cihazı olarak ayarlar."""
+    """Çıkış cihazını varsayılan olarak ayarlar."""
     try:
-        # Form-data kontrolü
-        device_index = request.form.get('device_index')
-        
+        # JSON verisi kontrol et
+        if request.is_json:
+            data = request.get_json()
+            device_index = data.get('device_index')
+        else:
+            # Form-data için
+            device_index = request.form.get('device_index')
+
         if not device_index:
             return jsonify({'success': False, 'error': 'Cihaz indeksi gerekli'}), 400
 
         success = AudioManager.set_default_output(device_index)
 
         if success:
+            logger.info(f"Çıkış cihazı ayarlandı: {device_index}")
             return jsonify({
                 'success': True,
-                'message': f"Çıkış cihazı başarıyla değiştirildi: {device_index}",
+                'message': f"Cihaz {device_index} başarıyla seçildi.",
                 'devices': AudioManager.get_output_devices()
             })
         else:
             return jsonify({'success': False, 'error': 'Cihaz değiştirilemedi'}), 500
     except Exception as e:
-        logger.error(f"Çıkış cihazı değiştirme hatası: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logger.error(f"Çıkış cihazı ayarlanırken hata: {e}")
+        return jsonify({'success': False, 'error': 'Sunucu hatası'}), 500
+
 
 @app.route('/logout')
 def logout():
