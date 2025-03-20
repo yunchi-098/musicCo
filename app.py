@@ -154,6 +154,50 @@ class AudioManager:
             logging.error(f"Varsayılan çıkış cihazı ayarlanırken hata: {e}")
             return False
 
+    @staticmethod
+    def pair_bluetooth_device(mac_address):
+        """Belirtilen MAC adresine sahip bluetooth cihazını eşleştirir ve bağlar."""
+        try:
+            # Eşleştirme
+            pair_cmd = subprocess.run(['bluetoothctl', 'pair', mac_address], 
+                                      capture_output=True, text=True, timeout=30)
+            if pair_cmd.returncode != 0:
+                logging.error(f"Bluetooth cihazı eşleştirme hatası: {pair_cmd.stderr}")
+                return False
+            
+            # Güvenilir yapma
+            trust_cmd = subprocess.run(['bluetoothctl', 'trust', mac_address], 
+                                       capture_output=True, text=True)
+            
+            # Bağlantı kurma
+            connect_cmd = subprocess.run(['bluetoothctl', 'connect', mac_address], 
+                                         capture_output=True, text=True, timeout=30)
+            if connect_cmd.returncode != 0:
+                logging.error(f"Bluetooth cihazı bağlantı hatası: {connect_cmd.stderr}")
+                return False
+            
+            logging.info(f"Bluetooth cihazı başarıyla eşleştirildi ve bağlandı: {mac_address}")
+            return True
+        except Exception as e:
+            logging.error(f"Bluetooth cihazı eşleştirme/bağlama sırasında hata: {e}")
+            return False
+
+    @staticmethod
+    def disconnect_bluetooth_device(mac_address):
+        """Belirtilen MAC adresine sahip bluetooth cihazının bağlantısını keser."""
+        try:
+            cmd = subprocess.run(['bluetoothctl', 'disconnect', mac_address], 
+                                 capture_output=True, text=True)
+            if cmd.returncode != 0:
+                logging.error(f"Bluetooth cihazı bağlantısı kesme hatası: {cmd.stderr}")
+                return False
+            
+            logging.info(f"Bluetooth cihazı bağlantısı başarıyla kesildi: {mac_address}")
+            return True
+        except Exception as e:
+            logging.error(f"Bluetooth cihazı bağlantısını kesme sırasında hata: {e}")
+            return False
+
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -493,50 +537,6 @@ def api_scan_bluetooth():
         logger.error(f"Bluetooth tarama hatası: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@staticmethod
-def pair_bluetooth_device(mac_address):
-    """Belirtilen MAC adresine sahip bluetooth cihazını eşleştirir ve bağlar."""
-    try:
-        # Eşleştirme
-        pair_cmd = subprocess.run(['bluetoothctl', 'pair', mac_address], 
-                                  capture_output=True, text=True, timeout=30)
-        if pair_cmd.returncode != 0:
-            logging.error(f"Bluetooth cihazı eşleştirme hatası: {pair_cmd.stderr}")
-            return False
-        
-        # Güvenilir yapma
-        trust_cmd = subprocess.run(['bluetoothctl', 'trust', mac_address], 
-                                   capture_output=True, text=True)
-        
-        # Bağlantı kurma
-        connect_cmd = subprocess.run(['bluetoothctl', 'connect', mac_address], 
-                                     capture_output=True, text=True, timeout=30)
-        if connect_cmd.returncode != 0:
-            logging.error(f"Bluetooth cihazı bağlantı hatası: {connect_cmd.stderr}")
-            return False
-        
-        logging.info(f"Bluetooth cihazı başarıyla eşleştirildi ve bağlandı: {mac_address}")
-        return True
-    except Exception as e:
-        logging.error(f"Bluetooth cihazı eşleştirme/bağlama sırasında hata: {e}")
-        return False
-
-@staticmethod
-def disconnect_bluetooth_device(mac_address):
-    """Belirtilen MAC adresine sahip bluetooth cihazının bağlantısını keser."""
-    try:
-        cmd = subprocess.run(['bluetoothctl', 'disconnect', mac_address], 
-                             capture_output=True, text=True)
-        if cmd.returncode != 0:
-            logging.error(f"Bluetooth cihazı bağlantısı kesme hatası: {cmd.stderr}")
-            return False
-        
-        logging.info(f"Bluetooth cihazı bağlantısı başarıyla kesildi: {mac_address}")
-        return True
-    except Exception as e:
-        logging.error(f"Bluetooth cihazı bağlantısını kesme sırasında hata: {e}")
-        return False
-    
 @app.route('/api/disconnect-bluetooth', methods=['POST'])
 @admin_login_required
 def api_disconnect_bluetooth():
