@@ -50,16 +50,16 @@
                                             <strong>{{ device.name }}</strong><br>
                                             <small>{{ device.type|upper }}</small>
                                         </div>
-                                        <form Content-Type: application/json method="POST" action="{{ url_for('update_settings') }}">
-                                            <input type="hidden" name="device_id" value="{{ device.id }}">
-                                            <button type="submit" class="btn btn-sm {% if device.id == active_device_id %}btn-light{% else %}btn-outline-primary{% endif %}">
-                                                {% if device.id == active_device_id %}
-                                                    Aktif
-                                                {% else %}
-                                                    Seç
-                                                {% endif %}
-                                            </button>
-                                        </form>
+                                            <form method="POST" action="{{ url_for('update_settings') }}">
+                                                <input type="hidden" name="active_device_id" value="{{ device.id }}">
+                                                <button type="submit" class="btn btn-sm {% if device.id == active_device_id %}btn-light{% else %}btn-outline-primary{% endif %}">
+                                                    {% if device.id == active_device_id %}
+                                                        Aktif
+                                                    {% else %}
+                                                        Seç
+                                                    {% endif %}
+                                                </button>
+                                            </form>
                                     </div>
                                 </div>
                                 {% endfor %}
