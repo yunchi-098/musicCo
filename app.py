@@ -117,51 +117,67 @@ class AudioManager:
         try:
             logging.info(f"Varsayılan çıkış cihazı {device_index_or_name} olarak ayarlanıyor...")
             
-            # Komut çalıştırılırken shell=True kullanmayın (güvenlik açığı oluşturabilir)
-            # ve tırnak işaretlerini shell parçası olarak kullanmayın
-            result = subprocess.run(
-                ['pacmd', 'set-default-sink', str(device_index_or_name)],
-                capture_output=True, text=True
-            )
+            # İlk olarak gerçekten bu cihazın var olup olmadığını kontrol et
+            check_cmd = subprocess.run(['pactl', 'list', 'short', 'sinks'], capture_output=True, text=True)
+            logging.info(f"Mevcut cihazlar: {check_cmd.stdout}")
             
-            logging.info(f"pacmd komutu stdout: {result.stdout}")
-            logging.info(f"pacmd komutu stderr: {result.stderr}")
-
-            if result.returncode != 0:
-                logging.error(f"pacmd komutu hatası: {result.stderr}")
+            # Cihaz var mı kontrol et
+            sinks = check_cmd.stdout.strip().split('\n')
+            sink_exists = False
+            
+            for sink in sinks:
+                if sink.strip():
+                    parts = sink.split()
+                    if parts[0] == str(device_index_or_name) or parts[1] == str(device_index_or_name):
+                        sink_exists = True
+                        break
+            
+            if not sink_exists:
+                logging.error(f"Cihaz bulunamadı: {device_index_or_name}")
                 return False
-
-            # Mevcut ses akışlarını yeni cihaza taşıma
-            inputs_result = subprocess.run(
-                ['pacmd', 'list-sink-inputs'],
+            
+            # pactl kullanarak varsayılan sink'i ayarla
+            result = subprocess.run(
+                ['pactl', 'set-default-sink', str(device_index_or_name)],
                 capture_output=True, text=True
             )
             
-            # Tüm aktif akışları yeni cihaza taşı
-            sink_inputs = []
-            current_index = None
-            for line in inputs_result.stdout.splitlines():
-                line = line.strip()
-                if line.startswith('index:'):
-                    current_index = line.split(':')[1].strip()
-                    sink_inputs.append(current_index)
+            logging.info(f"pactl set-default-sink stdout: {result.stdout}")
+            logging.info(f"pactl set-default-sink stderr: {result.stderr}")
             
-            # Her bir sink-input'u yeni sink'e taşı
-            for input_idx in sink_inputs:
-                move_result = subprocess.run(
-                    ['pacmd', 'move-sink-input', input_idx, str(device_index_or_name)],
-                    capture_output=True, text=True
-                )
-                logging.info(f"move-sink-input {input_idx} stdout: {move_result.stdout}")
-                logging.info(f"move-sink-input {input_idx} stderr: {move_result.stderr}")
-
+            if result.returncode != 0:
+                logging.error(f"pactl set-default-sink hatası: {result.stderr}")
+                return False
+            
+            # Aktif sink-input'ları taşı
+            inputs_cmd = subprocess.run(['pactl', 'list', 'short', 'sink-inputs'], capture_output=True, text=True)
+            logging.info(f"Aktif sink-input'lar: {inputs_cmd.stdout}")
+            
+            # Her bir sink-input'u taşı
+            for line in inputs_cmd.stdout.strip().split('\n'):
+                if line.strip():
+                    try:
+                        input_index = line.split()[0]
+                        move_cmd = subprocess.run(
+                            ['pactl', 'move-sink-input', input_index, str(device_index_or_name)],
+                            capture_output=True, text=True
+                        )
+                        logging.info(f"move-sink-input {input_index} stdout: {move_cmd.stdout}")
+                        logging.info(f"move-sink-input {input_index} stderr: {move_cmd.stderr}")
+                    except Exception as e:
+                        logging.error(f"Sink input taşıma hatası: {str(e)}")
+            
+            # Değişikliğin gerçekten yapıldığını kontrol et
+            verify_cmd = subprocess.run(['pactl', 'info'], capture_output=True, text=True)
+            logging.info(f"Doğrulama çıktısı: {verify_cmd.stdout}")
+            
+            # Başarı mesajı
             logging.info(f"Varsayılan çıkış cihazı başarıyla değiştirildi: {device_index_or_name}")
             return True
-
+        
         except Exception as e:
-            logging.error(f"Varsayılan çıkış cihazı ayarlanırken hata: {e}")
+            logging.error(f"Varsayılan çıkış cihazı ayarlanırken hata: {str(e)}")
             return False
-
     @staticmethod
     def pair_bluetooth_device(mac_address):
         """Belirtilen MAC adresine sahip bluetooth cihazını eşleştirir ve bağlar."""
