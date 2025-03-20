@@ -148,18 +148,16 @@ class AudioManager:
             if result.returncode != 0:
                 logging.error(f"pactl set-default-sink hatası: {result.stderr}")
                 return False
-            
-            # Aktif sink-input'ları taşı
+        
             inputs_cmd = subprocess.run(['pactl', 'list', 'short', 'sink-inputs'], capture_output=True, text=True)
+
             logging.info(f"Aktif sink-input'lar: {inputs_cmd.stdout}")
-            
-            # Her bir sink-input'u taşı
             for line in inputs_cmd.stdout.strip().split('\n'):
                 if line.strip():
                     try:
                         input_index = line.split()[0]
                         move_cmd = subprocess.run(
-                            ['pactl', 'move-sink-input', input_index, str(device_index_or_name)],
+                            ['pactl', 'set-default-sink', input_index, str(device_index_or_name)],
                             capture_output=True, text=True
                         )
                         logging.info(f"move-sink-input {input_index} stdout: {move_cmd.stdout}")
