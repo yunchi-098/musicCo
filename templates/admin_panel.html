@@ -257,8 +257,8 @@
             $.ajax({
                 url: '/api/set-output-device',
                 type: 'POST',
-                contentType: 'application/json',  // JSON formatı belirtildi
-                data: JSON.stringify({ device_index: deviceIndex }),  // JSON veriyi string olarak gönder
+                contentType: 'application/json',  // JSON gönderileceğini belirtir
+                data: JSON.stringify({ device_index: deviceIndex }),  // Veriyi JSON formatına çevir
                 success: function(data) {
                     if (data.success) {
                         alert('Çıkış cihazı başarıyla değiştirildi!');
@@ -272,6 +272,7 @@
                 }
             });
         }
+
 
 
 
