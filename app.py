@@ -181,7 +181,7 @@ class AudioManager:
         """Belirtilen MAC adresine sahip bluetooth cihazını eşleştirir ve bağlar."""
         try:
             # Eşleştirme
-            pair_cmd = subprocess.run(['bluetoothctl', 'pair', mac_address], 
+            pair_cmd = subprocess.run(['bluetoothctl', 'connect', mac_address], 
                                       capture_output=True, text=True, timeout=30)
             if pair_cmd.returncode != 0:
                 logging.error(f"Bluetooth cihazı eşleştirme hatası: {pair_cmd.stderr}")
