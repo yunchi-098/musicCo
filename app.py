@@ -308,7 +308,7 @@ def admin_panel():
         all_genres=ALLOWED_GENRES,
         spotify_authenticated=spotify_authenticated,
         active_device_id=settings.get('active_device_id'),
-        output_devices=output_devices  # <--- BU SATIRI EKLEYİN
+        output_devices=output_devices  
     )
 @app.route('/refresh-devices')
 @admin_login_required

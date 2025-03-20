@@ -50,7 +50,7 @@
                                             <strong>{{ device.name }}</strong><br>
                                             <small>{{ device.type|upper }}</small>
                                         </div>
-                                        <form method="POST" action="{{ url_for('set_active_device') }}">
+                                        <form method="POST" action="{{ url_for('set_output_device') }}">
                                             <input type="hidden" name="device_id" value="{{ device.id }}">
                                             <button type="submit" class="btn btn-sm {% if device.id == active_device_id %}btn-light{% else %}btn-outline-primary{% endif %}">
                                                 {% if device.id == active_device_id %}
