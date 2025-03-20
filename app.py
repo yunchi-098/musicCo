@@ -287,7 +287,7 @@ def admin_panel():
     spotify = get_spotify_client()
     devices = []
     spotify_authenticated = False
-    output_devices = AudioManager.get_output_devices()  # <--- BU SATIRI EKLEYİN
+    output_devices = AudioManager.get_output_devices()  
 
     if not spotify:
         return redirect(url_for('spotify_auth'))
@@ -382,14 +382,21 @@ def add_song():
 @app.route('/update-settings', methods=['POST'])
 @admin_login_required
 def update_settings():
+    print("🔹 Gelen Form Verisi:", request.form)  # Debug için
+
     settings['max_queue_length'] = int(request.form.get('max_queue_length', 20))
     settings['max_user_requests'] = int(request.form.get('max_user_requests', 2))
-    settings['active_device_id'] = request.form.get('active_device_id')
+
+    new_device_id = request.form.get('active_device_id')
+    if new_device_id:
+        settings['active_device_id'] = new_device_id
+        print(f"✅ Yeni Aktif Cihaz: {new_device_id}")  # Debug
+
     settings['active_genres'] = [genre for genre in ALLOWED_GENRES if request.form.get(f'genre_{genre}')]
-    
+
     with open(SETTINGS_FILE, 'w') as f:
         json.dump(settings, f)
-    
+
     logger.info(f"Ayarlar güncellendi: {settings}")
     return redirect(url_for('admin_panel'))
 
