@@ -137,8 +137,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.secret_key = 'mekanmuzikuygulamasi'  # Gerçek uygulamada güvenli bir şekilde değiştirin
-
+app.secret_key = 'mekanmuzikuygulamasi'  
+app.jinja_env.globals['AudioManager'] = AudioManager
 # Spotify API bilgileri
 SPOTIFY_CLIENT_ID = '332e5f2c9fe44d9b9ef19c49d0caeb78'
 SPOTIFY_CLIENT_SECRET = 'bbb19ad9c7d04d738f61cd0bd4f47426'
