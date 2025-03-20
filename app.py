@@ -598,35 +598,30 @@ def api_pair_bluetooth():
         return jsonify({'success': False, 'error': f'Hata: {str(e)}'}), 500
 
 @app.route('/api/set-output-device', methods=['POST'])
-def set_output_device():
-    """Çıkış cihazını varsayılan olarak ayarlar."""
+@admin_login_required
+def api_set_output_device():
     try:
-        # JSON verisi kontrol et
-        if request.is_json:
-            data = request.get_json()
-            device_index = data.get('device_index')
-        else:
-            # Form-data için
-            device_index = request.form.get('device_index')
-
-        if not device_index:
+        data = request.get_json()
+        if not data or 'device_index' not in data:
+            logger.error("Eksik device_index parametresi")
             return jsonify({'success': False, 'error': 'Cihaz indeksi gerekli'}), 400
-
+        
+        device_index = data['device_index']
+        logger.info(f"Çıkış cihazı ayarlama isteği: {device_index}")
+        
         success = AudioManager.set_default_output(device_index)
-
+        
         if success:
-            logger.info(f"Çıkış cihazı ayarlandı: {device_index}")
             return jsonify({
                 'success': True,
-                'message': f"Cihaz {device_index} başarıyla seçildi.",
+                'message': f"Çıkış cihazı başarıyla ayarlandı: {device_index}",
                 'devices': AudioManager.get_output_devices()
             })
         else:
-            return jsonify({'success': False, 'error': 'Cihaz değiştirilemedi'}), 500
+            return jsonify({'success': False, 'error': 'Çıkış cihazı ayarlanamadı'}), 500
     except Exception as e:
-        logger.error(f"Çıkış cihazı ayarlanırken hata: {e}")
-        return jsonify({'success': False, 'error': 'Sunucu hatası'}), 500
-
+        logger.error(f"Çıkış cihazı ayarlama isteği sırasında hata: {e}")
+        return jsonify({'success': False, 'error': f'Hata: {str(e)}'}), 500
 
 @app.route('/logout')
 def logout():

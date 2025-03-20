@@ -243,12 +243,21 @@
         }
 
         function pairDevice(mac) {
-            $.post('/api/pair-bluetooth', { mac_address: mac }, function(data) {
-                if(data.success) {
-                    alert('Başarıyla eşleştirildi!');
-                    location.reload();
-                } else {
-                    alert('Hata: ' + data.error);
+            $.ajax({
+                url: '/api/pair-bluetooth',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ mac_address: mac }),
+                success: function(data) {
+                    if(data.success) {
+                        alert('Başarıyla eşleştirildi!');
+                        location.reload();
+                    } else {
+                        alert('Hata: ' + data.error);
+                    }
+                },
+                error: function(xhr) {
+                    alert(`Hata: ${xhr.responseJSON.error}`);
                 }
             });
         }
@@ -257,8 +266,8 @@
             $.ajax({
                 url: '/api/set-output-device',
                 type: 'POST',
-                contentType: 'application/json',  // JSON gönderileceğini belirtir
-                data: JSON.stringify({ device_index: deviceIndex }),  // Veriyi JSON formatına çevir
+                contentType: 'application/json',
+                data: JSON.stringify({ device_index: deviceIndex }),
                 success: function(data) {
                     if (data.success) {
                         alert('Çıkış cihazı başarıyla değiştirildi!');
@@ -272,9 +281,6 @@
                 }
             });
         }
-
-
-
 
         // Initial load
         $(document).ready(function() {
