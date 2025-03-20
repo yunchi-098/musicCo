@@ -112,14 +112,15 @@ class AudioManager:
         
     
     @staticmethod
-    def set_default_output(device_index):
+    def set_default_output(device_index_or_name):
         """Belirtilen cihazı varsayılan çıkış cihazı olarak ayarlar."""
         try:
-            logging.info(f"Varsayılan çıkış cihazı {device_index} olarak ayarlanıyor...")
-
-            # Varsayılan çıkış cihazını değiştirme
+            logging.info(f"Varsayılan çıkış cihazı {device_index_or_name} olarak ayarlanıyor...")
+            
+            # Komut çalıştırılırken shell=True kullanmayın (güvenlik açığı oluşturabilir)
+            # ve tırnak işaretlerini shell parçası olarak kullanmayın
             result = subprocess.run(
-                ['pacmd', 'set-default-sink', str(device_index)],
+                ['pacmd', 'set-default-sink', str(device_index_or_name)],
                 capture_output=True, text=True
             )
             
@@ -136,18 +137,25 @@ class AudioManager:
                 capture_output=True, text=True
             )
             
+            # Tüm aktif akışları yeni cihaza taşı
+            sink_inputs = []
+            current_index = None
             for line in inputs_result.stdout.splitlines():
-                if 'index:' in line:
-                    input_idx = line.split(':')[1].strip()
-                    move_result = subprocess.run(
-                        ['pacmd', 'move-sink-input', input_idx, str(device_index)],
-                        capture_output=True, text=True
-                    )
-                    
-                    logging.info(f"move-sink-input stdout: {move_result.stdout}")
-                    logging.info(f"move-sink-input stderr: {move_result.stderr}")
+                line = line.strip()
+                if line.startswith('index:'):
+                    current_index = line.split(':')[1].strip()
+                    sink_inputs.append(current_index)
+            
+            # Her bir sink-input'u yeni sink'e taşı
+            for input_idx in sink_inputs:
+                move_result = subprocess.run(
+                    ['pacmd', 'move-sink-input', input_idx, str(device_index_or_name)],
+                    capture_output=True, text=True
+                )
+                logging.info(f"move-sink-input {input_idx} stdout: {move_result.stdout}")
+                logging.info(f"move-sink-input {input_idx} stderr: {move_result.stderr}")
 
-            logging.info(f"Varsayılan çıkış cihazı başarıyla değiştirildi: {device_index}")
+            logging.info(f"Varsayılan çıkış cihazı başarıyla değiştirildi: {device_index_or_name}")
             return True
 
         except Exception as e:
