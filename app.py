@@ -115,20 +115,45 @@ class AudioManager:
     def set_default_output(device_index):
         """Belirtilen cihazı varsayılan çıkış cihazı olarak ayarlar."""
         try:
-            # Varsayılan çıkış cihazını değiştir
-            subprocess.run(['pacmd', 'set-default-sink', str(device_index)], check=True)
-            
-            # Tüm oynatılan sesleri yeni çıkış cihazına taşı
-            result = subprocess.run(['pacmd', 'list-sink-inputs'], capture_output=True, text=True)
-            for line in result.stdout.splitlines():
-                if 'index:' in line:
-                    idx = line.split(':')[1].strip()
-                    subprocess.run(['pacmd', 'move-sink-input', idx, str(device_index)])
+            logging.info(f"Varsayılan çıkış cihazı {device_index} olarak ayarlanıyor...")
 
+            # Varsayılan çıkış cihazını değiştirme
+            result = subprocess.run(
+                ['pacmd', 'set-default-sink', str(device_index)],
+                capture_output=True, text=True
+            )
+            
+            logging.info(f"pacmd komutu stdout: {result.stdout}")
+            logging.info(f"pacmd komutu stderr: {result.stderr}")
+
+            if result.returncode != 0:
+                logging.error(f"pacmd komutu hatası: {result.stderr}")
+                return False
+
+            # Mevcut ses akışlarını yeni cihaza taşıma
+            inputs_result = subprocess.run(
+                ['pacmd', 'list-sink-inputs'],
+                capture_output=True, text=True
+            )
+            
+            for line in inputs_result.stdout.splitlines():
+                if 'index:' in line:
+                    input_idx = line.split(':')[1].strip()
+                    move_result = subprocess.run(
+                        ['pacmd', 'move-sink-input', input_idx, str(device_index)],
+                        capture_output=True, text=True
+                    )
+                    
+                    logging.info(f"move-sink-input stdout: {move_result.stdout}")
+                    logging.info(f"move-sink-input stderr: {move_result.stderr}")
+
+            logging.info(f"Varsayılan çıkış cihazı başarıyla değiştirildi: {device_index}")
             return True
+
         except Exception as e:
-            logging.error(f"Varsayılan ses çıkış cihazı ayarlanırken hata: {e}")
+            logging.error(f"Varsayılan çıkış cihazı ayarlanırken hata: {e}")
             return False
+
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
