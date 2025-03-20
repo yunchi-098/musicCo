@@ -479,7 +479,7 @@ def update_settings():
     new_device_id = request.form.get('active_device_id')
     if new_device_id:
         settings['active_device_id'] = new_device_id
-        print(f"✅ Yeni Aktif Cihaz: {new_device_id}")  # Debug
+        print(f" Yeni Aktif Cihaz: {new_device_id}")  # Debug
 
     settings['active_genres'] = [genre for genre in ALLOWED_GENRES if request.form.get(f'genre_{genre}')]
 
