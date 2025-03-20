@@ -534,7 +534,7 @@ def callback():
     except Exception as e:
         logger.error(f"Token alırken hata: {e}")
         return redirect(url_for('admin'))
-#cozulation    
+#cozulationa    
 @app.route('/api/output-devices')
 def api_output_devices():
     devices = AudioManager.get_output_devices()
