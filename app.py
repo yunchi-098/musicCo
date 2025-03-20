@@ -112,15 +112,21 @@ class AudioManager:
         
     
     @staticmethod
-    def set_default_output(device_index):
+    def set_default_output(device_index_or_name):
         """Belirtilen cihazı varsayılan çıkış cihazı olarak ayarlar."""
         try:
-            logging.info(f"Varsayılan çıkış cihazı {device_index} olarak ayarlanıyor...")
-
+            logging.info(f"Varsayılan çıkış cihazı {device_index_or_name} olarak ayarlanıyor...")
+            
+            # Önce cihazın index mi yoksa ad mı olduğunu kontrol et
+            device_param = str(device_index_or_name)
+            if not device_param.isdigit():
+                # Eğer rakam değilse, device adı olarak kabul et
+                device_param = f'"{device_param}"'  # Adları tırnak içine alıyoruz
+            
             # Varsayılan çıkış cihazını değiştirme
             result = subprocess.run(
-                ['pacmd', 'set-default-sink', str(device_index)],
-                capture_output=True, text=True
+                ['pacmd', 'set-default-sink', device_param],
+                capture_output=True, text=True, shell=True  # shell=True ekledik
             )
             
             logging.info(f"pacmd komutu stdout: {result.stdout}")
@@ -133,21 +139,21 @@ class AudioManager:
             # Mevcut ses akışlarını yeni cihaza taşıma
             inputs_result = subprocess.run(
                 ['pacmd', 'list-sink-inputs'],
-                capture_output=True, text=True
+                capture_output=True, text=True, shell=True  # shell=True ekledik
             )
             
             for line in inputs_result.stdout.splitlines():
                 if 'index:' in line:
                     input_idx = line.split(':')[1].strip()
                     move_result = subprocess.run(
-                        ['pacmd', 'move-sink-input', input_idx, str(device_index)],
-                        capture_output=True, text=True
+                        ['pacmd', 'move-sink-input', input_idx, device_param],
+                        capture_output=True, text=True, shell=True  # shell=True ekledik
                     )
                     
                     logging.info(f"move-sink-input stdout: {move_result.stdout}")
                     logging.info(f"move-sink-input stderr: {move_result.stderr}")
 
-            logging.info(f"Varsayılan çıkış cihazı başarıyla değiştirildi: {device_index}")
+            logging.info(f"Varsayılan çıkış cihazı başarıyla değiştirildi: {device_index_or_name}")
             return True
 
         except Exception as e:
@@ -200,7 +206,7 @@ class AudioManager:
 
 logging.basicConfig(
     level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format='%(asctime%s - %(name)s - %(levelname)s - %(message)s',
     handlers=[logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
