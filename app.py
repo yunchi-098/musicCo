@@ -264,8 +264,7 @@ def load_settings():
             json.dump(default_settings, f)
         return default_settings
 
-# Token bilgisini dosyadan yükle
-def load_token():
+# Token bilgisini dosyadan yükle 
     if os.path.exists(TOKEN_FILE):
         try:
             with open(TOKEN_FILE, 'r') as f:
