@@ -6,6 +6,8 @@ import logging
 from flask import Flask, request, render_template, redirect, url_for, session, jsonify
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
+from token_utils import load_token
+
 
 import subprocess
 import logging
