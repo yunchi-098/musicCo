@@ -327,7 +327,7 @@ def get_spotify_client():
         if auth_manager.is_token_expired(token_info):
             logger.info("Token süresi dolmuş, yenileniyor...")
             token_info = auth_manager.refresh_access_token(token_info['refresh_token'])
-            load_token(token_info)
+            save_token(token_info)  # Changed from load_token to save_token
         
         # Yeni bir Spotify istemcisi oluştur
         new_spotify_client = spotipy.Spotify(auth=token_info['access_token'])
@@ -344,6 +344,7 @@ def get_spotify_client():
     except Exception as e:
         logger.error(f"Token işlemi sırasında hata: {e}")
         return None
+    
 
 # Admin giriş kontrolü için decorator
 def admin_login_required(f):
