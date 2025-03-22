@@ -157,7 +157,7 @@ class AudioManager:
                     try:
                         input_index = line.split()[0]
                         move_cmd = subprocess.run(
-                            ['pactl', 'set-default-sink', input_index, str(device_index_or_name)],
+                            ['pactl', 'move-sink-input', input_index, str(device_index_or_name)],
                             capture_output=True, text=True
                         )
                         logging.info(f"move-sink-input {input_index} stdout: {move_cmd.stdout}")
