@@ -524,7 +524,7 @@ def callback():
         try:
             user_profile = spotify.current_user()
             logger.info(f"Token doğrulandı. Kullanıcı: {user_profile.get('display_name')}")
-            load_token(token_info)
+            save_token(token_info)
             global spotify_client
             spotify_client = spotify
             session['spotify_authenticated'] = True
@@ -827,7 +827,7 @@ def refresh_token():
             return redirect(url_for('spotify_auth'))
         
         new_token = auth_manager.refresh_access_token(token_info['refresh_token'])
-        load_token(new_token)
+        save_token(new_token)
         
         spotify_client = spotipy.Spotify(auth=new_token['access_token'])
         
@@ -951,7 +951,7 @@ def check_token_on_startup():
                 logger.info("Başlangıçta bulunan token süresi dolmuş, yenileniyor...")
                 try:
                     new_token = auth_manager.refresh_access_token(token_info['refresh_token'])
-                    load_token(new_token)
+                    save_token(new_token)
                     logger.info("Token başarıyla yenilendi")
                     spotify_client = spotipy.Spotify(auth=new_token['access_token'])
                     spotify_client.current_user()
