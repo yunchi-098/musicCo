@@ -273,6 +273,16 @@ def load_settings():
             logger.error(f"Token dosyasını okuma hatası: {e}")
     return None
 
+# Token bilgisini dosyadan yükle
+def load_token():
+    if os.path.exists(TOKEN_FILE):
+        try:
+            with open(TOKEN_FILE, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Token dosyasını okuma hatası: {e}")
+    return None
+
 # Token bilgisini dosyaya kaydet
 def save_token(token_info):
     try:
@@ -281,7 +291,6 @@ def save_token(token_info):
         logger.info("Token dosyaya kaydedildi")
     except Exception as e:
         logger.error(f"Token kaydetme hatası: {e}")
-
 settings = load_settings()
 
 def get_spotify_auth():
@@ -318,7 +327,7 @@ def get_spotify_client():
         if auth_manager.is_token_expired(token_info):
             logger.info("Token süresi dolmuş, yenileniyor...")
             token_info = auth_manager.refresh_access_token(token_info['refresh_token'])
-            save_token(token_info)
+            load_token(token_info)
         
         # Yeni bir Spotify istemcisi oluştur
         new_spotify_client = spotipy.Spotify(auth=token_info['access_token'])
@@ -514,7 +523,7 @@ def callback():
         try:
             user_profile = spotify.current_user()
             logger.info(f"Token doğrulandı. Kullanıcı: {user_profile.get('display_name')}")
-            save_token(token_info)
+            load_token(token_info)
             global spotify_client
             spotify_client = spotify
             session['spotify_authenticated'] = True
@@ -817,7 +826,7 @@ def refresh_token():
             return redirect(url_for('spotify_auth'))
         
         new_token = auth_manager.refresh_access_token(token_info['refresh_token'])
-        save_token(new_token)
+        load_token(new_token)
         
         spotify_client = spotipy.Spotify(auth=new_token['access_token'])
         
@@ -941,7 +950,7 @@ def check_token_on_startup():
                 logger.info("Başlangıçta bulunan token süresi dolmuş, yenileniyor...")
                 try:
                     new_token = auth_manager.refresh_access_token(token_info['refresh_token'])
-                    save_token(new_token)
+                    load_token(new_token)
                     logger.info("Token başarıyla yenilendi")
                     spotify_client = spotipy.Spotify(auth=new_token['access_token'])
                     spotify_client.current_user()
