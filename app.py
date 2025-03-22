@@ -138,7 +138,7 @@ class AudioManager:
             
             # pactl kullanarak varsayılan sink'i ayarla
             result = subprocess.run(
-                ['pactl', 'set-default-sink', str(device_index_or_name)],
+                ['pactl', 'move-sink-input', str(device_index_or_name)],
                 capture_output=True, text=True
             )
             
