@@ -756,6 +756,56 @@ def search():
         # Kullanıcıya daha genel bir hata mesajı göster
         return jsonify({'error': 'Arama sırasında bir sorun oluştu. Lütfen tekrar deneyin.'}), 500
 
+@app.route('/add-song', methods=['POST'])
+@admin_login_required
+def add_song():
+    """Admin panelinden ID ile şarkıyı kuyruğa ekler."""
+    song_id = request.form.get('song_id')
+    if not song_id:
+        logger.warning("Admin şarkı ekleme: Eksik şarkı ID'si")
+        # Flash mesajı eklemek iyi olabilir
+        return redirect(url_for('admin_panel'))
+
+    # Kuyruk limiti kontrolü
+    if len(song_queue) >= settings.get('max_queue_length', 20):
+        logger.warning(f"Kuyruk dolu, admin şarkı ekleyemedi: {song_id}")
+        # Flash mesajı eklemek iyi olabilir
+        return redirect(url_for('admin_panel'))
+
+    spotify = get_spotify_client()
+    if not spotify:
+        logger.warning("Admin şarkı ekleme: Spotify yetkilendirmesi gerekli")
+        return redirect(url_for('spotify_auth')) # Yetkilendirmeye yönlendir
+
+    try:
+        # Şarkı bilgilerini al
+        song_info = spotify.track(song_id)
+        if not song_info:
+             logger.warning(f"Admin şarkı ekleme: Şarkı bulunamadı ID={song_id}")
+             # Flash mesajı
+             return redirect(url_for('admin_panel'))
+
+        song_name = song_info.get('name', 'Bilinmeyen Şarkı')
+        artists = song_info.get('artists')
+        artist_name = artists[0].get('name') if artists else 'Bilinmeyen Sanatçı'
+
+        # Kuyruğa ekle
+        song_queue.append({
+            'id': song_id,
+            'name': song_name,
+            'artist': artist_name,
+            'added_by': 'admin', # Admin tarafından eklendiğini belirt
+            'added_at': time.time()
+        })
+        logger.info(f"Şarkı kuyruğa eklendi (Admin): {song_id} - {song_name}")
+
+    except Exception as e:
+        logger.error(f"Admin şarkı eklerken hata (ID={song_id}): {e}", exc_info=True)
+        if "unauthorized" in str(e).lower() or "token" in str(e).lower():
+            return redirect(url_for('spotify_auth'))
+        # Diğer hatalar için flash mesajı
+    
+    return redirect(url_for('admin_panel'))
 
 @app.route('/add-to-queue', methods=['POST'])
 def add_to_queue():
