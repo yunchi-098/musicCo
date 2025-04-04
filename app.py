@@ -15,7 +15,7 @@ from spotipy.oauth2 import SpotifyOAuth
 # Eğer raspotify.service veya conf dosyanız farklı bir yerdeyse,
 # aşağıdaki yolları buna göre düzenleyin.
 RASPOTIFY_SERVICE_NAME = "raspotify.service"
-RASPOTIFY_CONFIG_FILE = "/etc/raspotify/conf"
+RASPOTIFY_CONFIG_FILE = "~/etc/raspotify/conf"
 
 # DAC'ınızı aplay -L çıktısında tanımlayan bir anahtar kelime.
 # 'hw:CARD=DAC' gibi belirli bir isim de kullanabilirsiniz.
@@ -23,10 +23,10 @@ RASPOTIFY_CONFIG_FILE = "/etc/raspotify/conf"
 DAC_IDENTIFIER = "PCM5102" # veya "DAC", "USB Audio", "snd_rpi_hifiberry_dac" vb.
 
 # Spotify API Bilgileri - KENDİ BİLGİLERİNİZLE DEĞİŞTİRİN!
-SPOTIFY_CLIENT_ID = 'YOUR_SPOTIFY_CLIENT_ID' 
-SPOTIFY_CLIENT_SECRET = 'YOUR_SPOTIFY_CLIENT_SECRET' 
+SPOTIFY_CLIENT_ID = '332e5f2c9fe44d9b9ef19c49d0caeb78' 
+SPOTIFY_CLIENT_SECRET = 'bbb19ad9c7d04d738f61cd0bd4f47426' 
 # Cihazınızın AĞ üzerindeki IP adresini ve Flask portunu yazın
-SPOTIFY_REDIRECT_URI = 'http://YOUR_DEVICE_IP:8080/callback' 
+SPOTIFY_REDIRECT_URI = 'http://192.168.1.103:8080/callback' 
 SPOTIFY_SCOPE = 'user-read-playback-state user-modify-playback-state playlist-read-private'
 
 # Diğer Dosya Yolları
