@@ -187,25 +187,43 @@
                 <div class="col-md-6">
                     <div class="card">
                         <div class="card-header">
-                            <h5 class="mb-0">Bağlı Çıkış Cihazları</h5>
+                            <h5 class="mb-0">ALSA Çıkış Cihazları (Raspotify Hedefi)</h5>
                         </div>
                         <div class="card-body">
                             <div id="output-devices-list">
-                                {% for device in output_devices %}
-                                <div class="device-card mb-2 p-2 border rounded">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div>
-                                            <strong>{{ device.name }}</strong><br>
-                                            <small>{{ device.description }} ({{ device.type }})</small>
+                                {# Backend'den gelen output_devices listesini döngüye al #}
+                                {% if output_devices %}
+                                    {% for device in output_devices %}
+                                    {# Cihaz aktif mi kontrol et (is_default veya current_active_alsa_device ile karşılaştır) #}
+                                    <div class="device-card mb-2 p-2 border rounded {% if device.name == current_active_alsa_device %} active-device bg-success text-white {% endif %}">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                {# Cihaz açıklamasını ve adını göster #}
+                                                <strong>{{ device.description }}</strong><br>
+                                                <small>({{ device.name }}) - [{{ device.type }}]</small>
+                                            </div>
+                                            {# Eğer cihaz zaten aktif değilse Seç butonunu göster #}
+                                            {% if device.name != current_active_alsa_device %}
+                                            <button onclick="setOutputDevice('{{ device.name }}')" 
+                                                    class="btn btn-sm btn-outline-primary">
+                                                Seç
+                                            </button>
+                                            {% else %}
+                                            {# Aktifse etiket göster #}
+                                            <span class="badge badge-light">Aktif</span>
+                                            {% endif %}
                                         </div>
-                                        <button onclick="setOutputDevice('{{ device.index }}')" 
-                                                class="btn btn-sm btn-outline-primary">
-                                            Seç
-                                        </button>
                                     </div>
-                                </div>
-                                {% endfor %}
+                                    {% endfor %}
+                                {% else %}
+                                    <p class="text-muted">ALSA çıkış cihazı bulunamadı veya listelenemedi.</p>
+                                {% endif %}
                             </div>
+                             <small class="text-muted mt-2 d-block">Not: Cihaz seçimi Raspotify servisini yeniden başlatacaktır.</small>
+                        </div>
+                        <div class="card-footer">
+                             {# Listeyi manuel yenileme butonu #}
+                             <button onclick="refreshOutputDeviceList()" class="btn btn-sm btn-secondary">Listeyi Yenile</button>
                         </div>
                     </div>
                 </div>
@@ -262,30 +280,95 @@
             });
         }
 
-        function setOutputDevice(deviceIndex) {
-            $.ajax({
-                url: '/api/set-output-device',
-                type: 'POST',
-                contentType: 'application/json',
-                data: JSON.stringify({ device_index: deviceIndex }),
-                success: function(data) {
-                    if (data.success) {
-                        alert('Çıkış cihazı başarıyla değiştirildi!');
-                        location.reload();
-                    } else {
-                        alert('Hata: ' + data.error);
-                    }
-                },
-                error: function(xhr) {
-                    alert(`Hata: ${xhr.responseJSON.error}`);
-                }
-            });
+    function setOutputDevice(deviceName) { // deviceIndex yerine deviceName kullan
+        console.log("Setting output device to:", deviceName); // Debug için
+        // Kullanıcı onayı iste (servis yeniden başlayacak)
+        if (!confirm(`"${deviceName}" cihazını seçmek Raspotify servisini yeniden başlatacak. Emin misiniz?`)) {
+             return;
         }
 
-        // Initial load
-        $(document).ready(function() {
-            scanBluetooth();
+        $.ajax({
+            url: '/api/set-output-device', // Backend endpoint'i
+            type: 'POST',
+            contentType: 'application/json',
+            // device_index yerine device_name gönder
+            data: JSON.stringify({ device_name: deviceName }),
+            success: function(data) {
+                if (data.success) {
+                    alert('Çıkış cihazı başarıyla değiştirildi! Raspotify yeniden başlatıldı.');
+                    // Sayfayı yeniden yüklemek yerine listeyi güncelleyelim
+                    // API yanıtından gelen güncel cihaz listesini kullan
+                    renderDeviceList(data.devices || []);
+                } else {
+                    alert('Hata: ' + (data.error || 'Bilinmeyen bir hata oluştu.'));
+                }
+            },
+            error: function(xhr) {
+                 let errorMsg = 'Bilinmeyen bir sunucu hatası oluştu.';
+                 if(xhr.responseJSON && xhr.responseJSON.error){
+                     errorMsg = xhr.responseJSON.error;
+                 }
+                 console.error("Error setting output device:", xhr); // Konsola detaylı hata yazdır
+                 alert(`Hata: ${errorMsg}`);
+            }
         });
+    }
+    // ALSA cihaz listesini API'den çekip güncelleyen fonksiyon
+    function refreshOutputDeviceList() {
+        const listElement = $('#output-devices-list');
+        listElement.html('<p class="text-muted">Yenileniyor...</p>'); // Yükleniyor göstergesi
+
+        $.get('/api/output-devices', function(data) {
+             renderDeviceList(data.devices || []); // Gelen veriyi render fonksiyonuna gönder
+        }).fail(function(xhr) {
+             console.error("Error fetching output devices:", xhr);
+             listElement.html('<p class="text-danger">Cihaz listesi alınamadı (API Hatası).</p>');
+        });
+    }
+
+    // Verilen cihaz listesini HTML olarak render eden fonksiyon
+     function renderDeviceList(devices) {
+        const listElement = $('#output-devices-list');
+        let html = '';
+        if (devices && devices.length > 0) {
+            // Backend'den gelen is_default bilgisine göre aktif cihazı belirle
+            let currentActiveDeviceName = null; 
+            devices.forEach(device => {
+                 if (device.is_default) {
+                     currentActiveDeviceName = device.name;
+                 }
+            });
+
+            devices.forEach(device => {
+                let isActive = device.name === currentActiveDeviceName;
+                let activeClass = isActive ? 'active-device bg-success text-white' : '';
+                let buttonHtml = !isActive
+                    ? `<button onclick="setOutputDevice('${device.name}')" class="btn btn-sm btn-outline-primary">Seç</button>`
+                    : '<span class="badge badge-light">Aktif</span>';
+
+                html += `
+                <div class="device-card mb-2 p-2 border rounded ${activeClass}">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>${device.description}</strong><br>
+                            <small>(${device.name}) - [${device.type}]</small>
+                        </div>
+                        ${buttonHtml}
+                    </div>
+                </div>`;
+            });
+        } else {
+            html = '<p class="text-muted">ALSA çıkış cihazı bulunamadı veya listelenemedi.</p>';
+        }
+        listElement.html(html);
+     }
+
+
+    // Sayfa yüklendiğinde ALSA listesini otomatik yükle
+    $(document).ready(function() {
+        refreshOutputDeviceList();
+        // scanBluetooth(); // Başlangıçta BT taraması yapmak isterseniz
+    });
     </script>
 </body>
 </html>
