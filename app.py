@@ -387,45 +387,49 @@ def get_spotify_client():
     token_info = load_token()
 
     if not token_info:
-        logger.warning("Spotify token bulunamadı. Lütfen admin panelinden yetkilendirin.")
+        # Token yoksa loglama yapıldı, None döndür
+        # logger.warning("Spotify token bulunamadı...") çağrısı zaten load_token içinde olabilir
         return None
 
     auth_manager = get_spotify_auth()
 
     try:
+        # Token süresi dolmuş mu kontrol et ve gerekirse yenile
         if auth_manager.is_token_expired(token_info):
             logger.info("Spotify token süresi dolmuş, yenileniyor...")
-            # Refresh token yoksa veya yenileme başarısız olursa None döner
-            token_info = auth_manager.refresh_access_token(token_info.get('refresh_token')) 
-            if not token_info:
+            new_token_info = auth_manager.refresh_access_token(token_info.get('refresh_token'))
+            if not new_token_info:
                  logger.error("Token yenilenemedi. Refresh token geçersiz veya eksik olabilir.")
-                 if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE) # Geçersiz token'ı sil
+                 if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
+                 spotify_client = None # Global istemciyi temizle
                  return None
+            token_info = new_token_info # Güncel token bilgisini kullan
             save_token(token_info)
-        
-        # Eğer mevcut istemci varsa ve token eşleşiyorsa, onu kullan
-        if spotify_client and spotify_client.auth == token_info.get('access_token'):
-             return spotify_client
 
-        # Yeni istemci oluştur
+        # Her zaman güncel token ile yeni bir istemci oluşturmayı deneyelim
+        # (Basitlik adına, mevcut istemciyi yeniden kullanma kontrolünü kaldırıyoruz)
         new_spotify_client = spotipy.Spotify(auth=token_info.get('access_token'))
-        
-        # İstemciyi test et
+
+        # Yeni istemciyi test et
         try:
             new_spotify_client.current_user() # Basit bir test isteği
             spotify_client = new_spotify_client # Global istemciyi güncelle
-            logger.info("Spotify istemcisi başarıyla alındı/yenilendi.")
+            logger.info("Spotify istemcisi başarıyla alındı/güncellendi.")
             return spotify_client
         except Exception as e:
+             # Test başarısız olursa logla ve None döndür
              logger.error(f"Yeni Spotify istemcisi ile doğrulama hatası: {e}")
-             # Token geçersiz olabilir
+             # Token geçersiz olabilir, dosyayı silmeyi düşünebiliriz
              if "invalid access token" in str(e).lower() or "token expired" in str(e).lower():
                   if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
+             spotify_client = None # Başarısız olursa global istemciyi temizle
              return None
 
     except Exception as e:
+        # Token alma/yenileme sırasında genel hata
         logger.error(f"Spotify token işlemi sırasında genel hata: {e}", exc_info=True)
         if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE) # Sorun varsa token'ı sil
+        spotify_client = None # Global istemciyi temizle
         return None
 
 
