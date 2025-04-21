@@ -1182,49 +1182,41 @@ def clear_queue():
     return redirect(url_for('admin_panel'))
 
 
+# app.py içindeki view_queue fonksiyonu
+
 @app.route('/queue')
 def view_queue():
+    global spotify_client # <<< SATIRI BURAYA TAŞIYIN
     """Kullanıcıların mevcut şarkı kuyruğunu görmesi için sayfa."""
     current_q = list(song_queue)
-    currently_playing_info = None # <<< YENİ: Başlangıçta None olarak ayarla
+    currently_playing_info = None # Initialize
     spotify = get_spotify_client()
 
-    # <<< START: Şu an çalan şarkıyı al >>>
+    # --- START: Add current playback fetch ---
     if spotify:
         try:
             playback = spotify.current_playback(additional_types='track,episode', market='TR')
             if playback and playback.get('is_playing') and playback.get('item'):
-                item = playback['item']
-                track_name = item.get('name')
-                artists = item.get('artists', [])
-                artist_name = ', '.join([a.get('name') for a in artists if a.get('name')])
-                images = item.get('album', {}).get('images', [])
-                # Kuyruk sayfasında daha küçük bir resim kullanabiliriz (genellikle sondaki)
-                image_url = images[-1].get('url') if images else None
-
+                # ... (Şarkı bilgilerini alma kodları) ...
                 currently_playing_info = {
-                    'name': track_name,
-                    'artist': artist_name,
-                    'image_url': image_url
+                    # ...
                 }
-                logger.debug(f"Şu An Çalıyor (Kuyruk Sayfası): {track_name} - {artist_name}")
+                logger.debug(f"Şu An Çalıyor (Kuyruk Sayfası): {currently_playing_info['name']} - {currently_playing_info['artist']}") # Küçük düzeltme
         except spotipy.SpotifyException as e:
             logger.warning(f"Çalma durumu alınırken hata (Kuyruk Sayfası): {e}")
             if e.http_status == 401 or e.http_status == 403:
-                 # Token hatasıysa global istemciyi sıfırla
-                 global spotify_client
-                 spotify_client = None
+                 # global spotify_client # <<< BU SATIRI YUKARI TAŞIDIK
+                 spotify_client = None # Şimdi atama yapmak güvenli
                  if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
         except Exception as e:
             logger.error(f"Çalma durumu alınırken genel hata (Kuyruk Sayfası): {e}", exc_info=True)
-    # <<< END: Şu an çalan şarkıyı al >>>
+    # --- END: Add current playback fetch ---
 
-    # Templates klasöründe queue.html olmalı
     return render_template(
         'queue.html',
         queue=current_q,
-        currently_playing_info=currently_playing_info # <<< YENİ: Template'e gönder
-        )
+        currently_playing_info=currently_playing_info
+    )
 
 @app.route('/api/queue')
 def api_get_queue():
