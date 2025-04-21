@@ -829,7 +829,7 @@ def admin_panel():
             if isinstance(e, spotipy.SpotifyException) and (e.http_status == 401 or e.http_status == 403):
                 if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
             # Global istemciyi burada da sıfırlamak iyi olabilir
-            global spotify_client
+            #global spotify_client
             spotify_client = None
 
     else:
@@ -1188,7 +1188,7 @@ def clear_queue():
 
 @app.route('/queue')
 def view_queue():
-    #global spotify_client # <<< DOĞRU YER BURASI (fonksiyonun ilk satırı)
+    global spotify_client # <<< DOĞRU YER BURASI (fonksiyonun ilk satırı)
     """Kullanıcıların mevcut şarkı kuyruğunu görmesi için sayfa."""
     current_q = list(song_queue)
     currently_playing_info = None # Initialize
