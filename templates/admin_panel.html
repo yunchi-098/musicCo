@@ -75,55 +75,7 @@
                     </div>
                 </div>
             </div>
-            <body class="bg-light">
-                <div class="container-fluid py-4">
-                    <div class="row">
-                        <div class="col-md-4 mb-4">
-                            <div class="card shadow">
-                                <div class="card-header bg-success text-white"> <h5 class="mb-0">Şu An Çalıyor</h5>
-                                </div>
-                                <div class="card-body" id="currently-playing-admin">
-                                    {# Backend'den gelen 'currently_playing_info' değişkenini kontrol et #}
-                                    {% if currently_playing_info %}
-                                        <div class="d-flex align-items-center">
-                                            {# Albüm kapağı varsa göster #}
-                                            {% if currently_playing_info.image_url %}
-                                            <img src="{{ currently_playing_info.image_url }}" alt="Albüm Kapağı"
-                                                 class="img-fluid rounded mr-3 shadow-sm"
-                                                 style="width: 64px; height: 64px; object-fit: cover;">
-                                            {% else %}
-                                            <div class="mr-3" style="width: 64px; height: 64px; background-color: #e9ecef; display: flex; align-items: center; justify-content: center; border-radius: .25rem;">
-                                                <span class="text-muted">?</span> </div>
-                                            {% endif %}
-                                            <div>
-                                                <strong>{{ currently_playing_info.name }}</strong><br>
-                                                <small class="text-muted">{{ currently_playing_info.artist }}</small>
-                                            </div>
-                                        </div>
-                                    {% else %}
-                                        {# Bilgi yoksa mesaj göster #}
-                                        <p class="text-muted mb-0">Şu anda aktif bir şarkı çalınmıyor veya bilgi alınamadı.</p>
-                                     {% endif %}
-                                 </div>
-                                 <div class="card-footer">
-                                     {# İsteğe bağlı: Bilginin ne zaman güncellendiğini belirt #}
-                                     <small class="text-muted">Bu bilgi sayfa yenilendiğinde güncellenir.</small>
-                                     {# İsteğe bağlı: Manuel yenileme butonu (JS gerektirir, şimdilik eklemiyorum) #}
-                                     {# <button onclick="refreshCurrentlyPlayingAdmin()" class="btn btn-sm btn-secondary float-right">Yenile</button> #}
-                                 </div>
-                             </div>
-                         </div>
-                         <div class="col-md-4 mb-4">
-                            </div>
-            
-                        <div class="col-md-4 mb-4">
-                             </div>
-            
-                        <div class="col-md-4 mb-4">
-                             </div>
-                    </div>
-            
-                    </div>
+           
             <!-- Queue Management -->
             <div class="col-md-4 mb-4">
                 <div class="card shadow">
@@ -211,6 +163,55 @@
                 </div>
             </div>
         </div>
+        <body class="bg-light">
+            <div class="container-fluid py-4">
+                <div class="row">
+                    <div class="col-md-4 mb-4">
+                        <div class="card shadow">
+                            <div class="card-header bg-success text-white"> <h5 class="mb-0">Şu An Çalıyor</h5>
+                            </div>
+                            <div class="card-body" id="currently-playing-admin">
+                                {# Backend'den gelen 'currently_playing_info' değişkenini kontrol et #}
+                                {% if currently_playing_info %}
+                                    <div class="d-flex align-items-center">
+                                        {# Albüm kapağı varsa göster #}
+                                        {% if currently_playing_info.image_url %}
+                                        <img src="{{ currently_playing_info.image_url }}" alt="Albüm Kapağı"
+                                             class="img-fluid rounded mr-3 shadow-sm"
+                                             style="width: 64px; height: 64px; object-fit: cover;">
+                                        {% else %}
+                                        <div class="mr-3" style="width: 64px; height: 64px; background-color: #e9ecef; display: flex; align-items: center; justify-content: center; border-radius: .25rem;">
+                                            <span class="text-muted">?</span> </div>
+                                        {% endif %}
+                                        <div>
+                                            <strong>{{ currently_playing_info.name }}</strong><br>
+                                            <small class="text-muted">{{ currently_playing_info.artist }}</small>
+                                        </div>
+                                    </div>
+                                {% else %}
+                                    {# Bilgi yoksa mesaj göster #}
+                                    <p class="text-muted mb-0">Şu anda aktif bir şarkı çalınmıyor veya bilgi alınamadı.</p>
+                                 {% endif %}
+                             </div>
+                             <div class="card-footer">
+                                 {# İsteğe bağlı: Bilginin ne zaman güncellendiğini belirt #}
+                                 <small class="text-muted">Bu bilgi sayfa yenilendiğinde güncellenir.</small>
+                                 {# İsteğe bağlı: Manuel yenileme butonu (JS gerektirir, şimdilik eklemiyorum) #}
+                                 {# <button onclick="refreshCurrentlyPlayingAdmin()" class="btn btn-sm btn-secondary float-right">Yenile</button> #}
+                             </div>
+                         </div>
+                     </div>
+                     <div class="col-md-4 mb-4">
+                        </div>
+        
+                    <div class="col-md-4 mb-4">
+                         </div>
+        
+                    <div class="col-md-4 mb-4">
+                         </div>
+                </div>
+        
+                </div>
 
         <!-- Bluetooth Management Section -->
         <div class="bluetooth-section mt-4 shadow">
