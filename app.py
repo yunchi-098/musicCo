@@ -440,7 +440,8 @@ song_queue = []
 user_requests = {} # Kullanıcı IP adreslerine göre istek sayısı (basit sınırlama)
 # Zaman profilleri artık ses özellikleri yerine {id, artist_id, name, artist_name} tutacak
 time_profiles = { 'sabah': [], 'oglen': [], 'aksam': [], 'gece': [] }
-ALLOWED_GENRES = ['pop', 'rock', 'jazz', 'electronic', 'hip-hop', 'classical', 'r&b', 'indie', 'turkish'] # Türleri genişletelim
+ALLOWED_GENRES = ['pop', 'rock', 'jazz', 'electronic', 'hip-hop', 'classical', 'r&b', 'indie', 'turkish']
+current_playback_data = None 
 
 # --- Yardımcı Fonksiyonlar (Ayarlar, Token, Auth) ---
 
@@ -768,6 +769,7 @@ def admin_panel():
     spotify_devices = []
     spotify_authenticated = False
     spotify_user = None
+    currently_playing_info = None # <<< YENİ: Başlangıçta None olarak ayarla
 
     # ALSA Cihazları (Orijinal koddan)
     output_devices = AudioManager.get_output_devices()
@@ -787,34 +789,68 @@ def admin_panel():
                 logger.warning(f"Spotify kullanıcı bilgisi alınamadı: {user_err}")
                 session.pop('spotify_user', None)
 
+            # <<< START: Şu an çalan şarkıyı al >>>
+            try:
+                playback = spotify.current_playback(additional_types='track,episode', market='TR')
+                if playback and playback.get('is_playing') and playback.get('item'):
+                    item = playback['item']
+                    track_name = item.get('name')
+                    artists = item.get('artists', [])
+                    artist_name = ', '.join([a.get('name') for a in artists if a.get('name')])
+                    images = item.get('album', {}).get('images', [])
+                    # Genellikle ilk resim en büyüğüdür, admin panelinde büyük kullanabiliriz
+                    image_url = images[0].get('url') if images else None
+
+                    currently_playing_info = {
+                        'name': track_name,
+                        'artist': artist_name,
+                        'image_url': image_url
+                    }
+                    logger.debug(f"Şu An Çalıyor (Admin Panel): {track_name} - {artist_name}")
+            except spotipy.SpotifyException as pb_err:
+                 logger.warning(f"Admin paneli için çalma durumu alınamadı: {pb_err}")
+                 # Token hatasıysa istemciyi sıfırla (zaten aşağıdaki ana try/except bloğu bunu yapabilir)
+                 if pb_err.http_status == 401 or pb_err.http_status == 403:
+                     global spotify_client
+                     spotify_client = None
+                     if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
+            except Exception as pb_err_general:
+                logger.error(f"Admin paneli için çalma durumu alınırken genel hata: {pb_err_general}", exc_info=True)
+            # <<< END: Şu an çalan şarkıyı al >>>
+
+
         except Exception as e:
-            logger.error(f"Spotify cihazları/kullanıcı bilgisi alınırken hata: {e}")
-            if "unauthorized" in str(e).lower() or "token" in str(e).lower() or isinstance(e, spotipy.SpotifyException) and (e.http_status == 401 or e.http_status == 403):
-                spotify_authenticated = False
-                session['spotify_authenticated'] = False
-                session.pop('spotify_user', None)
-                global spotify_client
-                spotify_client = None # Force re-auth attempt next time
-                if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE) # Clear invalid token
-            # Diğer hatalarda devam et, paneli göster
+            # ... (mevcut hata işleme kodunuz) ...
+            logger.error(f"Spotify API hatası (Admin Panel Genel): {e}")
+            # ... (mevcut hata işleme kodunuz - auth sıfırlama vb.) ...
+            spotify_authenticated = False # Hata durumunda false yapalım
+            session['spotify_authenticated'] = False
+            session.pop('spotify_user', None)
+            if isinstance(e, spotipy.SpotifyException) and (e.http_status == 401 or e.http_status == 403):
+                if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
+            # Global istemciyi burada da sıfırlamak iyi olabilir
+            global spotify_client
+            spotify_client = None
+
     else:
          spotify_authenticated = False # İstemci alınamadıysa
          session['spotify_authenticated'] = False
          session.pop('spotify_user', None)
 
 
-    # Orijinal admin_panel.html'i kullan
+    # Orijinal admin_panel.html'i kullan ve yeni değişkeni ekle
     return render_template(
         'admin_panel.html',
         settings=settings,
-        devices=spotify_devices, # Spotify Connect cihazları
+        devices=spotify_devices,
         queue=song_queue,
         all_genres=ALLOWED_GENRES,
         spotify_authenticated=spotify_authenticated,
         spotify_user=session.get('spotify_user'),
-        active_device_id=settings.get('active_device_id'), # Spotify Connect aktif cihazı
-        output_devices=output_devices, # ALSA çıkış cihazları
-        current_active_alsa_device=current_active_alsa_device # Raspotify'ın kullandığı ALSA cihazı
+        active_device_id=settings.get('active_device_id'),
+        output_devices=output_devices,
+        current_active_alsa_device=current_active_alsa_device,
+        currently_playing_info=currently_playing_info # <<< YENİ: Template'e gönder
     )
 
 @app.route('/refresh-devices')
@@ -1145,13 +1181,50 @@ def clear_queue():
     logger.info("Şarkı kuyruğu ve kullanıcı limitleri temizlendi (Admin).")
     return redirect(url_for('admin_panel'))
 
+
 @app.route('/queue')
 def view_queue():
     """Kullanıcıların mevcut şarkı kuyruğunu görmesi için sayfa."""
-    # Kuyruğun bir kopyasını gönderelim ki render sırasında değişirse sorun olmasın
     current_q = list(song_queue)
+    currently_playing_info = None # <<< YENİ: Başlangıçta None olarak ayarla
+    spotify = get_spotify_client()
+
+    # <<< START: Şu an çalan şarkıyı al >>>
+    if spotify:
+        try:
+            playback = spotify.current_playback(additional_types='track,episode', market='TR')
+            if playback and playback.get('is_playing') and playback.get('item'):
+                item = playback['item']
+                track_name = item.get('name')
+                artists = item.get('artists', [])
+                artist_name = ', '.join([a.get('name') for a in artists if a.get('name')])
+                images = item.get('album', {}).get('images', [])
+                # Kuyruk sayfasında daha küçük bir resim kullanabiliriz (genellikle sondaki)
+                image_url = images[-1].get('url') if images else None
+
+                currently_playing_info = {
+                    'name': track_name,
+                    'artist': artist_name,
+                    'image_url': image_url
+                }
+                logger.debug(f"Şu An Çalıyor (Kuyruk Sayfası): {track_name} - {artist_name}")
+        except spotipy.SpotifyException as e:
+            logger.warning(f"Çalma durumu alınırken hata (Kuyruk Sayfası): {e}")
+            if e.http_status == 401 or e.http_status == 403:
+                 # Token hatasıysa global istemciyi sıfırla
+                 global spotify_client
+                 spotify_client = None
+                 if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
+        except Exception as e:
+            logger.error(f"Çalma durumu alınırken genel hata (Kuyruk Sayfası): {e}", exc_info=True)
+    # <<< END: Şu an çalan şarkıyı al >>>
+
     # Templates klasöründe queue.html olmalı
-    return render_template('queue.html', queue=current_q)
+    return render_template(
+        'queue.html',
+        queue=current_q,
+        currently_playing_info=currently_playing_info # <<< YENİ: Template'e gönder
+        )
 
 @app.route('/api/queue')
 def api_get_queue():
