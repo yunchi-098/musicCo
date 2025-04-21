@@ -201,6 +201,48 @@
                              </div>
                          </div>
                      </div>
+                     <div class="row">
+                        <div class="col-md-4 mb-4"> <div class="card shadow">
+                                <div class="card-header bg-dark text-white"> <h5 class="mb-0">Otomatik Sıraya Geçiş</h5>
+                                </div>
+                                <div class="card-body text-center">
+                                    {# Backend'den gelen 'auto_advance_enabled' değişkenini kontrol et #}
+                                    {% if auto_advance_enabled %}
+                                        <p class="mb-2">Mevcut Durum: <strong class="text-success">AKTİF</strong></p>
+                                        <p class="text-muted small mb-3">
+                                            Müzik çalmadığında (şarkı bitince veya duraklatılınca),
+                                            uygulama otomatik olarak kuyruktaki sıradaki şarkıyı çalacaktır.
+                                        </p>
+                                        {# Aktif ise Duraklatma butonunu göster #}
+                                        <form action="{{ url_for('pause_auto_advance') }}" method="GET" style="display: inline;">
+                                            <button type="submit" class="btn btn-warning">
+                                                Otomatik Geçişi Duraklat
+                                            </button>
+                                        </form>
+                                    {% else %}
+                                        <p class="mb-2">Mevcut Durum: <strong class="text-danger">DURAKLATILDI</strong></p>
+                                        <p class="text-muted small mb-3">
+                                            Müzik çalmasa bile, uygulama otomatik olarak sıradaki şarkıyı
+                                            <strong class="text-danger">BAŞLATMAYACAKTIR</strong>.
+                                            (Müziği manuel olarak başlatmanız veya buradan sürdürmeniz gerekir).
+                                        </p>
+                                        {# Duraklatılmış ise Sürdürme butonunu göster #}
+                                        <form action="{{ url_for('resume_auto_advance') }}" method="GET" style="display: inline;">
+                                            <button type="submit" class="btn btn-success">
+                                                Otomatik Geçişi Sürdür
+                                            </button>
+                                        </form>
+                                    {% endif %}
+                                </div>
+                                <div class="card-footer">
+                                    <small class="text-muted">
+                                        Geçici durdurma için: Önce Spotify'dan müziği duraklatın,
+                                        sonra buradan "Duraklat"a basın.
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                        </div> 
                      <div class="col-md-4 mb-4">
                         </div>
         

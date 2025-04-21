@@ -442,6 +442,7 @@ user_requests = {} # Kullanıcı IP adreslerine göre istek sayısı (basit sın
 time_profiles = { 'sabah': [], 'oglen': [], 'aksam': [], 'gece': [] }
 ALLOWED_GENRES = ['pop', 'rock', 'jazz', 'electronic', 'hip-hop', 'classical', 'r&b', 'indie', 'turkish']
 current_playback_data = None 
+auto_advance_enabled = True
 
 # --- Yardımcı Fonksiyonlar (Ayarlar, Token, Auth) ---
 
@@ -850,7 +851,8 @@ def admin_panel():
         active_device_id=settings.get('active_device_id'),
         output_devices=output_devices,
         current_active_alsa_device=current_active_alsa_device,
-        currently_playing_info=currently_playing_info # <<< YENİ: Template'e gönder
+        currently_playing_info=currently_playing_info, 
+        auto_advance_enabled=auto_advance_enabled# <<< YENİ: Template'e gönder
     )
 
 @app.route('/refresh-devices')
@@ -1181,6 +1183,29 @@ def clear_queue():
     logger.info("Şarkı kuyruğu ve kullanıcı limitleri temizlendi (Admin).")
     return redirect(url_for('admin_panel'))
 
+# app.py içine (örneğin /clear-queue'dan sonra)
+
+@app.route('/pause-auto-advance')
+@admin_login_required
+def pause_auto_advance():
+    """Admin panelinden otomatik sıraya geçişi duraklatır."""
+    global auto_advance_enabled
+    auto_advance_enabled = False
+    logger.info("Admin: Otomatik sıraya geçiş DURAKLATILDI.")
+    # İsteğe bağlı: Kullanıcıya geri bildirim için flash mesajı kullanabilirsiniz
+    # from flask import flash # import etmeyi unutmayın
+    # flash('Otomatik sıraya geçiş duraklatıldı.', 'warning')
+    return redirect(url_for('admin_panel'))
+
+@app.route('/resume-auto-advance')
+@admin_login_required
+def resume_auto_advance():
+    """Admin panelinden otomatik sıraya geçişi sürdürür."""
+    global auto_advance_enabled
+    auto_advance_enabled = True
+    logger.info("Admin: Otomatik sıraya geçiş SÜRDÜRÜLDÜ.")
+    # flash('Otomatik sıraya geçiş sürdürüldü.', 'success')
+    return redirect(url_for('admin_panel'))
 
 # app.py içindeki view_queue fonksiyonu
 
