@@ -30,7 +30,7 @@ DAC_IDENTIFIER = "PCM5102" # veya "DAC", "USB Audio", "snd_rpi_hifiberry_dac" vb
 SPOTIFY_CLIENT_ID = '332e5f2c9fe44d9b9ef19c49d0caeb78' # ÖRNEK - DEĞİŞTİR
 SPOTIFY_CLIENT_SECRET = 'bbb19ad9c7d04d738f61cd0bd4f47426' # ÖRNEK - DEĞİŞTİR
 # Cihazınızın AĞ üzerindeki IP adresini ve Flask portunu yazın
-SPOTIFY_REDIRECT_URI = 'http://192.168.56.1:8080/callback' # ÖRNEK - DEĞİŞTİR
+SPOTIFY_REDIRECT_URI = 'http://192.168.1.103:8080/callback' # ÖRNEK - DEĞİŞTİR
 SPOTIFY_SCOPE = 'user-read-playback-state user-modify-playback-state playlist-read-private user-read-currently-playing user-read-recently-played'
 
 # Diğer Dosya Yolları
