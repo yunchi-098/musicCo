@@ -1188,7 +1188,7 @@ def clear_queue():
 
 @app.route('/queue')
 def view_queue():
-    global spotify_client # <<< DOĞRU YER BURASI (fonksiyonun ilk satırı)
+    #global spotify_client # <<< DOĞRU YER BURASI (fonksiyonun ilk satırı)
     """Kullanıcıların mevcut şarkı kuyruğunu görmesi için sayfa."""
     current_q = list(song_queue)
     currently_playing_info = None # Initialize
