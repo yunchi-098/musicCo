@@ -549,7 +549,7 @@ def admin_panel():
             spotify_authenticated = False; session['spotify_authenticated'] = False; session.pop('spotify_user', None)
             if isinstance(e, spotipy.SpotifyException) and (e.http_status == 401 or e.http_status == 403):
                 if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
-            #global spotify_client; spotify_client = None
+            global spotify_client; spotify_client = None
     else: # spotify istemcisi alınamadıysa
          spotify_authenticated = False; session['spotify_authenticated'] = False; session.pop('spotify_user', None)
 
