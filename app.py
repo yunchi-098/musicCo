@@ -1358,123 +1358,178 @@ def api_disconnect_bluetooth():
 
 
 # --- Arka Plan Şarkı Çalma İş Parçacığı ---
-# Bu fonksiyon app_demo.py'deki güncellenmiş mantığı kullanır.
+# app.py dosyasını açın ve mevcut background_queue_player fonksiyonunu silip yerine bunu yapıştırın:
+
 def background_queue_player():
     """
-    Arka planda şarkı kuyruğunu kontrol eder, çalar ve kuyruk boşsa
-    yeni öneri mekanizmasını kullanarak şarkı eklemeye çalışır.
+    Arka planda şarkı kuyruğunu kontrol eder. Şarkı bittiğinde sıradakini çalar,
+    manuel duraklatıldığında çalmaz. Kuyruk boşsa ve müzik çalmıyorsa öneri yapar.
     """
-    global spotify_client # Global istemciye erişim
-    global song_queue # Kuyruğa erişim
-    global user_requests # İstek limitlerini azaltmak için
+    global spotify_client, song_queue, user_requests, settings # Gerekli globalleri ekleyelim
 
-    logger.info("Arka plan şarkı çalma/öneri görevi başlatılıyor...")
-    last_played_song_id = None # Son çalınan ID (tekrar çalmayı önlemek için)
-    last_suggested_song_id = None # Son önerilen ID (kuyruğa ekleme tekrarını önlemek için)
+    logger.info("Arka plan şarkı çalma/öneri görevi başlatılıyor (Güncellenmiş Mantık)...")
+    last_played_song_id = None      # En son çalınan şarkının ID'si (tekrarı önlemek için)
+    last_suggested_song_id = None   # En son önerilen şarkının ID'si (tekrarı önlemek için)
+
+    # --- Bir önceki döngüdeki durumu takip etmek için değişkenler ---
+    previous_is_playing = False     # Önceki kontrolde çalıyor muydu?
+    previous_track_id = None        # Önceki kontroldeki şarkı ID'si
+    # -------------------------------------------------------------
 
     while True:
         try:
-            # Her döngüde güncel istemciyi ve ayarları al
+            # --- Güncel Spotify istemcisini ve ayarları al ---
             spotify = get_spotify_client()
-            # Ayarları her döngüde tekrar okumak yerine global 'settings' kullanabiliriz
-            # Ancak dosya dışarıdan değişirse diye okumak daha güvenli olabilir. Şimdilik global kullanalım.
             active_spotify_connect_device_id = settings.get('active_device_id')
 
-            # Spotify bağlantısı veya aktif cihaz yoksa bekle
+            # Bağlantı veya aktif cihaz yoksa bekle ve durumu sıfırla
             if not spotify or not active_spotify_connect_device_id:
+                previous_is_playing = False
+                previous_track_id = None
                 time.sleep(10)
                 continue
 
-            # --- Çalma Durumunu Kontrol Et ---
+            # --- Mevcut Çalma Durumunu Kontrol Et ---
             current_playback = None
             try:
+                # Şu anki çalma durumunu al
                 current_playback = spotify.current_playback(additional_types='track,episode', market='TR')
             except spotipy.SpotifyException as pb_err:
-                 logger.error(f"Arka plan: Playback durumu kontrol hatası: {pb_err}")
-                 if pb_err.http_status == 401 or pb_err.http_status == 403:
-                      spotify_client = None
-                      if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
-                 time.sleep(10)
-                 continue
+                logger.error(f"Arka plan: Playback durumu kontrol hatası: {pb_err}")
+                if pb_err.http_status == 401 or pb_err.http_status == 403:
+                    spotify_client = None # Token hatasıysa istemciyi sıfırla
+                    if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
+                previous_is_playing = False # Hata durumunda durumu sıfırla
+                previous_track_id = None
+                time.sleep(10)
+                continue # Döngünün başına dön
             except Exception as pb_err:
-                 logger.error(f"Arka plan: Playback durumu kontrolünde beklenmedik hata: {pb_err}", exc_info=True)
-                 time.sleep(15)
-                 continue
+                logger.error(f"Arka plan: Playback durumu kontrolünde beklenmedik hata: {pb_err}", exc_info=True)
+                previous_is_playing = False # Hata durumunda durumu sıfırla
+                previous_track_id = None
+                time.sleep(15)
+                continue # Döngünün başına dön
 
-            is_playing = current_playback and current_playback.get('is_playing', False)
-            current_track_info = current_playback.get('item') if current_playback else None
-            current_track_id = current_track_info.get('id') if current_track_info else None
+            # --- Mevcut Durumu İşle ---
+            is_playing_now = False
+            current_track_id_now = None
+            if current_playback:
+                is_playing_now = current_playback.get('is_playing', False)
+                item = current_playback.get('item')
+                current_track_id_now = item.get('id') if item else None
+            # else: current_playback None ise is_playing_now=False, current_track_id_now=None kalır
 
             # --- Kuyruk ve Öneri Mantığı ---
 
-            # 1. Çalma yok ve kuyrukta şarkı VARSA -> Sıradakini çal
-            if not is_playing and song_queue:
-                next_song = song_queue.pop(0)
+            # 1. Şarkı Bitti mi Kontrolü ve Sıradakini Çalma:
+            #    - Kuyrukta şarkı olmalı (`song_queue`)
+            #    - Şu an çalmıyor olmalı (`not is_playing_now`)
+            #    - Bir önceki kontrolde çalıyor olmalı (`previous_is_playing`)
+            #    - Şarkı ID'si değişmiş veya None olmuş olmalı (manuel pause değil, şarkı sonu)
+            song_has_ended = previous_is_playing and not is_playing_now and \
+                             (current_track_id_now is None or current_track_id_now != previous_track_id)
+
+            if song_queue and song_has_ended:
+                logger.info(f"Arka plan: Şarkı bittiği algılandı (Önceki ID: {previous_track_id}, Mevcut ID: {current_track_id_now}).")
+                next_song = song_queue.pop(0) # Kuyruktan sıradaki şarkıyı al
+
+                # Hata durumunda aynı şarkıyı hemen tekrar çalmayı önle
                 if next_song.get('id') == last_played_song_id:
-                    logger.debug(f"Şarkı zaten son çalınandı, atlanıyor: {next_song.get('name')}")
+                    logger.debug(f"Şarkı ({next_song.get('name')}) zaten son çalınandı (hata önleme), atlanıyor.")
+                    last_played_song_id = None # Bir sonraki denemede çalınabilmesi için sıfırla
+                    # Durumu güncelle ve döngüye devam et
+                    previous_is_playing = is_playing_now
+                    previous_track_id = current_track_id_now
+                    time.sleep(1) # Kısa bir bekleme
                     continue
 
                 logger.info(f"Arka plan: Kuyruktan çalınacak: {next_song.get('name')} ({next_song.get('id')})")
                 try:
+                    # Sıradaki şarkıyı çalmayı başlat
                     spotify.start_playback(
                         device_id=active_spotify_connect_device_id,
                         uris=[f"spotify:track:{next_song['id']}"]
                     )
                     logger.info(f"===> Şarkı çalmaya başlandı: {next_song.get('name')}")
-                    last_played_song_id = next_song['id']
-                    last_suggested_song_id = None
+                    last_played_song_id = next_song['id'] # Son çalınan ID'yi güncelle
+                    last_suggested_song_id = None # Öneri takibini sıfırla
 
+                    # Durumu bir sonraki döngü için hemen güncelle (çalmaya başladık)
+                    previous_is_playing = True
+                    previous_track_id = next_song['id']
+
+                    # Kullanıcı istek limitini azalt (eğer kullanıcı eklediyse)
                     user_ip = next_song.get('added_by')
                     if user_ip and user_ip != 'admin' and user_ip != 'auto-time':
                         user_requests[user_ip] = max(0, user_requests.get(user_ip, 0) - 1)
                         logger.debug(f"Kullanıcı {user_ip} istek limiti azaltıldı: {user_requests.get(user_ip)}")
 
+                    time.sleep(1) # Yeni durumu algılamak için kısa bekleme
+                    continue # Bir sonraki döngüye geç
+
                 except spotipy.SpotifyException as start_err:
                     logger.error(f"Arka plan: Şarkı çalma başlatılamadı ({next_song.get('id')}): {start_err}")
-                    song_queue.insert(0, next_song)
+                    song_queue.insert(0, next_song) # Şarkıyı kuyruğun başına geri koy
+                    previous_is_playing = False     # Durumu sıfırla
+                    previous_track_id = None
+                    # Token veya cihaz hatasıysa ilgili işlemleri yap
                     if start_err.http_status == 401 or start_err.http_status == 403:
                          spotify_client = None
                          if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
-                    # 404 (Device not found) durumunda aktif cihazı temizle?
                     elif start_err.http_status == 404 and 'device_id' in str(start_err).lower():
                          logger.warning(f"Aktif Spotify Connect cihazı ({active_spotify_connect_device_id}) bulunamadı. Ayar temizleniyor.")
                          settings['active_device_id'] = None
-                         save_settings(settings) # Ayarı kaydet
+                         save_settings(settings)
                     time.sleep(5)
+                    continue # Bir sonraki döngüye geç
                 except Exception as start_err:
                      logger.error(f"Arka plan: Şarkı çalma başlatılırken genel hata ({next_song.get('id')}): {start_err}", exc_info=True)
-                     song_queue.insert(0, next_song)
+                     song_queue.insert(0, next_song) # Şarkıyı kuyruğun başına geri koy
+                     previous_is_playing = False     # Durumu sıfırla
+                     previous_track_id = None
                      time.sleep(10)
+                     continue # Bir sonraki döngüye geç
 
-            # 2. Çalma yok ve kuyruk BOŞSA -> Öneri yapmayı dene
-            elif not is_playing and not song_queue:
-                suggested = suggest_song_for_time(spotify) # YENİ öneri fonksiyonunu çağır
+            # 2. Şarkı Önerisi Yapma:
+            #    - Kuyruk boş olmalı (`not song_queue`)
+            #    - Şu an çalmıyor olmalı (`not is_playing_now`)
+            #    (Manuel duraklatılmış olsa bile kuyruk boşsa öneri yapabilir)
+            elif not song_queue and not is_playing_now:
+                suggested = suggest_song_for_time(spotify)
                 if suggested and suggested.get('id') != last_suggested_song_id:
-                     song_queue.append({
+                    # ... (Öneriyi kuyruğa ekleme kodunuz - olduğu gibi kalabilir) ...
+                    song_queue.append({
                          'id': suggested['id'],
                          'name': suggested['name'],
                          'artist': suggested.get('artist', 'Bilinmeyen'),
                          'added_by': 'auto-time',
                          'added_at': time.time()
                      })
-                     last_suggested_song_id = suggested['id']
-                     logger.info(f"Otomatik öneri kuyruğa eklendi: {suggested['name']}")
-                else:
-                     pass # Öneri yoksa veya tekrar ediyorsa bekle
+                    last_suggested_song_id = suggested['id']
+                    logger.info(f"Otomatik öneri kuyruğa eklendi: {suggested['name']}")
+                    # Öneri yapmak çalmayı başlatmaz, previous_is_playing'i değiştirmeyiz.
 
-            # 3. Çalma VARSA -> Son çalınan ID'yi güncelle (eğer değiştiyse)
-            elif is_playing:
-                 if current_track_id and current_track_id != last_played_song_id:
-                    last_played_song_id = current_track_id
-                    last_suggested_song_id = None
+            # 3. Eğer Müzik Çalıyorsa:
+            #    - Son çalınan ID'yi güncelle (eğer şarkı değiştiyse)
+            elif is_playing_now:
+                if current_track_id_now and current_track_id_now != last_played_song_id:
+                    logger.debug(f"Arka plan: Yeni şarkı algılandı: {current_track_id_now}")
+                    last_played_song_id = current_track_id_now
+                    last_suggested_song_id = None # Yeni şarkı başladı, öneri takibini sıfırla
 
-            # Normal bekleme süresi
-            time.sleep(5) # Kontrol sıklığı (5sn)
+            # --- Döngü Sonu: Bir sonraki kontrol için durumu güncelle ---
+            previous_is_playing = is_playing_now
+            previous_track_id = current_track_id_now
+            # ---------------------------------------------------------
+
+            time.sleep(5) # Normal kontrol aralığı
 
         except Exception as loop_err:
             logger.error(f"Arka plan döngüsünde beklenmedik hata: {loop_err}", exc_info=True)
-            logger.error(traceback.format_exc())
-            time.sleep(15) # Büyük hatalarda daha uzun bekle
+            # Büyük hatada durumu sıfırla
+            previous_is_playing = False
+            previous_track_id = None
+            time.sleep(15) # Hata sonrası daha uzun bekle
 
 
 def start_queue_player():
