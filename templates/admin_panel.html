@@ -1,465 +1,558 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
+<html lang="tr"> <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mekan Müzik Yönetim Paneli</title>
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        .device-card { transition: all 0.3s; }
-        .device-card:hover { transform: translateY(-5px); }
-        .active-device { border: 2px solid #28a745 !important; }
-        .bluetooth-section { background-color: #f8f9fa; padding: 20px; border-radius: 8px; }
+        body {
+            background-color: #f8f9fa; /* Açık gri arka plan */
+        }
+        .card-header {
+            font-weight: 600; /* Başlıkları biraz daha belirgin yap */
+        }
+        .device-card { transition: all 0.2s ease-in-out; }
+        .device-card:hover { transform: translateY(-3px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .active-device {
+            border: 2px solid #28a745 !important; /* Aktif cihaz kenarlığı */
+            background-color: #e9f7ef; /* Aktif cihaz için hafif yeşil arka plan */
+        }
+        .active-device strong, .active-device small {
+             color: #155724; /* Aktif cihaz metin rengi */
+        }
+        .bluetooth-section {
+             background-color: #ffffff; /* Beyaz arka plan */
+             padding: 25px;
+             border-radius: 8px;
+             border: 1px solid #dee2e6; /* İnce kenarlık */
+        }
+        .currently-playing-img {
+            width: 64px;
+            height: 64px;
+            object-fit: cover; /* Resmin orantısını koru */
+            border: 1px solid #dee2e6; /* Resim kenarlığı */
+        }
+        .currently-playing-placeholder {
+            width: 64px;
+            height: 64px;
+            background-color: #e9ecef;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: .25rem;
+            color: #6c757d;
+            font-size: 1.5rem; /* Soru işaretini büyüt */
+            font-weight: bold;
+        }
+        /* Flash mesajları için stil */
+        .alert {
+            margin-top: 15px;
+        }
+        /* Buton ikonları için dikey hizalama */
+        .btn svg {
+            vertical-align: -0.125em;
+            margin-right: 0.25em; /* İkon ve metin arasına boşluk */
+        }
     </style>
 </head>
 <body class="bg-light">
     <div class="container-fluid py-4">
-        <!-- Header -->
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h1 class="display-4 text-primary">Mekan Müzik Yönetim Paneli</h1>
+        <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom">
+            <h1 class="h2 text-primary font-weight-bold">Mekan Müzik Yönetim Paneli</h1>
             <div>
-                <a href="{{ url_for('logout') }}" class="btn btn-danger">Çıkış Yap</a>
+                <a href="{{ url_for('logout') }}" class="btn btn-outline-danger">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-box-arrow-right" viewBox="0 0 16 16">
+                      <path fill-rule="evenodd" d="M10 12.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-9a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 .5.5v2a.5.5 0 0 0 1 0v-2A1.5 1.5 0 0 0 9.5 2h-8A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h8a1.5 1.5 0 0 0 1.5-1.5v-2a.5.5 0 0 0-1 0z"/>
+                      <path fill-rule="evenodd" d="M15.854 8.354a.5.5 0 0 0 0-.708l-3-3a.5.5 0 0 0-.708.708L14.293 7.5H5.5a.5.5 0 0 0 0 1h8.793l-2.147 2.146a.5.5 0 0 0 .708.708z"/>
+                    </svg>
+                    Çıkış Yap
+                </a>
             </div>
         </div>
 
-        <!-- Spotify Auth Status -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category or 'info' }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                  <span aria-hidden="true">&times;</span>
+                </button>
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
         {% if not spotify_authenticated %}
-        <div class="alert alert-warning">
-            Spotify bağlantısı yok! <a href="{{ url_for('spotify_auth') }}" class="alert-link">Yetkilendir</a>
+        <div class="alert alert-warning alert-dismissible fade show" role="alert">
+            Spotify bağlantısı yok! Lütfen Spotify hesabınızı bağlayın.
+            <a href="{{ url_for('spotify_auth') }}" class="btn btn-sm btn-primary ml-2">Şimdi Yetkilendir</a>
+             <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+               <span aria-hidden="true">&times;</span>
+             </button>
         </div>
         {% else %}
-        <div class="alert alert-success">
-            Spotify bağlı: {{ spotify_user }}
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            Spotify bağlı: <strong>{{ spotify_user or 'Bilinmeyen Kullanıcı' }}</strong>
+             <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+               <span aria-hidden="true">&times;</span>
+             </button>
         </div>
         {% endif %}
 
         <div class="row">
-            <!-- Spotify Devices Section -->
-            <div class="col-md-4 mb-4">
-                <div class="card shadow">
+            <div class="col-lg-4 col-md-6 mb-4">
+                <div class="card shadow-sm h-100"> <div class="card-header bg-success text-white">
+                        <h5 class="mb-0">Şu An Çalıyor</h5>
+                    </div>
+                    <div class="card-body d-flex flex-column justify-content-between" id="currently-playing-admin">
+                        {# Çalma bilgisi var mı kontrol et #}
+                        {% if currently_playing_info %}
+                            <div> <div class="d-flex align-items-center mb-3">
+                                    {# Albüm kapağı #}
+                                    {% if currently_playing_info.image_url %}
+                                    <img src="{{ currently_playing_info.image_url }}" alt="Albüm Kapağı"
+                                         class="rounded mr-3 shadow-sm currently-playing-img">
+                                    {% else %}
+                                    <div class="mr-3 currently-playing-placeholder">?</div>
+                                    {% endif %}
+                                    {# Şarkı ve Sanatçı Bilgisi #}
+                                    <div style="min-width: 0;"> <strong class="d-block text-truncate">{{ currently_playing_info.name }}</strong>
+                                        <small class="text-muted d-block text-truncate">{{ currently_playing_info.artist }}</small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {# Çalma Durumuna Göre Butonları Göster #}
+                            <div class="text-center mt-auto"> {% if currently_playing_info.is_playing %}
+                                    {# Çalıyorsa: Durdur Butonu #}
+                                    <form action="{{ url_for('player_pause') }}" method="GET" style="display: inline;">
+                                         <button type="submit" class="btn btn-warning btn-block"> <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pause-fill" viewBox="0 0 16 16">
+                                                <path d="M5.5 3.5A1.5 1.5 0 0 1 7 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5m5 0A1.5 1.5 0 0 1 12 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5"/>
+                                             </svg>
+                                             Durdur & Otomatik Geçişi Kapat
+                                         </button>
+                                     </form>
+                                {% else %}
+                                    {# Duraklatılmışsa: Devam Et Butonu #}
+                                    <form action="{{ url_for('player_resume') }}" method="GET" style="display: inline;">
+                                         <button type="submit" class="btn btn-success btn-block"> <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-play-fill" viewBox="0 0 16 16">
+                                               <path d="m11.596 8.697-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393"/>
+                                             </svg>
+                                             Devam Et & Otomatik Geçişi Aç
+                                         </button>
+                                     </form>
+                                {% endif %}
+                            </div>
+
+                        {% else %}
+                            {# Bilgi yoksa mesaj göster #}
+                            <p class="text-muted mb-0 text-center">Şu anda aktif bir şarkı çalınmıyor veya bilgi alınamadı.</p>
+                        {% endif %}
+                    </div>
+                    {# Card footer isteğe bağlı #}
+                    {# <div class="card-footer">
+                         <small class="text-muted">Bu bilgi sayfa yenilendiğinde güncellenir.</small>
+                    </div> #}
+                </div>
+            </div>
+            <div class="col-lg-4 col-md-6 mb-4">
+                <div class="card shadow-sm h-100">
                     <div class="card-header bg-primary text-white">
                         <h5 class="mb-0">Spotify Cihazları</h5>
                     </div>
                     <div class="card-body">
                         {% if devices %}
-                            <div class="list-group">
-                                {% for device in devices %}
-                                <div class="list-group-item {% if device.id == active_device_id %}active-device bg-success text-white{% endif %}">
-                                    <div class="d-flex justify-content-between">
-                                        <div>
-                                            <strong>{{ device.name }}</strong><br>
-                                            <small>{{ device.type|upper }}</small>
+                            <div class="list-group list-group-flush"> {% for device in devices %}
+                                <div class="list-group-item px-0 py-2 {% if device.id == active_device_id %}active-device{% endif %}"> <div class="d-flex justify-content-between align-items-center">
+                                        <div style="min-width: 0;"> <strong class="d-block text-truncate">{{ device.name }}</strong>
+                                            <small class="text-muted">{{ device.type|upper }} {% if device.is_restricted %}(Kısıtlı){% endif %} {% if device.volume_percent is not none %}- Ses: {{device.volume_percent}}%{% endif %}</small>
                                         </div>
-                                            <form method="POST" action="{{ url_for('update_settings') }}">
-                                                <input type="hidden" name="active_device_id" value="{{ device.id }}">
-                                                <button type="submit" class="btn btn-sm {% if device.id == active_device_id %}btn-light{% else %}btn-outline-primary{% endif %}">
-                                                    {% if device.id == active_device_id %}
-                                                        Aktif
-                                                    {% else %}
-                                                        Seç
-                                                    {% endif %}
-                                                </button>
-                                            </form>
+                                        {# Aktif cihazı seçme formu #}
+                                        <form method="POST" action="{{ url_for('update_settings') }}" class="ml-2">
+                                            <input type="hidden" name="active_device_id" value="{{ device.id }}">
+                                            {# active_device_id bu cihazın ID'si ise butonu pasif yap #}
+                                            <button type="submit" class="btn btn-sm {% if device.id == active_device_id %}btn-success disabled{% else %}btn-outline-primary{% endif %}"
+                                                    {% if device.id == active_device_id %}aria-disabled="true"{% endif %}>
+                                                {% if device.id == active_device_id %}Aktif{% else %}Seç{% endif %}
+                                            </button>
+                                        </form>
                                     </div>
                                 </div>
                                 {% endfor %}
                             </div>
                         {% else %}
-                            <p class="text-muted">Cihaz bulunamadı</p>
+                            <p class="text-muted text-center">Aktif Spotify cihazı bulunamadı.</p>
                         {% endif %}
                     </div>
-                    <div class="card-footer">
+                    <div class="card-footer text-center">
                         <a href="{{ url_for('refresh_devices') }}" class="btn btn-sm btn-primary">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-clockwise" viewBox="0 0 16 16">
+                              <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2z"/>
+                              <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466"/>
+                            </svg>
                             Cihazları Yenile
                         </a>
                     </div>
                 </div>
             </div>
-           
-            <!-- Queue Management -->
-            <div class="col-md-4 mb-4">
-                <div class="card shadow">
+
+            <div class="col-lg-4 col-md-6 mb-4">
+                <div class="card shadow-sm h-100">
                     <div class="card-header bg-info text-white">
                         <h5 class="mb-0">Şarkı Kuyruğu ({{ queue|length }}/{{ settings.max_queue_length }})</h5>
                     </div>
-                    <div class="card-body" style="max-height: 400px; overflow-y: auto;">
-                        {% if queue %}
-                        <ul class="list-group">
+                    <div class="card-body" style="max-height: 350px; overflow-y: auto;"> {% if queue %}
+                        <ul class="list-group list-group-flush">
                             {% for song in queue %}
-                            <li class="list-group-item d-flex justify-content-between align-items-center">
-                                <div>
-                                    <strong>{{ song.name }}</strong><br>
-                                    <small>{{ song.artist }}</small>
+                            <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                                <div style="min-width: 0;">
+                                    <strong class="d-block text-truncate">{{ song.name }}</strong>
+                                    <small class="text-muted d-block text-truncate">{{ song.artist }}</small>
                                 </div>
-                                <form method="POST" action="{{ url_for('remove_song', song_id=song.id) }}">
-                                    <button type="submit" class="btn btn-sm btn-danger">Kaldır</button>
+                                <form method="POST" action="{{ url_for('remove_song', song_id=song.id) }}" class="ml-2">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Kuyruktan Kaldır">&times;</button>
                                 </form>
                             </li>
                             {% endfor %}
                         </ul>
                         {% else %}
-                        <p class="text-muted">Kuyruk boş</p>
+                        <p class="text-muted text-center">Kuyruk boş.</p>
                         {% endif %}
                     </div>
                     <div class="card-footer">
-                        <form method="POST" action="{{ url_for('add_song') }}" class="form-inline">
-                            <input type="text" name="song_id" class="form-control form-control-sm mr-2" 
-                                   placeholder="Spotify Şarkı ID" required>
-                            <button type="submit" class="btn btn-sm btn-success">Ekle</button>
+                        <form method="POST" action="{{ url_for('add_song') }}" class="input-group mb-2">
+                            <input type="text" name="song_id" class="form-control form-control-sm"
+                                   placeholder="Spotify Şarkı ID veya URL" required>
+                            <div class="input-group-append">
+                                <button type="submit" class="btn btn-sm btn-success">Ekle</button>
+                            </div>
                         </form>
-                        <a href="{{ url_for('clear_queue') }}" class="btn btn-sm btn-danger mt-2">
+                        <a href="{{ url_for('clear_queue') }}" class="btn btn-sm btn-danger btn-block">
                             Kuyruğu Temizle
                         </a>
                     </div>
                 </div>
             </div>
 
-            <!-- Settings Section -->
-            <div class="col-md-4 mb-4">
-                <div class="card shadow">
-                    <div class="card-header bg-warning">
-                        <h5 class="mb-0">Ayarlar</h5>
-                    </div>
-                    <div class="card-body">
-                        <form method="POST" action="{{ url_for('update_settings') }}">
-                            <div class="form-group">
-                                <label>Maksimum Kuyruk Uzunluğu</label>
-                                <input type="number" name="max_queue_length" 
-                                       value="{{ settings.max_queue_length }}" 
-                                       class="form-control" min="1" required>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label>Kullanıcı Başına Maksimum İstek</label>
-                                <input type="number" name="max_user_requests" 
-                                       value="{{ settings.max_user_requests }}" 
-                                       class="form-control" min="1" required>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label>Aktif Müzik Türleri</label>
-                                <div class="row">
-                                    {% for genre in all_genres %}
-                                    <div class="col-6">
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="checkbox" 
-                                                   name="genre_{{ genre }}" 
-                                                   id="genre_{{ genre }}"
-                                                   {% if genre in settings.active_genres %}checked{% endif %}>
-                                            <label class="form-check-label" for="genre_{{ genre }}">
-                                                {{ genre|upper }}
-                                            </label>
-                                        </div>
-                                    </div>
-                                    {% endfor %}
-                                </div>
-                            </div>
-                            
-                            <button type="submit" class="btn btn-primary btn-block">
-                                Ayarları Güncelle
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <body class="bg-light">
-            <div class="container-fluid py-4">
-                <div class="row">
-                    <div class="col-md-4 mb-4">
-                        <div class="card shadow">
-                            <div class="card-header bg-success text-white"> <h5 class="mb-0">Şu An Çalıyor</h5>
-                            </div>
-                            <div class="card-body" id="currently-playing-admin">
-                                {# Backend'den gelen 'currently_playing_info' değişkenini kontrol et #}
-                                {% if currently_playing_info %}
-                                    <div class="d-flex align-items-center">
-                                        {# Albüm kapağı varsa göster #}
-                                        {% if currently_playing_info.image_url %}
-                                        <img src="{{ currently_playing_info.image_url }}" alt="Albüm Kapağı"
-                                             class="img-fluid rounded mr-3 shadow-sm"
-                                             style="width: 64px; height: 64px; object-fit: cover;">
-                                        {% else %}
-                                        <div class="mr-3" style="width: 64px; height: 64px; background-color: #e9ecef; display: flex; align-items: center; justify-content: center; border-radius: .25rem;">
-                                            <span class="text-muted">?</span> </div>
-                                        {% endif %}
-                                        <div>
-                                            <strong>{{ currently_playing_info.name }}</strong><br>
-                                            <small class="text-muted">{{ currently_playing_info.artist }}</small>
-                                        </div>
-                                    </div>
-                                {% else %}
-                                    {# Bilgi yoksa mesaj göster #}
-                                    <p class="text-muted mb-0">Şu anda aktif bir şarkı çalınmıyor veya bilgi alınamadı.</p>
-                                 {% endif %}
-                             </div>
-                             <div class="card-footer">
-                                 {# İsteğe bağlı: Bilginin ne zaman güncellendiğini belirt #}
-                                 <small class="text-muted">Bu bilgi sayfa yenilendiğinde güncellenir.</small>
-                                 {# İsteğe bağlı: Manuel yenileme butonu (JS gerektirir, şimdilik eklemiyorum) #}
-                                 {# <button onclick="refreshCurrentlyPlayingAdmin()" class="btn btn-sm btn-secondary float-right">Yenile</button> #}
-                             </div>
-                         </div>
+            <div class="col-lg-4 col-md-6 mb-4">
+                 <div class="card shadow-sm h-100">
+                     <div class="card-header bg-warning">
+                         <h5 class="mb-0">Ayarlar</h5>
                      </div>
-                     <div class="row">
-                        <div class="col-md-4 mb-4"> <div class="card shadow">
-                                <div class="card-header bg-dark text-white"> <h5 class="mb-0">Otomatik Sıraya Geçiş</h5>
-                                </div>
-                                <div class="card-body text-center">
-                                    {# Backend'den gelen 'auto_advance_enabled' değişkenini kontrol et #}
-                                    {% if auto_advance_enabled %}
-                                        <p class="mb-2">Mevcut Durum: <strong class="text-success">AKTİF</strong></p>
-                                        <p class="text-muted small mb-3">
-                                            Müzik çalmadığında (şarkı bitince veya duraklatılınca),
-                                            uygulama otomatik olarak kuyruktaki sıradaki şarkıyı çalacaktır.
-                                        </p>
-                                        {# Aktif ise Duraklatma butonunu göster #}
-                                        <form action="{{ url_for('pause_auto_advance') }}" method="GET" style="display: inline;">
-                                            <button type="submit" class="btn btn-warning">
-                                                Otomatik Geçişi Duraklat
-                                            </button>
-                                        </form>
-                                    {% else %}
-                                        <p class="mb-2">Mevcut Durum: <strong class="text-danger">DURAKLATILDI</strong></p>
-                                        <p class="text-muted small mb-3">
-                                            Müzik çalmasa bile, uygulama otomatik olarak sıradaki şarkıyı
-                                            <strong class="text-danger">BAŞLATMAYACAKTIR</strong>.
-                                            (Müziği manuel olarak başlatmanız veya buradan sürdürmeniz gerekir).
-                                        </p>
-                                        {# Duraklatılmış ise Sürdürme butonunu göster #}
-                                        <form action="{{ url_for('resume_auto_advance') }}" method="GET" style="display: inline;">
-                                            <button type="submit" class="btn btn-success">
-                                                Otomatik Geçişi Sürdür
-                                            </button>
-                                        </form>
-                                    {% endif %}
-                                </div>
-                                <div class="card-footer">
-                                    <small class="text-muted">
-                                        Geçici durdurma için: Önce Spotify'dan müziği duraklatın,
-                                        sonra buradan "Duraklat"a basın.
-                                    </small>
-                                </div>
-                            </div>
-                        </div>
-                        </div> 
-                     <div class="col-md-4 mb-4">
-                        </div>
-        
-                    <div class="col-md-4 mb-4">
-                         </div>
-        
-                    <div class="col-md-4 mb-4">
-                         </div>
-                </div>
-        
-                </div>
+                     <div class="card-body">
+                         <form method="POST" action="{{ url_for('update_settings') }}">
+                             <div class="form-group">
+                                 <label for="max_queue_length">Maks. Kuyruk Uzunluğu</label>
+                                 <input type="number" id="max_queue_length" name="max_queue_length"
+                                        value="{{ settings.max_queue_length }}"
+                                        class="form-control form-control-sm" min="1" required>
+                             </div>
+                             <div class="form-group">
+                                 <label for="max_user_requests">Kullanıcı Başına Maks. İstek</label>
+                                 <input type="number" id="max_user_requests" name="max_user_requests"
+                                        value="{{ settings.max_user_requests }}"
+                                        class="form-control form-control-sm" min="1" required>
+                             </div>
+                             <div class="form-group">
+                                 <label>Aktif Müzik Türleri</label>
+                                 <div style="max-height: 150px; overflow-y: auto; border: 1px solid #ced4da; padding: 10px; border-radius: .25rem;">
+                                     <div class="row">
+                                         {% for genre in all_genres %}
+                                         <div class="col-6">
+                                             <div class="form-check">
+                                                 <input class="form-check-input" type="checkbox"
+                                                        name="genre_{{ genre }}"
+                                                        id="genre_{{ genre }}"
+                                                        {% if genre in settings.active_genres %}checked{% endif %}>
+                                                 <label class="form-check-label" for="genre_{{ genre }}">
+                                                     {{ genre|title }} </label>
+                                             </div>
+                                         </div>
+                                         {% endfor %}
+                                     </div>
+                                 </div>
+                             </div>
+                             <button type="submit" class="btn btn-primary btn-block mt-3">
+                                 Ayarları Kaydet
+                             </button>
+                         </form>
+                     </div>
+                 </div>
+             </div>
 
-        <!-- Bluetooth Management Section -->
-        <div class="bluetooth-section mt-4 shadow">
-            <h4 class="mb-4">Bluetooth Yönetimi</h4>
-            <div class="row">
-                <!-- Available Bluetooth Devices -->
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-header">
-                            <h5 class="mb-0">Mevcut Bluetooth Cihazları</h5>
-                        </div>
-                        <div class="card-body">
-                            <button onclick="scanBluetooth()" class="btn btn-sm btn-primary mb-3">Cihazları Tara</button>
-                            <div id="bluetooth-list">
-                                <!-- Scanned devices will be loaded here -->
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Connected Output Devices -->
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-header">
-                            <h5 class="mb-0">ALSA Çıkış Cihazları (Raspotify Hedefi)</h5>
-                        </div>
-                        <div class="card-body">
-                            <div id="output-devices-list">
-                                {# Backend'den gelen output_devices listesini döngüye al #}
-                                {% if output_devices %}
-                                    {% for device in output_devices %}
-                                    {# Cihaz aktif mi kontrol et (is_default veya current_active_alsa_device ile karşılaştır) #}
-                                    <div class="device-card mb-2 p-2 border rounded {% if device.name == current_active_alsa_device %} active-device bg-success text-white {% endif %}">
-                                        <div class="d-flex justify-content-between align-items-center">
-                                            <div>
-                                                {# Cihaz açıklamasını ve adını göster #}
-                                                <strong>{{ device.description }}</strong><br>
-                                                <small>({{ device.name }}) - [{{ device.type }}]</small>
-                                            </div>
-                                            {# Eğer cihaz zaten aktif değilse Seç butonunu göster #}
-                                            {% if device.name != current_active_alsa_device %}
-                                            <button onclick="setOutputDevice('{{ device.name }}')" 
-                                                    class="btn btn-sm btn-outline-primary">
-                                                Seç
-                                            </button>
-                                            {% else %}
-                                            {# Aktifse etiket göster #}
-                                            <span class="badge badge-light">Aktif</span>
-                                            {% endif %}
-                                        </div>
+            <div class="col-lg-8 col-md-12 mb-4"> <div class="bluetooth-section shadow-sm">
+                    <h4 class="mb-4 text-secondary">Ses Çıkış Yönetimi</h4>
+                    <div class="row">
+                        <div class="col-md-6 mb-3 mb-md-0">
+                            <div class="card h-100">
+                                <div class="card-header">
+                                    <h5 class="mb-0">ALSA Çıkış Cihazları (Raspotify Hedefi)</h5>
+                                </div>
+                                <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+                                    <div id="output-devices-list">
+                                        {# Backend'den gelen liste burada render edilecek (JS ile) #}
+                                        <p class="text-muted">Yükleniyor...</p>
                                     </div>
-                                    {% endfor %}
-                                {% else %}
-                                    <p class="text-muted">ALSA çıkış cihazı bulunamadı veya listelenemedi.</p>
-                                {% endif %}
+                                     <small class="text-muted mt-2 d-block">Not: Cihaz seçimi Raspotify servisini yeniden başlatacaktır.</small>
+                                </div>
+                                <div class="card-footer text-center">
+                                     <button onclick="refreshOutputDeviceList()" class="btn btn-sm btn-secondary">
+                                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-clockwise" viewBox="0 0 16 16">
+                                           <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2z"/>
+                                           <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466"/>
+                                         </svg>
+                                         Listeyi Yenile
+                                     </button>
+                                </div>
                             </div>
-                             <small class="text-muted mt-2 d-block">Not: Cihaz seçimi Raspotify servisini yeniden başlatacaktır.</small>
                         </div>
-                        <div class="card-footer">
-                             {# Listeyi manuel yenileme butonu #}
-                             <button onclick="refreshOutputDeviceList()" class="btn btn-sm btn-secondary">Listeyi Yenile</button>
+                         <div class="col-md-6">
+                            <div class="card h-100">
+                                <div class="card-header">
+                                    <h5 class="mb-0">Bluetooth Cihazları</h5>
+                                </div>
+                                <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+                                    <div id="bluetooth-list">
+                                        {# Bilinen/Taranan cihazlar buraya gelecek (JS ile) #}
+                                         <p class="text-muted">Tarama bekleniyor...</p>
+                                    </div>
+                                </div>
+                                <div class="card-footer text-center">
+                                    <button onclick="scanBluetooth()" class="btn btn-sm btn-info">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-bluetooth" viewBox="0 0 16 16">
+                                          <path fill-rule="evenodd" d="M8.5 2.622a.5.5 0 0 1 .5.5v2.878l2.147-2.147a.5.5 0 0 1 .707.707L9.707 6.707l2.147 2.147a.5.5 0 0 1-.707.707L8.999 7.414v4.964a.5.5 0 0 1-1 0V7.414L5.854 9.557a.5.5 0 0 1-.707-.707L7.293 6.707 5.146 4.56a.5.5 0 0 1 .707-.707L8 5.998V3.122a.5.5 0 0 1 .5-.5m-1-.001a1.5 1.5 0 0 0-1.5 1.5v1.756l-1.854-1.853a1.5 1.5 0 0 0-2.121 2.121l2.146 2.147L2.147 8.854a1.5 1.5 0 0 0 2.121 2.121L6.121 9.121v1.756a1.5 1.5 0 0 0 1.5 1.5h.001a1.5 1.5 0 0 0 1.5-1.5v-1.756l1.854 1.854a1.5 1.5 0 0 0 2.121-2.121L9.854 8.854l2.147-2.147a1.5 1.5 0 0 0-2.121-2.121L8.025 6.44V4.684a1.5 1.5 0 0 0-1.5-1.5z"/>
+                                        </svg>
+                                        Cihazları Tara
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
-    </div>
+            </div> </div> </div> <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 
-    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
     <script>
-        // Bluetooth functions
+        // Bluetooth tarama ve listeleme
         function scanBluetooth() {
+            const listElement = $('#bluetooth-list');
+            listElement.html('<p class="text-muted">Taranıyor...</p>');
             $.get('/api/scan-bluetooth', function(data) {
                 let html = '';
-                if(data.success) {
+                if(data.success && data.devices && data.devices.length > 0) {
                     data.devices.forEach(device => {
+                        let connectBtnClass = device.connected ? 'btn-outline-danger' : 'btn-success';
+                        let connectBtnText = device.connected ? 'Bağlantıyı Kes' : 'Bağlan';
+                        let connectAction = device.connected ? `disconnectDevice('${device.mac_address}')` : `pairDevice('${device.mac_address}')`;
+
                         html += `
-                        <div class="device-card mb-2 p-2 border rounded">
+                        <div class="device-card mb-2 p-2 border rounded ${device.connected ? 'active-device' : ''}">
                             <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <strong>${device.name}</strong><br>
-                                    <small>${device.mac_address}</small>
+                                <div style="min-width: 0;">
+                                    <strong class="d-block text-truncate">${device.name}</strong>
+                                    <small class="text-muted">${device.mac_address} ${device.connected ? '<span class="badge badge-success ml-1">Bağlı</span>' : ''}</small>
                                 </div>
-                                <button onclick="pairDevice('${device.mac_address}')" 
-                                        class="btn btn-sm btn-success">
-                                    Eşleştir
+                                <button onclick="${connectAction}"
+                                        class="btn btn-sm ${connectBtnClass} ml-2" style="white-space: nowrap;">
+                                    ${connectBtnText}
                                 </button>
                             </div>
                         </div>`;
                     });
-                } else {
-                    html = `<div class="alert alert-danger">${data.error}</div>`;
+                } else if (data.success) {
+                     html = '<p class="text-muted text-center">Bilinen Bluetooth cihazı bulunamadı.</p>';
                 }
-                $('#bluetooth-list').html(html);
+                 else {
+                    html = `<div class="alert alert-danger">Bluetooth cihazları listelenemedi: ${data.error || 'Bilinmeyen hata'}</div>`;
+                }
+                listElement.html(html);
+            }).fail(function() {
+                 listElement.html('<div class="alert alert-danger">Bluetooth API\'sine ulaşılamadı.</div>');
             });
         }
 
+        // Bluetooth cihazına bağlanma/eşleştirme
         function pairDevice(mac) {
+            showLoadingFeedback(`Cihaza (${mac}) bağlanılıyor...`);
             $.ajax({
                 url: '/api/pair-bluetooth',
                 type: 'POST',
                 contentType: 'application/json',
                 data: JSON.stringify({ mac_address: mac }),
                 success: function(data) {
+                    hideLoadingFeedback();
                     if(data.success) {
-                        alert('Başarıyla eşleştirildi!');
-                        location.reload();
+                        alert(data.message || 'Bluetooth cihazı başarıyla bağlandı!');
+                        // Listeleri güncelle
+                        renderDeviceList(data.alsa_devices || []);
+                        renderBluetoothList(data.bluetooth_devices || []);
                     } else {
-                        alert('Hata: ' + data.error);
+                        alert('Hata: ' + (data.error || data.message || 'Bağlanılamadı.'));
                     }
                 },
                 error: function(xhr) {
-                    alert(`Hata: ${xhr.responseJSON.error}`);
+                    hideLoadingFeedback();
+                    let errorMsg = 'Bilinmeyen bir sunucu hatası oluştu.';
+                    if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; }
+                    alert(`Hata: ${errorMsg}`);
                 }
             });
         }
 
-    function setOutputDevice(deviceName) { // deviceIndex yerine deviceName kullan
-        console.log("Setting output device to:", deviceName); // Debug için
-        // Kullanıcı onayı iste (servis yeniden başlayacak)
-        if (!confirm(`"${deviceName}" cihazını seçmek Raspotify servisini yeniden başlatacak. Emin misiniz?`)) {
-             return;
+        // Bluetooth bağlantısını kesme
+        function disconnectDevice(mac) {
+             showLoadingFeedback(`Cihaz (${mac}) bağlantısı kesiliyor...`);
+             $.ajax({
+                url: '/api/disconnect-bluetooth',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ mac_address: mac }),
+                success: function(data) {
+                    hideLoadingFeedback();
+                    if(data.success) {
+                        alert(data.message || 'Bluetooth bağlantısı kesildi.');
+                        // Listeleri güncelle
+                        renderDeviceList(data.alsa_devices || []);
+                        renderBluetoothList(data.bluetooth_devices || []);
+                    } else {
+                        alert('Hata: ' + (data.error || data.message || 'Bağlantı kesilemedi.'));
+                    }
+                },
+                error: function(xhr) {
+                     hideLoadingFeedback();
+                     let errorMsg = 'Bilinmeyen bir sunucu hatası oluştu.';
+                     if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; }
+                     alert(`Hata: ${errorMsg}`);
+                }
+            });
         }
 
-        $.ajax({
-            url: '/api/set-output-device', // Backend endpoint'i
-            type: 'POST',
-            contentType: 'application/json',
-            // device_index yerine device_name gönder
-            data: JSON.stringify({ device_name: deviceName }),
-            success: function(data) {
-                if (data.success) {
-                    alert('Çıkış cihazı başarıyla değiştirildi! Raspotify yeniden başlatıldı.');
-                    // Sayfayı yeniden yüklemek yerine listeyi güncelleyelim
-                    // API yanıtından gelen güncel cihaz listesini kullan
-                    renderDeviceList(data.devices || []);
-                } else {
-                    alert('Hata: ' + (data.error || 'Bilinmeyen bir hata oluştu.'));
-                }
-            },
-            error: function(xhr) {
-                 let errorMsg = 'Bilinmeyen bir sunucu hatası oluştu.';
-                 if(xhr.responseJSON && xhr.responseJSON.error){
-                     errorMsg = xhr.responseJSON.error;
-                 }
-                 console.error("Error setting output device:", xhr); // Konsola detaylı hata yazdır
-                 alert(`Hata: ${errorMsg}`);
+        // ALSA çıkış cihazını ayarlama
+        function setOutputDevice(deviceName) {
+            console.log("Setting output device to:", deviceName);
+            if (!confirm(`"${deviceName}" cihazını seçmek Raspotify servisini yeniden başlatacak ve kısa bir kesinti olabilir. Emin misiniz?`)) {
+                 return;
             }
-        });
-    }
-    // ALSA cihaz listesini API'den çekip güncelleyen fonksiyon
-    function refreshOutputDeviceList() {
-        const listElement = $('#output-devices-list');
-        listElement.html('<p class="text-muted">Yenileniyor...</p>'); // Yükleniyor göstergesi
-
-        $.get('/api/output-devices', function(data) {
-             renderDeviceList(data.devices || []); // Gelen veriyi render fonksiyonuna gönder
-        }).fail(function(xhr) {
-             console.error("Error fetching output devices:", xhr);
-             listElement.html('<p class="text-danger">Cihaz listesi alınamadı (API Hatası).</p>');
-        });
-    }
-
-    // Verilen cihaz listesini HTML olarak render eden fonksiyon
-     function renderDeviceList(devices) {
-        const listElement = $('#output-devices-list');
-        let html = '';
-        if (devices && devices.length > 0) {
-            // Backend'den gelen is_default bilgisine göre aktif cihazı belirle
-            let currentActiveDeviceName = null; 
-            devices.forEach(device => {
-                 if (device.is_default) {
-                     currentActiveDeviceName = device.name;
-                 }
+            showLoadingFeedback(`Çıkış cihazı (${deviceName}) ayarlanıyor ve servis yeniden başlatılıyor...`);
+            $.ajax({
+                url: '/api/set-output-device',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ device_name: deviceName }),
+                success: function(data) {
+                    hideLoadingFeedback();
+                    if (data.success) {
+                        alert(data.message || 'Çıkış cihazı başarıyla değiştirildi!');
+                        renderDeviceList(data.devices || []); // Yanıttan gelen güncel listeyi render et
+                    } else {
+                        alert('Hata: ' + (data.error || 'Bilinmeyen bir hata oluştu.'));
+                    }
+                },
+                error: function(xhr) {
+                     hideLoadingFeedback();
+                     let errorMsg = 'Bilinmeyen bir sunucu hatası oluştu.';
+                     if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; }
+                     console.error("Error setting output device:", xhr);
+                     alert(`Hata: ${errorMsg}`);
+                }
             });
-
-            devices.forEach(device => {
-                let isActive = device.name === currentActiveDeviceName;
-                let activeClass = isActive ? 'active-device bg-success text-white' : '';
-                let buttonHtml = !isActive
-                    ? `<button onclick="setOutputDevice('${device.name}')" class="btn btn-sm btn-outline-primary">Seç</button>`
-                    : '<span class="badge badge-light">Aktif</span>';
-
-                html += `
-                <div class="device-card mb-2 p-2 border rounded ${activeClass}">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <strong>${device.description}</strong><br>
-                            <small>(${device.name}) - [${device.type}]</small>
-                        </div>
-                        ${buttonHtml}
-                    </div>
-                </div>`;
-            });
-        } else {
-            html = '<p class="text-muted">ALSA çıkış cihazı bulunamadı veya listelenemedi.</p>';
         }
-        listElement.html(html);
-     }
+
+        // ALSA cihaz listesini API'den çekip güncelleyen fonksiyon
+        function refreshOutputDeviceList() {
+            const listElement = $('#output-devices-list');
+            listElement.html('<p class="text-muted">Yenileniyor...</p>');
+            $.get('/api/output-devices', function(data) {
+                 renderDeviceList(data.devices || []); // Gelen veriyi render fonksiyonuna gönder
+            }).fail(function(xhr) {
+                 console.error("Error fetching output devices:", xhr);
+                 listElement.html('<p class="text-danger">ALSA cihaz listesi alınamadı (API Hatası).</p>');
+            });
+        }
+
+        // Verilen ALSA cihaz listesini HTML olarak render eden fonksiyon
+         function renderDeviceList(devices) {
+            const listElement = $('#output-devices-list');
+            let html = '';
+            if (devices && devices.length > 0) {
+                let currentActiveDeviceName = null;
+                devices.forEach(device => { if (device.is_default) { currentActiveDeviceName = device.name; } });
+
+                devices.forEach(device => {
+                    let isActive = device.name === currentActiveDeviceName;
+                    let activeClass = isActive ? 'active-device' : ''; // Arka planı JS ile değil CSS ile yönetelim
+                    let buttonHtml = !isActive
+                        ? `<button onclick="setOutputDevice('${device.name}')" class="btn btn-sm btn-outline-primary ml-2" style="white-space: nowrap;">Seç</button>`
+                        : '<span class="badge badge-success ml-2">Aktif</span>';
+
+                    html += `
+                    <div class="device-card mb-2 p-2 border rounded ${activeClass}">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div style="min-width: 0;">
+                                <strong class="d-block text-truncate">${device.description}</strong>
+                                <small class="text-muted d-block text-truncate">(${device.name}) - [${device.type}]</small>
+                            </div>
+                            ${buttonHtml}
+                        </div>
+                    </div>`;
+                });
+            } else {
+                html = '<p class="text-muted text-center">ALSA çıkış cihazı bulunamadı veya listelenemedi.</p>';
+            }
+            listElement.html(html);
+         }
+
+         // Verilen Bluetooth cihaz listesini HTML olarak render eden fonksiyon
+         function renderBluetoothList(devices) {
+             const listElement = $('#bluetooth-list');
+             let html = '';
+             if (devices && devices.length > 0) {
+                 devices.forEach(device => {
+                     let connectBtnClass = device.connected ? 'btn-outline-danger' : 'btn-success';
+                     let connectBtnText = device.connected ? 'Bağlantıyı Kes' : 'Bağlan';
+                     let connectAction = device.connected ? `disconnectDevice('${device.mac_address}')` : `pairDevice('${device.mac_address}')`;
+                     let activeClass = device.connected ? 'active-device' : ''; // Bağlıysa vurgula
+
+                     html += `
+                     <div class="device-card mb-2 p-2 border rounded ${activeClass}">
+                         <div class="d-flex justify-content-between align-items-center">
+                             <div style="min-width: 0;">
+                                 <strong class="d-block text-truncate">${device.name}</strong>
+                                 <small class="text-muted">${device.mac_address} ${device.connected ? '<span class="badge badge-success ml-1">Bağlı</span>' : ''}</small>
+                             </div>
+                             <button onclick="${connectAction}"
+                                     class="btn btn-sm ${connectBtnClass} ml-2" style="white-space: nowrap;">
+                                 ${connectBtnText}
+                             </button>
+                         </div>
+                     </div>`;
+                 });
+             } else {
+                 html = '<p class="text-muted text-center">Bilinen Bluetooth cihazı bulunamadı.</p>';
+             }
+             listElement.html(html);
+         }
+
+        // Basit yükleniyor göstergesi (opsiyonel)
+        function showLoadingFeedback(message = "İşlem yapılıyor...") {
+            // Örneğin, sayfanın üstüne bir div ekleyip gösterebilirsiniz
+            // $('body').prepend(`<div id="loading-indicator" class="alert alert-info">${message}</div>`);
+            console.log("Loading:", message); // Şimdilik konsola yazalım
+        }
+        function hideLoadingFeedback() {
+             // $('#loading-indicator').remove();
+             console.log("Loading finished.");
+        }
 
 
-    // Sayfa yüklendiğinde ALSA listesini otomatik yükle
-    $(document).ready(function() {
-        refreshOutputDeviceList();
-        // scanBluetooth(); // Başlangıçta BT taraması yapmak isterseniz
-    });
+        // Sayfa yüklendiğinde ALSA listesini ve BT listesini otomatik yükle
+        $(document).ready(function() {
+            refreshOutputDeviceList();
+            scanBluetooth(); // Başlangıçta BT taraması yap
+        });
     </script>
+
 </body>
 </html>
