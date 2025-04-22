@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 
 class AudioManager:
-    """ALSA ve Raspotify ile ses cihazlarını yöneten sınıf."""
+    """ALSA, PulseAudio ve Bluetooth ile ses cihazlarını yöneten sınıf."""
 
     @staticmethod
     def _ensure_config_dir_exists():
@@ -61,176 +61,313 @@ class AudioManager:
         return True
 
     @staticmethod
-    def get_output_devices():
-        """Mevcut ALSA ses çıkış cihazlarını (DAC ve bluealsa) getirir."""
+    def get_alsa_devices():
+        """Mevcut ALSA ses çıkış cihazlarını (DAC ve bluealsa dahil) getirir."""
         devices = []
         try:
+            # 'aplay -L' komutunu çalıştırarak ALSA cihazlarını listele
             result = subprocess.run(['aplay', '-L'], capture_output=True, text=True, check=True, timeout=10)
             alsa_device_name = None
             description = None
+            # Komut çıktısını satır satır işle
             for line in result.stdout.splitlines():
                 line = line.strip()
+                # Cihaz adını belirle (boşlukla başlamayan, null/default olmayan satırlar)
                 if line and not line[0].isspace() and line != 'null' and not line.startswith('-') and line != 'default':
+                    # Bir önceki cihazın bilgilerini işlemişsek listeye ekle
                     if alsa_device_name and description:
                         device_type = 'other'
+                        # Cihaz türünü belirle (DAC, Bluetooth, Diğer)
                         if DAC_IDENTIFIER and DAC_IDENTIFIER.lower() in description.lower(): device_type = 'dac'
                         elif 'bluealsa' in alsa_device_name.lower(): device_type = 'bluetooth'
                         devices.append({'name': alsa_device_name, 'description': description.split(',')[0].strip(), 'type': device_type})
+                    # Yeni cihaz adını ve açıklamasını sıfırla
                     alsa_device_name = line
                     description = None
+                # Cihaz açıklamasını belirle (boşlukla başlayan satırlar)
                 elif alsa_device_name and line and line[0].isspace():
                     if description is None: description = line.strip()
+
+            # Döngü bittikten sonra son cihazı da listeye ekle
             if alsa_device_name and description and alsa_device_name != 'null' and alsa_device_name != 'default':
                 device_type = 'other'
                 if DAC_IDENTIFIER and DAC_IDENTIFIER.lower() in description.lower(): device_type = 'dac'
                 elif 'bluealsa' in alsa_device_name.lower(): device_type = 'bluetooth'
                 devices.append({'name': alsa_device_name, 'description': description.split(',')[0].strip(), 'type': device_type})
 
+            # Bluealsa cihazlarının açıklamalarını Bluetooth adlarıyla güncelle
             for device in devices:
-                 if device['type'] == 'bluetooth':
+                if device['type'] == 'bluetooth':
                     try:
+                        # Bluealsa cihaz adından MAC adresini çıkar
                         match = re.search(r'DEV=([0-9A-Fa-f:]+)', device['name'])
                         mac = match.group(1) if match else None
                         friendly_name = f"BT Cihazı ({mac})" if mac else "Bluetooth Cihazı"
                         if mac:
-                             try:
-                                 info_result = subprocess.run(['bluetoothctl', 'info', mac], capture_output=True, text=True, timeout=5)
-                                 if info_result.returncode == 0:
-                                     name_match = re.search(r'Name:\s*(.*)', info_result.stdout)
-                                     alias_match = re.search(r'Alias:\s*(.*)', info_result.stdout)
-                                     bt_name = alias_match.group(1).strip() if alias_match else (name_match.group(1).strip() if name_match else None)
-                                     if bt_name: friendly_name = f"BT: {bt_name}"
-                             except Exception as bt_err: logger.warning(f"Bluetooth cihaz adı alınamadı ({mac}): {bt_err}")
+                            try:
+                                # bluetoothctl ile cihazın adını/alias'ını al
+                                info_result = subprocess.run(['bluetoothctl', 'info', mac], capture_output=True, text=True, timeout=5)
+                                if info_result.returncode == 0:
+                                    name_match = re.search(r'Name:\s*(.*)', info_result.stdout)
+                                    alias_match = re.search(r'Alias:\s*(.*)', info_result.stdout)
+                                    # Alias varsa onu, yoksa Name'i kullan
+                                    bt_name = alias_match.group(1).strip() if alias_match else (name_match.group(1).strip() if name_match else None)
+                                    if bt_name: friendly_name = f"BT: {bt_name}"
+                            except Exception as bt_err: logger.warning(f"Bluetooth cihaz adı alınamadı ({mac}): {bt_err}")
                         device['description'] = friendly_name
                     except Exception as e:
                         logging.warning(f"Bluealsa cihaz adı ayrıştırılırken hata: {e}")
                         device['description'] = device.get('description', "Bluetooth Cihazı")
 
+            # Raspotify tarafından kullanılan mevcut ALSA cihazını işaretle
             current_target_device = AudioManager.get_current_librespot_device()
             for device in devices: device['is_default'] = (device['name'] == current_target_device)
+
             logger.info(f"Bulunan ALSA cihazları: {len(devices)} adet")
             return devices
         except FileNotFoundError: logging.error("ALSA komutu 'aplay' bulunamadı. ALSA utils kurulu mu?"); return []
         except subprocess.CalledProcessError as e: logging.error(f"ALSA cihazları listelenirken hata ('aplay -L'): {e.stderr}"); return []
         except subprocess.TimeoutExpired: logging.error("ALSA cihazları listelenirken zaman aşımı ('aplay -L')."); return []
-        except Exception as e: logging.error(f"Ses çıkış cihazları listelenirken genel hata: {e}", exc_info=True); return []
+        except Exception as e: logging.error(f"ALSA çıkış cihazları listelenirken genel hata: {e}", exc_info=True); return []
+
+    @staticmethod
+    def get_pulseaudio_sinks():
+        """Mevcut PulseAudio sink'lerini (çıkışlarını) listeler."""
+        sinks = []
+        try:
+            # 'pactl list sinks short' komutu ile PulseAudio sink'lerini al
+            result = subprocess.run(['pactl', 'list', 'sinks', 'short'], capture_output=True, text=True, check=True, timeout=5)
+            # Komut çıktısını satır satır işle
+            for line in result.stdout.splitlines():
+                parts = line.strip().split('\t')
+                if len(parts) >= 5:
+                    try:
+                        # Gerekli bilgileri (index, name, description, state) çıkar
+                        sink_index = int(parts[0])
+                        sink_name = parts[1]
+                        # Açıklamayı almak için 'pactl list sinks' komutunu kullan (daha detaylı)
+                        desc_result = subprocess.run(['pactl', 'list', 'sinks'], capture_output=True, text=True, check=True, timeout=5)
+                        desc_match = re.search(rf'Sink #{sink_index}.*?Description:\s*(.*?)\n', desc_result.stdout, re.DOTALL)
+                        description = desc_match.group(1).strip() if desc_match else sink_name # Açıklama yoksa adı kullan
+                        state = parts[4] # RUNNING, IDLE, SUSPENDED
+                        sinks.append({
+                            'index': sink_index,
+                            'name': sink_name,
+                            'description': description,
+                            'state': state
+                        })
+                    except ValueError:
+                        logger.warning(f"PulseAudio sink satırı ayrıştırılamadı (geçersiz index?): {line}")
+                    except Exception as detail_err:
+                         logger.warning(f"PulseAudio sink detayı alınırken hata (Sink {parts[0]}): {detail_err}")
+                         # Detay alınamasa bile temel bilgiyi ekle
+                         if len(parts) >= 5:
+                            sinks.append({
+                                'index': parts[0], # Index'i string olarak tut
+                                'name': parts[1],
+                                'description': parts[1], # Açıklama yerine adı kullan
+                                'state': parts[4]
+                            })
+
+            logger.info(f"Bulunan PulseAudio sink'leri: {len(sinks)} adet")
+            return sinks
+        except FileNotFoundError: logging.error("PulseAudio komutu 'pactl' bulunamadı. PulseAudio kurulu ve çalışıyor mu?"); return []
+        except subprocess.CalledProcessError as e: logging.error(f"PulseAudio sink'leri listelenirken hata ('pactl list sinks short'): {e.stderr}"); return []
+        except subprocess.TimeoutExpired: logging.error("PulseAudio sink'leri listelenirken zaman aşımı."); return []
+        except Exception as e: logging.error(f"PulseAudio sink'leri listelenirken genel hata: {e}", exc_info=True); return []
 
     @staticmethod
     def get_current_librespot_device():
         """Raspotify yapılandırma dosyasından mevcut LIBRESPOT_DEVICE değerini okur."""
+        # Dizin var mı kontrol et
         if not os.path.exists(os.path.dirname(RASPOTIFY_CONFIG_FILE)):
-             logger.warning(f"Raspotify yapılandırma dizini mevcut değil: {os.path.dirname(RASPOTIFY_CONFIG_FILE)}"); return None
+            logger.warning(f"Raspotify yapılandırma dizini mevcut değil: {os.path.dirname(RASPOTIFY_CONFIG_FILE)}"); return None
+        # Dosya var mı kontrol et
         if not os.path.exists(RASPOTIFY_CONFIG_FILE):
             logger.warning(f"Raspotify yapılandırma dosyası bulunamadı: {RASPOTIFY_CONFIG_FILE}"); return None
         try:
+            # Dosyayı aç ve satırları oku
             with open(RASPOTIFY_CONFIG_FILE, 'r') as f:
                 for line in f:
+                    # 'LIBRESPOT_DEVICE=' ile başlayan ve yorum olmayan satırı bul
                     if line.strip().startswith('LIBRESPOT_DEVICE=') and not line.strip().startswith('#'):
+                        # Değeri al (tırnak işaretlerini kaldır)
                         value = line.split('=', 1)[1].strip()
-                        if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")): value = value[1:-1]
+                        if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
+                            value = value[1:-1]
                         logger.debug(f"Mevcut Raspotify cihazı bulundu: {value}"); return value
+            # Satır bulunamazsa logla
             logger.info(f"Aktif (yorumlanmamış) LIBRESPOT_DEVICE satırı bulunamadı: {RASPOTIFY_CONFIG_FILE}"); return None
-        except Exception as e: logger.error(f"Raspotify yapılandırması ({RASPOTIFY_CONFIG_FILE}) okunurken hata: {e}", exc_info=True); return None
+        except Exception as e:
+            logger.error(f"Raspotify yapılandırması ({RASPOTIFY_CONFIG_FILE}) okunurken hata: {e}", exc_info=True); return None
 
     @staticmethod
     def set_librespot_device(device_name):
         """Raspotify yapılandırma dosyasını günceller ve servisi yeniden başlatır."""
-        if not AudioManager._ensure_config_dir_exists(): return False, f"Yapılandırma dizini oluşturulamadı/erişilemedi: {os.path.dirname(RASPOTIFY_CONFIG_FILE)}"
+        # Yapılandırma dizininin var olduğundan emin ol
+        if not AudioManager._ensure_config_dir_exists():
+            return False, f"Yapılandırma dizini oluşturulamadı/erişilemedi: {os.path.dirname(RASPOTIFY_CONFIG_FILE)}"
         try:
             logging.info(f"Raspotify çıkış cihazı {device_name} olarak ayarlanıyor...")
             lines = []
+            # Mevcut yapılandırma dosyasını oku (varsa)
             if os.path.exists(RASPOTIFY_CONFIG_FILE):
                 try:
                     with open(RASPOTIFY_CONFIG_FILE, 'r') as f: lines = f.readlines()
-                except Exception as read_err: logger.error(f"Mevcut Raspotify yapılandırma dosyası okunamadı ({RASPOTIFY_CONFIG_FILE}): {read_err}"); return False, f"Mevcut yapılandırma dosyası okunamadı: {read_err}"
-            else: logger.info(f"Raspotify yapılandırma dosyası mevcut değil, yeni oluşturulacak: {RASPOTIFY_CONFIG_FILE}")
+                except Exception as read_err:
+                    logger.error(f"Mevcut Raspotify yapılandırma dosyası okunamadı ({RASPOTIFY_CONFIG_FILE}): {read_err}")
+                    return False, f"Mevcut yapılandırma dosyası okunamadı: {read_err}"
+            else:
+                logger.info(f"Raspotify yapılandırma dosyası mevcut değil, yeni oluşturulacak: {RASPOTIFY_CONFIG_FILE}")
 
             new_lines = []; found_and_updated = False; config_line = f'LIBRESPOT_DEVICE="{device_name}"\n'
+            # Satırları işle, LIBRESPOT_DEVICE satırını güncelle/ekle
             for line in lines:
                 stripped_line = line.strip()
+                # LIBRESPOT_DEVICE satırını bul (yorumlu veya yorumsuz)
                 if stripped_line.startswith('LIBRESPOT_DEVICE=') or stripped_line.startswith('#LIBRESPOT_DEVICE='):
+                    # Eğer bu ilk bulduğumuz satırsa ve güncellenmediyse
                     if not found_and_updated:
+                        # Mevcut değeri kontrol et, zaten aynıysa ve aktifse dokunma
                         current_val_match = re.match(r'^#?LIBRESPOT_DEVICE=(["\']?)(.*)\1$', stripped_line)
                         if current_val_match and current_val_match.group(2) == device_name and not stripped_line.startswith('#'):
                             new_lines.append(line); logger.info(f"LIBRESPOT_DEVICE zaten '{device_name}' olarak ayarlı.")
-                        else: new_lines.append(config_line); logger.info(f"'{line.strip()}' satırı şununla değiştirildi/aktifleştirildi: '{config_line.strip()}'")
+                        else:
+                            # Yeni yapılandırma satırını ekle
+                            new_lines.append(config_line); logger.info(f"'{line.strip()}' satırı şununla değiştirildi/aktifleştirildi: '{config_line.strip()}'")
                         found_and_updated = True
                     else:
-                         if not stripped_line.startswith('#'): new_lines.append(f"# {line.strip()}\n"); logging.warning(f"Ekstra LIBRESPOT_DEVICE satırı yorumlandı: {line.strip()}")
-                         else: new_lines.append(line)
-                else: new_lines.append(line)
+                        # Birden fazla LIBRESPOT_DEVICE satırı varsa, sonrakileri yorumla
+                        if not stripped_line.startswith('#'):
+                            new_lines.append(f"# {line.strip()}\n"); logging.warning(f"Ekstra LIBRESPOT_DEVICE satırı yorumlandı: {line.strip()}")
+                        else:
+                            new_lines.append(line) # Zaten yorumluysa dokunma
+                else:
+                    # Diğer satırları olduğu gibi ekle
+                    new_lines.append(line)
+
+            # Eğer LIBRESPOT_DEVICE satırı hiç bulunamadıysa, sona ekle
             if not found_and_updated:
                 logger.info(f"LIBRESPOT_DEVICE satırı dosyada bulunamadı, sona ekleniyor.")
-                if lines and not lines[-1].strip() == "": new_lines.append("\n")
+                if lines and not lines[-1].strip() == "": new_lines.append("\n") # Önceki satır boş değilse boşluk ekle
                 new_lines.append("# Sound Device Selection (managed by web interface)\n"); new_lines.append(config_line)
 
+            # Yeni yapılandırma içeriğini oluştur ve sudo tee ile dosyaya yaz
             temp_config_content = "".join(new_lines); tee_cmd = ['sudo', 'tee', RASPOTIFY_CONFIG_FILE]
             logger.info(f"Komut çalıştırılıyor: echo '...' | {' '.join(tee_cmd)}")
             try:
                 process = subprocess.Popen(tee_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 stdout, stderr = process.communicate(input=temp_config_content, timeout=10)
+                # Yazma hatasını kontrol et
                 if process.returncode != 0:
-                     if 'permission denied' in stderr.lower(): logger.error(f"Raspotify yapılandırma dosyası yazılamadı ({RASPOTIFY_CONFIG_FILE}): İzin hatası..."); return False, f"Yapılandırma dosyası yazılamadı: İzin Hatası..."
-                     else: logger.error(f"Raspotify yapılandırma dosyası yazılamadı ({RASPOTIFY_CONFIG_FILE}): {stderr}"); return False, f"Yapılandırma dosyası güncellenemedi: {stderr}"
-            except subprocess.TimeoutExpired: logger.error(f"Raspotify yapılandırma dosyası yazılırken zaman aşımı (sudo tee)."); return False, "Yapılandırma dosyası yazılırken zaman aşımı."
-            except FileNotFoundError: logger.error(f"Komut bulunamadı: 'sudo'."); return False, "'sudo' komutu bulunamadı."
+                    if 'permission denied' in stderr.lower():
+                        logger.error(f"Raspotify yapılandırma dosyası yazılamadı ({RASPOTIFY_CONFIG_FILE}): İzin hatası (sudo yetkisi?)")
+                        return False, f"Yapılandırma dosyası yazılamadı: İzin Hatası (sudo yetkisi?)"
+                    else:
+                        logger.error(f"Raspotify yapılandırma dosyası yazılamadı ({RASPOTIFY_CONFIG_FILE}): {stderr}")
+                        return False, f"Yapılandırma dosyası güncellenemedi: {stderr}"
+            except subprocess.TimeoutExpired:
+                logger.error(f"Raspotify yapılandırma dosyası yazılırken zaman aşımı (sudo tee)."); return False, "Yapılandırma dosyası yazılırken zaman aşımı."
+            except FileNotFoundError:
+                logger.error(f"Komut bulunamadı: 'sudo'. sudo kurulu ve PATH içinde mi?"); return False, "'sudo' komutu bulunamadı."
 
             logging.info(f"Yapılandırma dosyası başarıyla güncellendi: {RASPOTIFY_CONFIG_FILE}")
+
+            # Raspotify servisini yeniden başlat
             restart_cmd = ['sudo', 'systemctl', 'restart', RASPOTIFY_SERVICE_NAME]
             logging.info(f"Komut çalıştırılıyor: {' '.join(restart_cmd)}")
             try:
                 result = subprocess.run(restart_cmd, capture_output=True, text=True, check=True, timeout=20)
-                logging.info(f"Raspotify servisi başarıyla yeniden başlatıldı."); time.sleep(3); return True, f"Raspotify çıkış cihazı {device_name} olarak ayarlandı ve servis yeniden başlatıldı."
-            except FileNotFoundError: logger.error(f"Komut bulunamadı: 'systemctl'."); return False, "'systemctl' komutu bulunamadı."
+                logging.info(f"Raspotify servisi başarıyla yeniden başlatıldı."); time.sleep(3); # Servisin başlaması için kısa bekleme
+                return True, f"Raspotify çıkış cihazı {device_name} olarak ayarlandı ve servis yeniden başlatıldı."
+            except FileNotFoundError:
+                logger.error(f"Komut bulunamadı: 'systemctl'. Sistem systemd kullanıyor mu?"); return False, "'systemctl' komutu bulunamadı."
             except subprocess.CalledProcessError as e:
                 logger.error(f"Raspotify servisi yeniden başlatılamadı ({RASPOTIFY_SERVICE_NAME}): {e.stderr}")
+                # Hata mesajına göre daha spesifik geri bildirim ver
                 if 'not found' in e.stderr.lower(): return False, f"Raspotify servisi bulunamadı: {RASPOTIFY_SERVICE_NAME}."
-                elif 'masked' in e.stderr.lower(): return False, f"Raspotify servisi maskelenmiş: {RASPOTIFY_SERVICE_NAME}..."
+                elif 'masked' in e.stderr.lower(): return False, f"Raspotify servisi maskelenmiş: {RASPOTIFY_SERVICE_NAME}. 'sudo systemctl unmask {RASPOTIFY_SERVICE_NAME}' deneyin."
                 else: return False, f"Raspotify servisi yeniden başlatılamadı: {e.stderr}"
-            except subprocess.TimeoutExpired: logger.error(f"Raspotify servisi yeniden başlatılırken zaman aşımı."); return False, "Raspotify servisi yeniden başlatılırken zaman aşımı."
-        except Exception as e: logger.error(f"Raspotify cihazı ayarlanırken hata: {str(e)}", exc_info=True); return False, f"Beklenmedik hata: {str(e)}"
+            except subprocess.TimeoutExpired:
+                logger.error(f"Raspotify servisi yeniden başlatılırken zaman aşımı."); return False, "Raspotify servisi yeniden başlatılırken zaman aşımı."
+        except Exception as e:
+            logger.error(f"Raspotify cihazı ayarlanırken hata: {str(e)}", exc_info=True); return False, f"Beklenmedik hata: {str(e)}"
 
     @staticmethod
     def scan_bluetooth_devices():
-        """Kullanılabilir (bilinen) bluetooth cihazlarını listeler."""
+        """Eşleştirilmiş Bluetooth cihazlarını listeler ve bağlantı durumlarını kontrol eder."""
+        devices = []
         try:
-            result = subprocess.run(['bluetoothctl', 'devices'], capture_output=True, text=True, check=True, timeout=10)
-            devices = []
-            for line in result.stdout.splitlines():
+            # 'bluetoothctl paired-devices' komutu ile eşleştirilmiş cihazları al
+            paired_result = subprocess.run(['bluetoothctl', 'paired-devices'], capture_output=True, text=True, check=True, timeout=10)
+            # Çıktıyı işle
+            for line in paired_result.stdout.splitlines():
                 if line.startswith("Device"):
                     parts = line.strip().split(' ', 2)
                     if len(parts) >= 3:
+                        mac_address = parts[1]
+                        device_name = parts[2] # Bu genellikle alias veya addır
                         is_connected = False
+                        alias = device_name # Başlangıçta alias'ı isim olarak al
                         try:
-                             info_result = subprocess.run(['bluetoothctl', 'info', parts[1]], capture_output=True, text=True, timeout=5)
-                             if info_result.returncode == 0 and 'Connected: yes' in info_result.stdout: is_connected = True
-                        except Exception: pass
-                        devices.append({'mac_address': parts[1], 'name': parts[2], 'type': 'bluetooth', 'connected': is_connected})
-            logger.info(f"Bluetooth cihazları listelendi: {len(devices)} adet"); return devices
+                            # Her cihaz için 'bluetoothctl info' komutunu çalıştır
+                            info_result = subprocess.run(['bluetoothctl', 'info', mac_address], capture_output=True, text=True, timeout=5)
+                            if info_result.returncode == 0:
+                                # Bağlantı durumunu kontrol et
+                                if 'Connected: yes' in info_result.stdout:
+                                    is_connected = True
+                                # Alias'ı bulmaya çalış
+                                alias_match = re.search(r'Alias:\s*(.*)', info_result.stdout)
+                                if alias_match:
+                                    alias = alias_match.group(1).strip()
+                        except Exception as info_err:
+                            logger.warning(f"Bluetooth cihaz bilgisi alınamadı ({mac_address}): {info_err}")
+
+                        devices.append({
+                            'mac_address': mac_address,
+                            'name': alias, # Kullanıcı arayüzünde göstermek için alias'ı kullan
+                            'type': 'bluetooth',
+                            'connected': is_connected
+                        })
+            logger.info(f"Eşleştirilmiş Bluetooth cihazları listelendi: {len(devices)} adet")
+            return devices
         except FileNotFoundError: logger.error("Komut bulunamadı: 'bluetoothctl'. Bluez yüklü mü?"); return []
-        except subprocess.CalledProcessError as e: logger.error(f"Bluetooth cihazları listelenirken hata: {e.stderr}"); return []
-        except subprocess.TimeoutExpired: logger.error(f"Bluetooth cihazları listelenirken zaman aşımı."); return []
-        except Exception as e: logger.error(f"Bluetooth cihazları listelenirken genel hata: {e}", exc_info=True); return []
+        except subprocess.CalledProcessError as e: logger.error(f"Eşleştirilmiş Bluetooth cihazları listelenirken hata: {e.stderr}"); return []
+        except subprocess.TimeoutExpired: logger.error(f"Eşleştirilmiş Bluetooth cihazları listelenirken zaman aşımı."); return []
+        except Exception as e: logger.error(f"Eşleştirilmiş Bluetooth cihazları listelenirken genel hata: {e}", exc_info=True); return []
 
     @staticmethod
     def pair_bluetooth_device(mac_address):
         """Belirtilen MAC adresine sahip bluetooth cihazını eşleştirir ve bağlar."""
         try:
             logging.info(f"Bluetooth cihazı {mac_address} eşleştiriliyor/bağlanıyor...")
+            # Bağlantıyı kesmeyi dene (zaten bağlıysa hata vermemesi için)
             try: subprocess.run(['bluetoothctl', 'disconnect', mac_address], capture_output=True, text=True, timeout=5)
             except Exception: pass
+            time.sleep(1) # Kısa bekleme
+
+            # Cihazı güvenilir yap
             trust_cmd = subprocess.run(['bluetoothctl', 'trust', mac_address], capture_output=True, text=True, timeout=10)
-            if trust_cmd.returncode != 0: logging.warning(f"Cihaz güvenilir yapılamadı (zaten olabilir veya hata): {trust_cmd.stderr}")
-            connect_cmd = subprocess.run(['bluetoothctl', 'connect', mac_address], capture_output=True, text=True, timeout=30)
-            if connect_cmd.returncode == 0 and 'Connection successful' in connect_cmd.stdout.lower():
-                logging.info(f"Bluetooth cihazı başarıyla bağlandı: {mac_address}"); time.sleep(3); return True
+            if trust_cmd.returncode != 0:
+                # Zaten güvenilir olabilir, uyarı olarak logla
+                logging.warning(f"Cihaz güvenilir yapılamadı (zaten olabilir veya hata): {trust_cmd.stderr}")
+
+            # Cihaza bağlanmayı dene
+            connect_cmd = subprocess.run(['bluetoothctl', 'connect', mac_address], capture_output=True, text=True, timeout=30) # Bağlantı süresi uzun olabilir
+            # Bağlantı başarılı mı kontrol et
+            if connect_cmd.returncode == 0 and ('Connection successful' in connect_cmd.stdout.lower() or 'already connected' in connect_cmd.stderr.lower()):
+                logging.info(f"Bluetooth cihazı başarıyla bağlandı: {mac_address}"); time.sleep(3); # Bluealsa'nın aktifleşmesi için bekle
+                return True
             else:
+                # İlk deneme başarısızsa, hatayı logla ve tekrar dene (bazen gerekli olabilir)
                 logging.warning(f"İlk bağlantı denemesi başarısız ({mac_address}), tekrar deneniyor... Hata: {connect_cmd.stderr}"); time.sleep(3)
                 connect_cmd = subprocess.run(['bluetoothctl', 'connect', mac_address], capture_output=True, text=True, timeout=30)
-                if connect_cmd.returncode == 0 and 'Connection successful' in connect_cmd.stdout.lower():
+                if connect_cmd.returncode == 0 and ('Connection successful' in connect_cmd.stdout.lower() or 'already connected' in connect_cmd.stderr.lower()):
                      logging.info(f"Bluetooth cihazı ikinci denemede başarıyla bağlandı: {mac_address}"); time.sleep(3); return True
                 else:
+                     # İkinci deneme de başarısızsa, hatayı logla ve başarısız dön
                      logging.error(f"Bluetooth cihazı bağlantı hatası ({mac_address}): {connect_cmd.stderr}")
+                     # Bağlantıyı kesmeyi tekrar dene (temizlik için)
                      subprocess.run(['bluetoothctl', 'disconnect', mac_address], capture_output=True, text=True, timeout=10); return False
         except FileNotFoundError: logger.error("Komut bulunamadı: 'bluetoothctl'. Bluez yüklü mü?"); return False
         except subprocess.TimeoutExpired: logger.error(f"Bluetooth işlemi ({mac_address}) sırasında zaman aşımı."); return False
@@ -241,12 +378,16 @@ class AudioManager:
         """Belirtilen MAC adresine sahip bluetooth cihazının bağlantısını keser."""
         try:
             logging.info(f"Bluetooth cihazı {mac_address} bağlantısı kesiliyor...")
+            # 'bluetoothctl disconnect' komutunu çalıştır
             cmd = subprocess.run(['bluetoothctl', 'disconnect', mac_address], capture_output=True, text=True, check=True, timeout=10)
-            logging.info(f"Bluetooth cihazı bağlantısı başarıyla kesildi: {mac_address}"); time.sleep(2); return True
+            logging.info(f"Bluetooth cihazı bağlantısı başarıyla kesildi: {mac_address}"); time.sleep(2); # Bluealsa'nın devre dışı kalması için bekle
+            return True
         except FileNotFoundError: logger.error("Komut bulunamadı: 'bluetoothctl'. Bluez yüklü mü?"); return False
         except subprocess.CalledProcessError as e:
              logger.error(f"Bluetooth bağlantısını kesme hatası ({mac_address}): {e.stderr}")
-             if 'not connected' in e.stderr.lower(): logging.info(f"Cihaz ({mac_address}) zaten bağlı değil."); return True
+             # Eğer zaten bağlı değilse, başarılı kabul et
+             if 'not connected' in e.stderr.lower():
+                 logging.info(f"Cihaz ({mac_address}) zaten bağlı değil."); return True
              return False
         except subprocess.TimeoutExpired: logger.error(f"Bluetooth bağlantısını kesme ({mac_address}) sırasında zaman aşımı."); return False
         except Exception as e: logger.error(f"Bluetooth cihazı bağlantısını kesme sırasında hata ({mac_address}): {e}", exc_info=True); return False
@@ -255,7 +396,7 @@ class AudioManager:
 app = Flask(__name__)
 # Güvenli bir anahtar kullanın, ortam değişkeninden almak en iyisidir
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'varsayilan_guvensiz_anahtar_lutfen_degistirin')
-app.jinja_env.globals['AudioManager'] = AudioManager
+app.jinja_env.globals['AudioManager'] = AudioManager # Template içinde kullanmak için
 
 # --- Global Değişkenler ---
 spotify_client = None               # Aktif Spotify istemcisi
@@ -273,14 +414,17 @@ def load_settings():
     default_settings = {
         'max_queue_length': 20,
         'max_user_requests': 5,
-        'active_device_id': None,
+        'active_device_id': None, # Bu artık Spotify Connect cihaz ID'si
         'active_genres': ALLOWED_GENRES[:5]
     }
     if os.path.exists(SETTINGS_FILE):
         try:
             with open(SETTINGS_FILE, 'r') as f:
                 loaded = json.load(f)
-                default_settings.update(loaded) # Varsayılanları koruyarak güncelle
+                # Sadece bilinen anahtarları güncelle, bilinmeyenleri silme
+                for key in default_settings:
+                    if key in loaded:
+                        default_settings[key] = loaded[key]
             logger.info(f"Ayarlar yüklendi: {SETTINGS_FILE}")
         except Exception as e:
              logger.error(f"Ayar dosyası ({SETTINGS_FILE}) okunamadı/bozuk, varsayılanlar kullanılıyor: {e}")
@@ -348,8 +492,6 @@ def get_spotify_client():
             token_info = new_token_info
             save_token(token_info)
         # Yeni bir istemci oluştur veya mevcut olanı doğrula
-        # Eğer global client varsa ve token hala geçerliyse onu kullanmayı deneyebiliriz,
-        # ama her seferinde yenisini oluşturmak daha basit olabilir.
         new_spotify_client = spotipy.Spotify(auth=token_info.get('access_token'))
         try:
             new_spotify_client.current_user() # İstemciyi test et
@@ -382,7 +524,7 @@ def admin_login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# --- Zaman Profili ve Öneri Fonksiyonları ---
+# --- Zaman Profili ve Öneri Fonksiyonları (Değişiklik Yok) ---
 def get_current_time_profile():
     """Mevcut saate göre zaman dilimi adını döndürür."""
     hour = time.localtime().tm_hour
@@ -495,12 +637,15 @@ def admin_panel():
     spotify_user = None
     currently_playing_info = None # Başlangıçta None
 
-    output_devices = AudioManager.get_output_devices()
+    # ALSA ve PulseAudio cihazlarını al (fonksiyonlar hata durumunda boş liste döner)
+    alsa_devices = AudioManager.get_alsa_devices()
+    pulseaudio_sinks = AudioManager.get_pulseaudio_sinks()
+    # Raspotify'nin kullandığı mevcut ALSA cihazını al
     current_active_alsa_device = AudioManager.get_current_librespot_device()
 
     if spotify:
         try:
-            # Cihazları al
+            # Spotify Connect Cihazlarını al
             result = spotify.devices()
             spotify_devices = result.get('devices', [])
             spotify_authenticated = True
@@ -557,19 +702,20 @@ def admin_panel():
     return render_template(
         'admin_panel.html',
         settings=settings,
-        devices=spotify_devices,
+        spotify_devices=spotify_devices, # Spotify Connect cihazları
         queue=song_queue,
         all_genres=ALLOWED_GENRES,
         spotify_authenticated=spotify_authenticated,
         spotify_user=session.get('spotify_user'),
-        active_device_id=settings.get('active_device_id'),
-        output_devices=output_devices,
-        current_active_alsa_device=current_active_alsa_device,
+        active_spotify_connect_device_id=settings.get('active_device_id'), # Ayarlardaki aktif Spotify cihazı
+        alsa_devices=alsa_devices, # ALSA cihaz listesi
+        pulseaudio_sinks=pulseaudio_sinks, # PulseAudio sink listesi
+        current_active_alsa_device=current_active_alsa_device, # Raspotify'nin kullandığı ALSA cihazı
         currently_playing_info=currently_playing_info, # Çalma bilgisini (is_playing dahil) gönder
         auto_advance_enabled=auto_advance_enabled # Otomatik ilerleme durumu
     )
 
-# --- YENİ Entegre Çalma Kontrol Rotaları ---
+# --- Çalma Kontrol Rotaları (Değişiklik Yok) ---
 
 @app.route('/player/pause')
 @admin_login_required
@@ -577,31 +723,25 @@ def player_pause():
     """Admin panelinden çalmayı duraklatır ve otomatik ilerlemeyi kapatır."""
     global auto_advance_enabled
     spotify = get_spotify_client()
-    active_device_id = settings.get('active_device_id') # Ayarlardan aktif cihazı al
+    active_spotify_connect_device_id = settings.get('active_device_id') # Ayarlardan aktif Spotify Connect cihazını al
 
     if not spotify:
         flash('Spotify bağlantısı yok!', 'danger')
         return redirect(url_for('admin_panel'))
 
-    # Aktif cihaz ID'si olmadan duraklatma genellikle çalışır ama belirtmek daha iyi
-    # if not active_device_id:
-    #     flash('Aktif Spotify Connect cihazı seçilmemiş!', 'warning')
-    #     return redirect(url_for('admin_panel'))
-
     try:
-        logger.info(f"Admin: Çalmayı duraklatma isteği (Cihaz: {active_device_id or 'Belirtilmedi'}).")
-        spotify.pause_playback(device_id=active_device_id) # ID belirtmek daha kesin sonuç verir
+        logger.info(f"Admin: Çalmayı duraklatma isteği (Cihaz: {active_spotify_connect_device_id or 'Belirtilmedi'}).")
+        spotify.pause_playback(device_id=active_spotify_connect_device_id) # ID belirtmek daha kesin sonuç verir
         auto_advance_enabled = False # Otomatik ilerlemeyi kapat
         logger.info("Admin: Otomatik sıraya geçiş DURAKLATILDI.")
         flash('Müzik duraklatıldı ve otomatik sıraya geçiş kapatıldı.', 'success')
     except spotipy.SpotifyException as e:
         logger.error(f"Spotify duraklatma hatası: {e}")
-        # Hata mesajlarını kullanıcıya göster
         if e.http_status == 401 or e.http_status == 403:
             flash('Spotify yetkilendirme hatası. Lütfen tekrar yetkilendirin.', 'danger')
             global spotify_client; spotify_client = None
             if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
-        elif e.http_status == 404: # Cihaz bulunamadı veya başka 404
+        elif e.http_status == 404:
              flash(f'Duraklatma hatası: Cihaz bulunamadı veya geçersiz istek ({e.msg})', 'warning')
         elif e.reason == 'NO_ACTIVE_DEVICE':
              flash('Aktif bir Spotify cihazı bulunamadı!', 'warning')
@@ -620,32 +760,25 @@ def player_resume():
     """Admin panelinden çalmayı sürdürür ve otomatik ilerlemeyi açar."""
     global auto_advance_enabled
     spotify = get_spotify_client()
-    active_device_id = settings.get('active_device_id') # Ayarlardan aktif cihazı al
+    active_spotify_connect_device_id = settings.get('active_device_id') # Ayarlardan aktif Spotify Connect cihazını al
 
     if not spotify:
         flash('Spotify bağlantısı yok!', 'danger')
         return redirect(url_for('admin_panel'))
 
-    # Aktif cihaz ID'si olmadan sürdürme genellikle çalışır ama belirtmek daha iyi
-    # if not active_device_id:
-    #     flash('Aktif Spotify Connect cihazı seçilmemiş!', 'warning')
-    #     return redirect(url_for('admin_panel'))
-
     try:
-        logger.info(f"Admin: Çalmayı sürdürme isteği (Cihaz: {active_device_id or 'Belirtilmedi'}).")
-        # start_playback URI olmadan çağrıldığında çalmayı sürdürür
-        spotify.start_playback(device_id=active_device_id) # ID belirtmek daha kesin sonuç verir
+        logger.info(f"Admin: Çalmayı sürdürme isteği (Cihaz: {active_spotify_connect_device_id or 'Belirtilmedi'}).")
+        spotify.start_playback(device_id=active_spotify_connect_device_id) # ID belirtmek daha kesin sonuç verir
         auto_advance_enabled = True # Otomatik ilerlemeyi aç
         logger.info("Admin: Otomatik sıraya geçiş SÜRDÜRÜLDÜ.")
         flash('Müzik sürdürüldü ve otomatik sıraya geçiş açıldı.', 'success')
     except spotipy.SpotifyException as e:
         logger.error(f"Spotify sürdürme/başlatma hatası: {e}")
-        # Hata mesajlarını kullanıcıya göster
         if e.http_status == 401 or e.http_status == 403:
             flash('Spotify yetkilendirme hatası. Lütfen tekrar yetkilendirin.', 'danger')
             global spotify_client; spotify_client = None
             if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
-        elif e.http_status == 404: # Cihaz bulunamadı veya başka 404
+        elif e.http_status == 404:
              flash(f'Sürdürme hatası: Cihaz bulunamadı veya geçersiz istek ({e.msg})', 'warning')
         elif e.reason == 'NO_ACTIVE_DEVICE':
              flash('Aktif bir Spotify cihazı bulunamadı!', 'warning')
@@ -674,13 +807,13 @@ def refresh_devices():
         active_spotify_connect_device = settings.get('active_device_id')
         if active_spotify_connect_device:
             if not any(d['id'] == active_spotify_connect_device for d in devices):
-                logger.warning(f"Aktif cihaz ({active_spotify_connect_device}) listede yok. Ayar temizleniyor.")
+                logger.warning(f"Aktif Spotify Connect cihazı ({active_spotify_connect_device}) listede yok. Ayar temizleniyor.")
                 settings['active_device_id'] = None; save_settings(settings)
-                flash('Ayarlarda kayıtlı aktif cihaz artık mevcut değil.', 'warning')
-        flash('Spotify cihaz listesi yenilendi.', 'info')
+                flash('Ayarlarda kayıtlı aktif Spotify Connect cihazı artık mevcut değil.', 'warning')
+        flash('Spotify Connect cihaz listesi yenilendi.', 'info')
     except Exception as e:
         logger.error(f"Spotify Connect Cihazlarını yenilerken hata: {e}")
-        flash('Cihaz listesi yenilenirken bir hata oluştu.', 'danger')
+        flash('Spotify Connect cihaz listesi yenilenirken bir hata oluştu.', 'danger')
         if isinstance(e, spotipy.SpotifyException) and (e.http_status == 401 or e.http_status == 403):
              global spotify_client; spotify_client = None
              if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
@@ -692,14 +825,17 @@ def update_settings():
     """Admin panelinden gelen ayarları günceller."""
     global settings
     try:
+        # Genel ayarları al
         settings['max_queue_length'] = int(request.form.get('max_queue_length', 20))
         settings['max_user_requests'] = int(request.form.get('max_user_requests', 5))
+        settings['active_genres'] = [genre for genre in ALLOWED_GENRES if request.form.get(f'genre_{genre}')]
+
         # Aktif Spotify Connect Cihazını Güncelle (Formda varsa)
-        if 'active_device_id' in request.form:
-             new_spotify_device_id = request.form.get('active_device_id')
+        if 'active_spotify_connect_device_id' in request.form:
+             new_spotify_device_id = request.form.get('active_spotify_connect_device_id')
              settings['active_device_id'] = new_spotify_device_id if new_spotify_device_id else None
              logger.info(f"Aktif Spotify Connect cihazı ayarlandı: {settings['active_device_id']}")
-        settings['active_genres'] = [genre for genre in ALLOWED_GENRES if request.form.get(f'genre_{genre}')]
+
         save_settings(settings)
         logger.info(f"Ayarlar güncellendi: {settings}")
         flash("Ayarlar başarıyla güncellendi.", "success")
@@ -771,7 +907,7 @@ def add_song():
     song_input = request.form.get('song_id', '').strip()
     if not song_input: flash("Lütfen bir şarkı ID'si veya URL'si girin.", "warning"); return redirect(url_for('admin_panel'))
     song_id = song_input
-    # URL'den ID çıkarma (daha sağlam bir regex ile yapılabilir)
+    # URL'den ID çıkarma
     if 'https://developer.spotify.com/documentation/web-api/reference/add-to-queue2' in song_input:
         match = re.search(r'/track/([a-zA-Z0-9]+)', song_input)
         if match: song_id = match.group(1)
@@ -879,15 +1015,22 @@ def api_get_queue():
     """API üzerinden mevcut kuyruk durumunu döndürür."""
     return jsonify({'queue': song_queue, 'queue_length': len(song_queue), 'max_length': settings.get('max_queue_length', 20)})
 
-# --- ALSA/Bluetooth API Rotaları ---
-@app.route('/api/output-devices')
+# --- ALSA/PulseAudio/Bluetooth API Rotaları ---
+@app.route('/api/alsa-devices')
 @admin_login_required
-def api_output_devices():
-    """Mevcut ALSA çıkış cihazlarını döndürür."""
-    devices = AudioManager.get_output_devices()
-    # current_target_device = AudioManager.get_current_librespot_device() # Bu zaten get_output_devices içinde yapılıyor
-    # for device in devices: device['is_default'] = (device['name'] == current_target_device)
-    return jsonify({'devices': devices})
+def api_alsa_devices():
+    """Mevcut ALSA çıkış cihazlarını ve Raspotify tarafından kullanılanı döndürür."""
+    devices = AudioManager.get_alsa_devices()
+    current_raspotify_device = AudioManager.get_current_librespot_device()
+    # 'is_default' zaten get_alsa_devices içinde ayarlanıyor
+    return jsonify({'devices': devices, 'current_raspotify_device': current_raspotify_device})
+
+@app.route('/api/pulseaudio-sinks')
+@admin_login_required
+def api_pulseaudio_sinks():
+    """Mevcut PulseAudio sink'lerini döndürür."""
+    sinks = AudioManager.get_pulseaudio_sinks()
+    return jsonify({'sinks': sinks})
 
 @app.route('/api/set-output-device', methods=['POST'])
 @admin_login_required
@@ -896,13 +1039,19 @@ def api_set_output_device():
     if not request.is_json: return jsonify({'success': False, 'error': 'JSON isteği gerekli'}), 400
     data = request.get_json(); device_name = data.get('device_name')
     if not device_name: logger.error("API isteğinde 'device_name' eksik."); return jsonify({'success': False, 'error': 'Cihaz adı gerekli'}), 400
-    logger.info(f"API: Çıkış cihazı ayarlama isteği: {device_name}")
+    logger.info(f"API: Raspotify için ALSA çıkış cihazı ayarlama isteği: {device_name}")
     success, message = AudioManager.set_librespot_device(device_name)
-    updated_devices = AudioManager.get_output_devices() # Güncel listeyi al
-    # current_target_device = AudioManager.get_current_librespot_device() # get_output_devices içinde yapılıyor
-    # for device in updated_devices: device['is_default'] = (device['name'] == current_target_device)
+    # Başarılı veya başarısız, güncel listeleri döndür
+    updated_alsa_devices = AudioManager.get_alsa_devices()
+    updated_pulse_sinks = AudioManager.get_pulseaudio_sinks()
+    updated_bt_devices = AudioManager.scan_bluetooth_devices()
     status_code = 200 if success else 500
-    response_data = {'success': success, 'devices': updated_devices}
+    response_data = {
+        'success': success,
+        'alsa_devices': updated_alsa_devices,
+        'pulseaudio_sinks': updated_pulse_sinks,
+        'bluetooth_devices': updated_bt_devices
+    }
     if success: response_data['message'] = message
     else: response_data['error'] = message
     return jsonify(response_data), status_code
@@ -910,7 +1059,7 @@ def api_set_output_device():
 @app.route('/api/scan-bluetooth')
 @admin_login_required
 def api_scan_bluetooth():
-    """Çevredeki (bilinen) Bluetooth cihazlarını listeler."""
+    """Eşleştirilmiş Bluetooth cihazlarını ve durumlarını listeler."""
     logger.info("API: Bluetooth cihaz listeleme isteği alındı.")
     devices = AudioManager.scan_bluetooth_devices()
     return jsonify({'success': True, 'devices': devices})
@@ -924,11 +1073,19 @@ def api_pair_bluetooth():
     if not mac_address: return jsonify({'success': False, 'error': 'MAC adresi gerekli'}), 400
     logger.info(f"API: Bluetooth cihazı eşleştirme/bağlama isteği: {mac_address}")
     success = AudioManager.pair_bluetooth_device(mac_address)
-    updated_alsa_devices = AudioManager.get_output_devices() # Güncel ALSA listesi
-    updated_bt_devices = AudioManager.scan_bluetooth_devices() # Güncel BT listesi
+    # Başarılı veya başarısız, güncel listeleri döndür
+    updated_alsa_devices = AudioManager.get_alsa_devices()
+    updated_pulse_sinks = AudioManager.get_pulseaudio_sinks()
+    updated_bt_devices = AudioManager.scan_bluetooth_devices()
     message = f"Bluetooth cihazı bağlandı: {mac_address}" if success else f"Bluetooth cihazı ({mac_address}) bağlanamadı."
     status_code = 200 if success else 500
-    return jsonify({'success': success, 'message': message, 'alsa_devices': updated_alsa_devices, 'bluetooth_devices': updated_bt_devices}), status_code
+    return jsonify({
+        'success': success,
+        'message': message,
+        'alsa_devices': updated_alsa_devices,
+        'pulseaudio_sinks': updated_pulse_sinks,
+        'bluetooth_devices': updated_bt_devices
+    }), status_code
 
 @app.route('/api/disconnect-bluetooth', methods=['POST'])
 @admin_login_required
@@ -939,14 +1096,22 @@ def api_disconnect_bluetooth():
     if not mac_address: return jsonify({'success': False, 'error': 'MAC adresi gerekli'}), 400
     logger.info(f"API: Bluetooth cihazı bağlantısını kesme isteği: {mac_address}")
     success = AudioManager.disconnect_bluetooth_device(mac_address)
-    updated_alsa_devices = AudioManager.get_output_devices() # Güncel ALSA listesi
-    updated_bt_devices = AudioManager.scan_bluetooth_devices() # Güncel BT listesi
+    # Başarılı veya başarısız, güncel listeleri döndür
+    updated_alsa_devices = AudioManager.get_alsa_devices()
+    updated_pulse_sinks = AudioManager.get_pulseaudio_sinks()
+    updated_bt_devices = AudioManager.scan_bluetooth_devices()
     message = f"Bluetooth cihazı bağlantısı kesildi: {mac_address}" if success else f"Bluetooth cihazı ({mac_address}) bağlantısı kesilemedi."
     status_code = 200 if success else 500
-    return jsonify({'success': success, 'message': message, 'alsa_devices': updated_alsa_devices, 'bluetooth_devices': updated_bt_devices}), status_code
+    return jsonify({
+        'success': success,
+        'message': message,
+        'alsa_devices': updated_alsa_devices,
+        'pulseaudio_sinks': updated_pulse_sinks,
+        'bluetooth_devices': updated_bt_devices
+    }), status_code
 
 
-# --- Arka Plan Şarkı Çalma İş Parçacığı ---
+# --- Arka Plan Şarkı Çalma İş Parçacığı (Değişiklik Yok) ---
 def background_queue_player():
     """
     Arka planda şarkı kuyruğunu kontrol eder. 'auto_advance_enabled' ise ve
@@ -1114,4 +1279,5 @@ if __name__ == '__main__':
 
     # Uygulamayı başlat (Geliştirme için debug=True, production için False)
     # Production'da Gunicorn gibi bir WSGI sunucusu kullanmanız önerilir.
+    # debug=True otomatik yeniden yüklemeyi sağlar, geliştirme sırasında kullanışlıdır.
     app.run(host='0.0.0.0', port=port, debug=True)
