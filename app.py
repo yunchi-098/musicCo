@@ -18,12 +18,13 @@ import traceback # Hata ayıklama için eklendi
 SPOTIFY_CLIENT_ID = '332e5f2c9fe44d9b9ef19c49d0caeb78' # ÖRNEK - DEĞİŞTİR
 SPOTIFY_CLIENT_SECRET = 'bbb19ad9c7d04d738f61cd0bd4f47426' # ÖRNEK - DEĞİŞTİR
 # Cihazınızın AĞ üzerindeki IP adresini ve Flask portunu yazın (Örn: http://192.168.1.100:8080/callback)
-SPOTIFY_REDIRECT_URI = 'http://100.66.161.5:8080/callback' # ÖRNEK - DEĞİŞTİR
+SPOTIFY_REDIRECT_URI = 'http://100.81.225.104:8080/callback' # ÖRNEK - DEĞİŞTİR
 SPOTIFY_SCOPE = 'user-read-playback-state user-modify-playback-state playlist-read-private user-read-currently-playing user-read-recently-played'
 
 # Diğer Dosya Yolları
 TOKEN_FILE = 'spotify_token.json'
 SETTINGS_FILE = 'settings.json'
+BLUETOOTH_SCAN_DURATION = 12 # Saniye cinsinden Bluetooth tarama süresi
 # ---------------------------------
 
 # Logging ayarları
@@ -35,245 +36,274 @@ class AudioManager:
     """PulseAudio ve Bluetooth ile ses cihazlarını yöneten sınıf."""
 
     @staticmethod
+    def _run_command(command, timeout=10):
+        """Helper function to run shell commands."""
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=timeout)
+            return True, result.stdout, result.stderr
+        except FileNotFoundError:
+            logger.error(f"Command not found: {command[0]}. Is it installed and in PATH?")
+            return False, "", f"Command not found: {command[0]}"
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Command '{' '.join(command)}' failed with error: {e.stderr}")
+            return False, e.stdout, e.stderr
+        except subprocess.TimeoutExpired:
+            logger.error(f"Command '{' '.join(command)}' timed out after {timeout} seconds.")
+            return False, "", f"Command timed out after {timeout} seconds."
+        except Exception as e:
+            logger.error(f"Error running command '{' '.join(command)}': {e}", exc_info=True)
+            return False, "", f"Unexpected error: {e}"
+
+    @staticmethod
     def get_default_pulseaudio_sink():
         """Sistemin mevcut varsayılan PulseAudio sink'ini alır."""
-        try:
-            # Run 'pactl get-default-sink' to get the default sink name
-            result = subprocess.run(['pactl', 'get-default-sink'], capture_output=True, text=True, check=True, timeout=5)
-            default_sink_name = result.stdout.strip()
+        success, stdout, stderr = AudioManager._run_command(['pactl', 'get-default-sink'], timeout=5)
+        if success:
+            default_sink_name = stdout.strip()
             logger.debug(f"Varsayılan PulseAudio sink: {default_sink_name}")
             return default_sink_name
-        except FileNotFoundError:
-            logger.error("PulseAudio command 'pactl' not found. Is PulseAudio installed and running?")
-            return None
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Could not get default PulseAudio sink: {e.stderr}")
-            return None
-        except subprocess.TimeoutExpired:
-            logger.error("Timeout getting default PulseAudio sink.")
-            return None
-        except Exception as e:
-            logger.error(f"General error getting default PulseAudio sink: {e}")
+        else:
+            logger.error(f"Could not get default PulseAudio sink: {stderr}")
             return None
 
     @staticmethod
     def set_default_pulseaudio_sink(sink_name):
         """Belirtilen sink'i sistemin varsayılan PulseAudio sink'i olarak ayarlar."""
-        try:
-            logger.info(f"Setting default PulseAudio sink to '{sink_name}'...")
-            # Run 'pactl set-default-sink <sink_name>'
-            cmd = ['pactl', 'set-default-sink', sink_name]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=10)
+        logger.info(f"Setting default PulseAudio sink to '{sink_name}'...")
+        success, stdout, stderr = AudioManager._run_command(['pactl', 'set-default-sink', sink_name], timeout=10)
+        if success:
             logger.info(f"Default PulseAudio sink successfully set to '{sink_name}'.")
-            # spotifyd might need a restart or might pick up the change automatically.
-            # For now, we just set the default. User might need to restart spotifyd manually if needed.
             return True, f"Varsayılan ses çıkışı '{sink_name}' olarak ayarlandı. spotifyd'nin değişikliği alması için yeniden başlatmanız gerekebilir."
-        except FileNotFoundError:
-            logger.error("PulseAudio command 'pactl' not found.")
-            return False, "'pactl' komutu bulunamadı."
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to set default PulseAudio sink to '{sink_name}': {e.stderr}")
-            err_msg = f"'{sink_name}' varsayılan yapılamadı: {e.stderr}"
-            if "No such entity" in e.stderr:
-                err_msg = f"Sink bulunamadı: '{sink_name}'."
-            elif "Invalid argument" in e.stderr:
-                 err_msg = f"Geçersiz sink adı: '{sink_name}'."
+        else:
+            err_msg = f"'{sink_name}' varsayılan yapılamadı: {stderr}"
+            if "No such entity" in stderr: err_msg = f"Sink bulunamadı: '{sink_name}'."
+            elif "Invalid argument" in stderr: err_msg = f"Geçersiz sink adı: '{sink_name}'."
+            logger.error(f"Failed to set default PulseAudio sink: {stderr}")
             return False, err_msg
-        except subprocess.TimeoutExpired:
-            logger.error(f"Timeout setting default PulseAudio sink to '{sink_name}'.")
-            return False, "Varsayılan sink ayarlarken zaman aşımı."
-        except Exception as e:
-            logger.error(f"General error setting default PulseAudio sink to '{sink_name}': {e}", exc_info=True)
-            return False, f"Beklenmedik hata: {e}"
 
     @staticmethod
     def get_pulseaudio_sinks():
         """Mevcut PulseAudio sink'lerini ve varsayılanı listeler."""
         sinks = []
         default_sink_name = AudioManager.get_default_pulseaudio_sink()
-        try:
-            # Run 'pactl list sinks short' to get basic sink info
-            result = subprocess.run(['pactl', 'list', 'sinks', 'short'], capture_output=True, text=True, check=True, timeout=5)
-            # Run 'pactl list sinks' to get detailed info including descriptions
-            desc_result = subprocess.run(['pactl', 'list', 'sinks'], capture_output=True, text=True, check=True, timeout=5)
 
-            for line in result.stdout.splitlines():
-                parts = line.strip().split('\t')
-                if len(parts) >= 5:
-                    try:
-                        sink_index_str = parts[0] # Keep index as string
-                        sink_name = parts[1]
-                        state = parts[4] # e.g., RUNNING, IDLE, SUSPENDED
-                        description = sink_name # Default description is the name
+        success_short, stdout_short, stderr_short = AudioManager._run_command(['pactl', 'list', 'sinks', 'short'], timeout=5)
+        success_long, stdout_long, stderr_long = AudioManager._run_command(['pactl', 'list', 'sinks'], timeout=5)
 
-                        # Extract description from the detailed output
-                        # Find the section for this sink index
-                        sink_section_match = re.search(rf'Sink #{sink_index_str}(.*?)(?=Sink #|\Z)', desc_result.stdout, re.DOTALL)
+        if not success_short:
+            logger.error(f"Error listing short PulseAudio sinks: {stderr_short}")
+            return [], default_sink_name # Return default even if list fails
+
+        if not success_long:
+            logger.warning(f"Could not get detailed sink descriptions: {stderr_long}")
+            # Continue without detailed descriptions if long list fails
+
+        for line in stdout_short.splitlines():
+            parts = line.strip().split('\t')
+            if len(parts) >= 5:
+                try:
+                    sink_index_str = parts[0]
+                    sink_name = parts[1]
+                    state = parts[4]
+                    description = sink_name # Default description
+
+                    # Extract description from the detailed output if available
+                    if success_long:
+                        sink_section_match = re.search(rf'Sink #{sink_index_str}(.*?)(?=Sink #|\Z)', stdout_long, re.DOTALL)
                         if sink_section_match:
                             sink_details = sink_section_match.group(1)
-                            # Find the Description line within this section
                             desc_match = re.search(r'Description:\s*(.*)', sink_details)
                             if desc_match:
                                 description = desc_match.group(1).strip()
-                                # Handle potential Bluetooth device names in description
                                 if "bluez_sink" in sink_name:
-                                    bt_name_match = re.search(r'Description:\s*([^(\n]+)', sink_details) # Try to get name before parenthesis
-                                    if bt_name_match:
-                                        description = bt_name_match.group(1).strip()
+                                    bt_name_match = re.search(r'Description:\s*([^(\n]+)', sink_details)
+                                    if bt_name_match: description = bt_name_match.group(1).strip()
 
+                    is_default = (sink_name == default_sink_name)
+                    sinks.append({
+                        'index': sink_index_str,
+                        'name': sink_name,
+                        'description': description,
+                        'state': state,
+                        'is_default': is_default
+                    })
+                except Exception as parse_err:
+                    logger.warning(f"Could not parse PulseAudio sink line: {line} - Error: {parse_err}")
 
-                        is_default = (sink_name == default_sink_name)
-                        sinks.append({
-                            'index': sink_index_str,
-                            'name': sink_name,
-                            'description': description, # Use the extracted description
-                            'state': state,
-                            'is_default': is_default
-                        })
-                    except Exception as parse_err:
-                        logger.warning(f"Could not parse PulseAudio sink line: {line} - Error: {parse_err}")
+        logger.info(f"Found PulseAudio sinks: {len(sinks)} (Default: {default_sink_name})")
+        return sinks, default_sink_name
 
-            logger.info(f"Found PulseAudio sinks: {len(sinks)} (Default: {default_sink_name})")
-            return sinks, default_sink_name
-        except FileNotFoundError:
-            logger.error("PulseAudio command 'pactl' not found.")
-            return [], None
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Error listing PulseAudio sinks: {e.stderr}")
-            return [], None
-        except subprocess.TimeoutExpired:
-            logger.error("Timeout listing PulseAudio sinks.")
-            return [], None
-        except Exception as e:
-            logger.error(f"General error listing PulseAudio sinks: {e}", exc_info=True)
-            return [], None
-
-
-    # --- Bluetooth Fonksiyonları (Değişiklik Yok) ---
     @staticmethod
-    def scan_bluetooth_devices():
-        """Eşleştirilmiş Bluetooth cihazlarını listeler ve bağlantı durumlarını kontrol eder."""
+    def get_paired_bluetooth_devices():
+        """Sadece eşleştirilmiş Bluetooth cihazlarını listeler."""
         devices = []
+        success_paired, stdout_paired, stderr_paired = AudioManager._run_command(['bluetoothctl', 'paired-devices'], timeout=10)
+        if not success_paired:
+             logger.error(f"Error listing paired Bluetooth devices: {stderr_paired}")
+             return []
+
+        paired_macs = set()
+        for line in stdout_paired.splitlines():
+            if line.startswith("Device"):
+                parts = line.strip().split(' ', 2)
+                if len(parts) >= 2:
+                    paired_macs.add(parts[1])
+
+        for mac_address in paired_macs:
+            is_connected = False
+            alias = mac_address # Default name
+            success_info, stdout_info, stderr_info = AudioManager._run_command(['bluetoothctl', 'info', mac_address], timeout=5)
+            if success_info:
+                if 'Connected: yes' in stdout_info: is_connected = True
+                alias_match = re.search(r'Alias:\s*(.*)', stdout_info)
+                if alias_match: alias = alias_match.group(1).strip()
+                name_match = re.search(r'Name:\s*(.*)', stdout_info) # Fallback to Name if Alias fails
+                if not alias_match and name_match: alias = name_match.group(1).strip()
+            else:
+                 logger.warning(f"Could not get info for paired device {mac_address}: {stderr_info}")
+
+            devices.append({
+                'mac_address': mac_address,
+                'name': alias,
+                'type': 'bluetooth',
+                'connected': is_connected,
+                'paired': True # Mark as paired
+            })
+        logger.info(f"Listed paired Bluetooth devices: {len(devices)}")
+        return devices
+
+    @staticmethod
+    def discover_bluetooth_devices(scan_duration=BLUETOOTH_SCAN_DURATION):
+        """Kısa süreliğine Bluetooth taraması yapar ve bulunan tüm cihazları listeler."""
+        logger.info(f"Starting Bluetooth discovery for {scan_duration} seconds...")
+        scan_process = None
+        discovered_devices = {} # Use dict to avoid duplicates by MAC
+
         try:
-            # Get paired devices
-            paired_result = subprocess.run(['bluetoothctl', 'paired-devices'], capture_output=True, text=True, check=True, timeout=10)
-            for line in paired_result.stdout.splitlines():
-                if line.startswith("Device"):
-                    parts = line.strip().split(' ', 2)
-                    if len(parts) >= 3:
-                        mac_address = parts[1]
-                        device_name = parts[2] # This is often the alias or name
-                        is_connected = False
-                        alias = device_name # Use name as initial alias
-                        try:
-                            # Get detailed info for connection status and alias
-                            info_result = subprocess.run(['bluetoothctl', 'info', mac_address], capture_output=True, text=True, timeout=5)
-                            if info_result.returncode == 0:
-                                if 'Connected: yes' in info_result.stdout:
-                                    is_connected = True
-                                # Try to find the Alias
-                                alias_match = re.search(r'Alias:\s*(.*)', info_result.stdout)
-                                if alias_match:
-                                    alias = alias_match.group(1).strip()
-                        except Exception as info_err:
-                            logger.warning(f"Could not get Bluetooth device info ({mac_address}): {info_err}")
-
-                        devices.append({
-                            'mac_address': mac_address,
-                            'name': alias, # Use the alias for display name
-                            'type': 'bluetooth',
-                            'connected': is_connected
-                        })
-            logger.info(f"Listed paired Bluetooth devices: {len(devices)}")
-            return devices
-        except FileNotFoundError:
-            logger.error("Command 'bluetoothctl' not found. Is bluez installed?")
-            return []
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Error listing paired Bluetooth devices: {e.stderr}")
-            return []
-        except subprocess.TimeoutExpired:
-            logger.error("Timeout listing paired Bluetooth devices.")
-            return []
+            # Start scanning in the background
+            scan_process = subprocess.Popen(['bluetoothctl', 'scan', 'on'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(scan_duration) # Wait for devices to be discovered
         except Exception as e:
-            logger.error(f"General error listing paired Bluetooth devices: {e}", exc_info=True)
+            logger.error(f"Failed to start Bluetooth scan: {e}")
+        finally:
+            # Ensure scanning is turned off
+            if scan_process:
+                try:
+                    scan_process.terminate() # Try terminating gently first
+                    scan_process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    scan_process.kill() # Force kill if terminate fails
+                except Exception: pass # Ignore other errors during cleanup
+            # Explicitly turn scan off
+            off_success, _, off_stderr = AudioManager._run_command(['bluetoothctl', 'scan', 'off'], timeout=5)
+            if not off_success: logger.warning(f"Could not turn off Bluetooth scan: {off_stderr}")
+
+        logger.info("Bluetooth discovery finished. Fetching device list...")
+
+        # Get all devices visible after scan
+        success_devs, stdout_devs, stderr_devs = AudioManager._run_command(['bluetoothctl', 'devices'], timeout=10)
+        if not success_devs:
+            logger.error(f"Error listing discovered Bluetooth devices: {stderr_devs}")
             return []
 
+        # Get paired devices to mark them
+        success_paired, stdout_paired, stderr_paired = AudioManager._run_command(['bluetoothctl', 'paired-devices'], timeout=10)
+        paired_macs = set()
+        if success_paired:
+            for line in stdout_paired.splitlines():
+                if line.startswith("Device"):
+                    parts = line.strip().split(' ', 1)
+                    if len(parts) >= 2: paired_macs.add(parts[1].split(' ')[0]) # Get only MAC
+        else:
+            logger.warning(f"Could not get paired devices list while processing discovered devices: {stderr_paired}")
+
+        # Process discovered devices
+        for line in stdout_devs.splitlines():
+            if line.startswith("Device"):
+                parts = line.strip().split(' ', 2)
+                if len(parts) >= 3:
+                    mac_address = parts[1]
+                    device_name = parts[2]
+                    is_paired = mac_address in paired_macs
+                    is_connected = False # Assume not connected unless confirmed
+
+                    # Get connection status only for paired devices (info often fails for unpaired)
+                    if is_paired:
+                        success_info, stdout_info, _ = AudioManager._run_command(['bluetoothctl', 'info', mac_address], timeout=3)
+                        if success_info and 'Connected: yes' in stdout_info:
+                            is_connected = True
+                        # Use alias from info if available for paired devices
+                        alias_match = re.search(r'Alias:\s*(.*)', stdout_info)
+                        if alias_match: device_name = alias_match.group(1).strip()
+
+
+                    discovered_devices[mac_address] = {
+                        'mac_address': mac_address,
+                        'name': device_name,
+                        'type': 'bluetooth',
+                        'connected': is_connected,
+                        'paired': is_paired
+                    }
+
+        result_list = list(discovered_devices.values())
+        logger.info(f"Discovered {len(result_list)} Bluetooth devices after scan.")
+        return result_list
+
+
+    # --- Bluetooth Pairing/Connection Fonksiyonları (Değişiklik Yok) ---
     @staticmethod
     def pair_bluetooth_device(mac_address):
         """Belirtilen MAC adresine sahip bluetooth cihazını eşleştirir ve bağlar."""
         try:
             logging.info(f"Pairing/Connecting Bluetooth device {mac_address}...")
-            # Try disconnecting first (in case it's stuck)
-            try:
-                subprocess.run(['bluetoothctl', 'disconnect', mac_address], capture_output=True, text=True, timeout=5)
-            except Exception:
-                pass # Ignore errors here
+            try: subprocess.run(['bluetoothctl', 'disconnect', mac_address], capture_output=True, text=True, timeout=5)
+            except Exception: pass
             time.sleep(1)
+            # Pair first
+            logger.info(f"Attempting to pair with {mac_address}...")
+            pair_cmd = subprocess.run(['bluetoothctl', 'pair', mac_address], capture_output=True, text=True, timeout=20) # Pairing can take time
+            if pair_cmd.returncode != 0 and "already exists" not in pair_cmd.stderr.lower():
+                logger.error(f"Pairing failed for {mac_address}: {pair_cmd.stderr}")
+                # Try trusting and connecting anyway, sometimes pairing isn't strictly needed if trusted
+                # return False # Optionally exit here if pairing fails
+            else:
+                 logger.info(f"Pairing successful or device already paired: {mac_address}")
 
             # Trust the device
             trust_cmd = subprocess.run(['bluetoothctl', 'trust', mac_address], capture_output=True, text=True, timeout=10)
-            if trust_cmd.returncode != 0:
-                # It might already be trusted, log as warning
-                logging.warning(f"Could not trust device (might be already trusted or error): {trust_cmd.stderr}")
+            if trust_cmd.returncode != 0: logging.warning(f"Could not trust device {mac_address} (might be already trusted): {trust_cmd.stderr}")
+            else: logger.info(f"Device trusted: {mac_address}")
 
             # Try connecting
-            connect_cmd = subprocess.run(['bluetoothctl', 'connect', mac_address], capture_output=True, text=True, timeout=30) # Allow more time for connection
-            # Check if connection was successful
+            connect_cmd = subprocess.run(['bluetoothctl', 'connect', mac_address], capture_output=True, text=True, timeout=30)
             if connect_cmd.returncode == 0 and ('Connection successful' in connect_cmd.stdout.lower() or 'already connected' in connect_cmd.stderr.lower()):
-                logging.info(f"Bluetooth device successfully connected: {mac_address}")
-                time.sleep(3); # Allow time for PulseAudio sink to potentially appear/activate
-                return True
+                logging.info(f"Bluetooth device successfully connected: {mac_address}"); time.sleep(3); return True
             else:
-                # Log failure and try again (sometimes helps)
-                logging.warning(f"First connection attempt failed ({mac_address}), retrying... Error: {connect_cmd.stderr}")
-                time.sleep(3)
+                logging.warning(f"First connection attempt failed ({mac_address}), retrying... Error: {connect_cmd.stderr}"); time.sleep(3)
                 connect_cmd = subprocess.run(['bluetoothctl', 'connect', mac_address], capture_output=True, text=True, timeout=30)
                 if connect_cmd.returncode == 0 and ('Connection successful' in connect_cmd.stdout.lower() or 'already connected' in connect_cmd.stderr.lower()):
-                     logging.info(f"Bluetooth device successfully connected on second attempt: {mac_address}")
-                     time.sleep(3); return True
+                     logging.info(f"Bluetooth device successfully connected on second attempt: {mac_address}"); time.sleep(3); return True
                 else:
-                     # Log final failure
                      logging.error(f"Bluetooth device connection failed ({mac_address}): {connect_cmd.stderr}")
-                     # Try disconnecting again just in case
-                     subprocess.run(['bluetoothctl', 'disconnect', mac_address], capture_output=True, text=True, timeout=10);
-                     return False
-        except FileNotFoundError:
-            logger.error("Command 'bluetoothctl' not found. Is bluez installed?")
-            return False
-        except subprocess.TimeoutExpired:
-            logger.error(f"Timeout during Bluetooth operation for {mac_address}.")
-            return False
-        except Exception as e:
-            logger.error(f"Error during Bluetooth pairing/connection ({mac_address}): {e}", exc_info=True)
-            return False
+                     subprocess.run(['bluetoothctl', 'disconnect', mac_address], capture_output=True, text=True, timeout=10); return False
+        except FileNotFoundError: logger.error("Command 'bluetoothctl' not found."); return False
+        except subprocess.TimeoutExpired: logger.error(f"Timeout during Bluetooth operation for {mac_address}."); return False
+        except Exception as e: logger.error(f"Error during Bluetooth pairing/connection ({mac_address}): {e}", exc_info=True); return False
 
     @staticmethod
     def disconnect_bluetooth_device(mac_address):
         """Belirtilen MAC adresine sahip bluetooth cihazının bağlantısını keser."""
         try:
             logging.info(f"Disconnecting Bluetooth device {mac_address}...")
-            # Run 'bluetoothctl disconnect <mac>'
             cmd = subprocess.run(['bluetoothctl', 'disconnect', mac_address], capture_output=True, text=True, check=True, timeout=10)
-            logging.info(f"Bluetooth device successfully disconnected: {mac_address}")
-            time.sleep(2); # Allow time for PulseAudio sink to potentially disappear
-            return True
-        except FileNotFoundError:
-            logger.error("Command 'bluetoothctl' not found. Is bluez installed?")
-            return False
+            logging.info(f"Bluetooth device successfully disconnected: {mac_address}"); time.sleep(2); return True
+        except FileNotFoundError: logger.error("Command 'bluetoothctl' not found."); return False
         except subprocess.CalledProcessError as e:
              logger.error(f"Error disconnecting Bluetooth device ({mac_address}): {e.stderr}")
-             # If it's already not connected, consider it a success
-             if 'not connected' in e.stderr.lower():
-                 logging.info(f"Device ({mac_address}) was already disconnected.")
-                 return True
+             if 'not connected' in e.stderr.lower(): logging.info(f"Device ({mac_address}) was already disconnected."); return True
              return False
-        except subprocess.TimeoutExpired:
-            logger.error(f"Timeout disconnecting Bluetooth device ({mac_address}).")
-            return False
-        except Exception as e:
-            logger.error(f"Error during Bluetooth disconnection ({mac_address}): {e}", exc_info=True)
-            return False
+        except subprocess.TimeoutExpired: logger.error(f"Timeout disconnecting Bluetooth device ({mac_address})."); return False
+        except Exception as e: logger.error(f"Error during Bluetooth disconnection ({mac_address}): {e}", exc_info=True); return False
 
 # --- Flask Uygulaması ---
 app = Flask(__name__)
@@ -722,7 +752,8 @@ def api_set_pulseaudio_sink():
 
     # İşlem sonrası güncel listeleri al
     updated_pulse_sinks, new_default_sink = AudioManager.get_pulseaudio_sinks()
-    updated_bt_devices = AudioManager.scan_bluetooth_devices()
+    # Bluetooth listesini de alalım (bağlantı durumu değişmiş olabilir)
+    updated_bt_devices = AudioManager.get_paired_bluetooth_devices() # Sadece eşleşmişleri alalım
     status_code = 200 if success else 500
     response_data = {
         'success': success,
@@ -734,13 +765,23 @@ def api_set_pulseaudio_sink():
     else: response_data['error'] = message
     return jsonify(response_data), status_code
 
-@app.route('/api/scan-bluetooth')
+@app.route('/api/scan-bluetooth') # Bu endpoint artık sadece eşleşmişleri listeler
 @admin_login_required
 def api_scan_bluetooth():
     """Eşleştirilmiş Bluetooth cihazlarını ve durumlarını listeler."""
-    logger.info("API: Bluetooth cihaz listeleme isteği alındı.")
-    devices = AudioManager.scan_bluetooth_devices()
+    logger.info("API: Eşleştirilmiş Bluetooth cihaz listeleme isteği alındı.")
+    devices = AudioManager.get_paired_bluetooth_devices()
     return jsonify({'success': True, 'devices': devices})
+
+@app.route('/api/discover-bluetooth') # Yeni endpoint
+@admin_login_required
+def api_discover_bluetooth():
+    """Kısa süreliğine Bluetooth taraması yapar ve bulunan tüm cihazları listeler."""
+    logger.info(f"API: Yeni Bluetooth cihaz keşfi isteği alındı (Süre: {BLUETOOTH_SCAN_DURATION}s).")
+    devices = AudioManager.discover_bluetooth_devices(scan_duration=BLUETOOTH_SCAN_DURATION)
+    # Hata durumu kontrolü eklenebilir, ancak discover_bluetooth_devices boş liste dönebilir
+    return jsonify({'success': True, 'devices': devices})
+
 
 @app.route('/api/pair-bluetooth', methods=['POST'])
 @admin_login_required
@@ -751,17 +792,17 @@ def api_pair_bluetooth():
     if not mac_address: return jsonify({'success': False, 'error': 'MAC adresi gerekli'}), 400
     logger.info(f"API: Bluetooth cihazı eşleştirme/bağlama isteği: {mac_address}")
     success = AudioManager.pair_bluetooth_device(mac_address)
-    # İşlem sonrası güncel listeleri al
+    # İşlem sonrası güncel listeleri al (eşleşmişleri ve pulse'ı)
     updated_pulse_sinks, new_default_sink = AudioManager.get_pulseaudio_sinks()
-    updated_bt_devices = AudioManager.scan_bluetooth_devices()
-    message = f"Bluetooth cihazı bağlandı: {mac_address}" if success else f"Bluetooth cihazı ({mac_address}) bağlanamadı."
+    updated_bt_devices = AudioManager.get_paired_bluetooth_devices()
+    message = f"Bluetooth cihazı bağlandı/eşleştirildi: {mac_address}" if success else f"Bluetooth cihazı ({mac_address}) bağlanamadı/eşleştirilemedi."
     status_code = 200 if success else 500
     return jsonify({
         'success': success,
         'message': message,
         'pulseaudio_sinks': updated_pulse_sinks,
         'default_sink': new_default_sink,
-        'bluetooth_devices': updated_bt_devices
+        'bluetooth_devices': updated_bt_devices # Sadece eşleşmişleri döndür
     }), status_code
 
 @app.route('/api/disconnect-bluetooth', methods=['POST'])
@@ -773,9 +814,9 @@ def api_disconnect_bluetooth():
     if not mac_address: return jsonify({'success': False, 'error': 'MAC adresi gerekli'}), 400
     logger.info(f"API: Bluetooth cihazı bağlantısını kesme isteği: {mac_address}")
     success = AudioManager.disconnect_bluetooth_device(mac_address)
-    # İşlem sonrası güncel listeleri al
+    # İşlem sonrası güncel listeleri al (eşleşmişleri ve pulse'ı)
     updated_pulse_sinks, new_default_sink = AudioManager.get_pulseaudio_sinks()
-    updated_bt_devices = AudioManager.scan_bluetooth_devices()
+    updated_bt_devices = AudioManager.get_paired_bluetooth_devices()
     message = f"Bluetooth cihazı bağlantısı kesildi: {mac_address}" if success else f"Bluetooth cihazı ({mac_address}) bağlantısı kesilemedi."
     status_code = 200 if success else 500
     return jsonify({
@@ -783,7 +824,7 @@ def api_disconnect_bluetooth():
         'message': message,
         'pulseaudio_sinks': updated_pulse_sinks,
         'default_sink': new_default_sink,
-        'bluetooth_devices': updated_bt_devices
+        'bluetooth_devices': updated_bt_devices # Sadece eşleşmişleri döndür
     }), status_code
 
 
@@ -875,4 +916,3 @@ if __name__ == '__main__':
 
     # debug=True otomatik yeniden yüklemeyi sağlar
     app.run(host='0.0.0.0', port=port, debug=True)
-

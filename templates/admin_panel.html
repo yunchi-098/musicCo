@@ -31,6 +31,14 @@
         .connected-bluetooth-device strong, .connected-bluetooth-device small {
              color: #004085; /* Koyu mavi metin */
         }
+         /* Eşleşmemiş Bluetooth cihazı */
+        .unpaired-bluetooth-device {
+            border-left: 4px solid #6c757d !important; /* Gri sol kenarlık */
+            background-color: #f8f9fa; /* Açık gri arka plan */
+        }
+        .unpaired-bluetooth-device strong, .unpaired-bluetooth-device small {
+             color: #343a40; /* Koyu gri metin */
+        }
         /* Varsayılan PulseAudio Sink */
         .default-pulse-sink {
             border-left: 4px solid #6f42c1 !important; /* Mor sol kenarlık */
@@ -99,6 +107,13 @@
         .card-body-scrollable {
             max-height: 300px; /* Yüksekliği sınırla */
             overflow-y: auto; /* Dikey kaydırma çubuğu ekle */
+        }
+        /* Butonların yüklenme durumunu göstermek için */
+        .btn-loading .spinner-border {
+            width: 1em;
+            height: 1em;
+            border-width: .15em;
+            vertical-align: -0.125em;
         }
     </style>
 </head>
@@ -361,13 +376,19 @@
                             <p class="text-muted">Yükleniyor...</p>
                         </div>
                         <div class="card-footer text-center">
-                            <button onclick="refreshBluetoothList()" class="btn btn-sm btn-info">
+                            <button onclick="discoverBluetoothDevices()" id="discover-btn" class="btn btn-sm btn-warning mb-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-broadcast" viewBox="0 0 16 16">
+                                  <path d="M3.05 3.05a7 7 0 0 0 0 9.9.5.5 0 0 1-.707.707 8 8 0 0 1 0-11.314.5.5 0 0 1 .707.707m2.122 2.122a4 4 0 0 0 0 5.656.5.5 0 1 1-.708.708 5 5 0 0 1 0-7.072.5.5 0 0 1 .708.708m5.656-.708a.5.5 0 0 1 .708 0 5 5 0 0 1 0 7.072.5.5 0 1 1-.708-.708 4 4 0 0 0 0-5.656.5.5 0 0 1 0-.708m2.122-2.12a.5.5 0 0 1 .707 0 8 8 0 0 1 0 11.314.5.5 0 0 1-.707-.707 7 7 0 0 0 0-9.9.5.5 0 0 1 0-.707zM10 8a2 2 0 1 1-4 0 2 2 0 0 1 4 0"/>
+                                </svg>
+                                Yeni Cihazları Tara ({{ BLUETOOTH_SCAN_DURATION }}sn)
+                            </button>
+                            <button onclick="refreshPairedBluetoothList()" class="btn btn-sm btn-info mb-2">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-bluetooth" viewBox="0 0 16 16">
                                   <path fill-rule="evenodd" d="M8.5 2.622a.5.5 0 0 1 .5.5v2.878l2.147-2.147a.5.5 0 0 1 .707.707L9.707 6.707l2.147 2.147a.5.5 0 0 1-.707.707L8.999 7.414v4.964a.5.5 0 0 1-1 0V7.414L5.854 9.557a.5.5 0 0 1-.707-.707L7.293 6.707 5.146 4.56a.5.5 0 0 1 .707-.707L8 5.998V3.122a.5.5 0 0 1 .5-.5m-1-.001a1.5 1.5 0 0 0-1.5 1.5v1.756l-1.854-1.853a1.5 1.5 0 0 0-2.121 2.121l2.146 2.147L2.147 8.854a1.5 1.5 0 0 0 2.121 2.121L6.121 9.121v1.756a1.5 1.5 0 0 0 1.5 1.5h.001a1.5 1.5 0 0 0 1.5-1.5v-1.756l1.854 1.854a1.5 1.5 0 0 0 2.121-2.121L9.854 8.854l2.147-2.147a1.5 1.5 0 0 0-2.121-2.121L8.025 6.44V4.684a1.5 1.5 0 0 0-1.5-1.5z"/>
                                 </svg>
-                                Bluetooth Listesini Yenile
+                                Eşleşmiş Listeyi Yenile
                             </button>
-                             <small class="text-muted mt-2 d-block">Not: Yeni cihazları görmek için sistem ayarlarından eşleştirin.</small>
+                             <small class="text-muted mt-2 d-block">Not: Yeni cihazları görmek için önce tarayın, sonra eşleştirin.</small>
                         </div>
                     </div>
                 </div>
@@ -381,8 +402,6 @@
         function showFlashMessage(message, category = 'info') {
             const flashDiv = document.getElementById('flash-messages');
             if (!flashDiv) return;
-            // Mevcut mesajları temizle (isteğe bağlı, çok fazla birikmemesi için)
-            // flashDiv.innerHTML = '';
             const alertHtml = `
                 <div class="alert alert-${category} alert-dismissible fade show mt-2" role="alert">
                     ${message}
@@ -390,19 +409,42 @@
                         <span aria-hidden="true">×</span>
                     </button>
                 </div>`;
-            // Yeni mesajı başa ekle
             flashDiv.insertAdjacentHTML('afterbegin', alertHtml);
+             // Otomatik kapatma (isteğe bağlı)
+             window.setTimeout(() => {
+                 $(alertHtml).alert('close');
+             }, 7000); // 7 saniye sonra kapat
         }
 
-        // Yükleniyor göstergesi
-        function showLoadingFeedback(elementId, message = "İşlem yapılıyor...") {
+        // Yükleniyor göstergesi (liste için)
+        function showListLoading(elementId, message = "Yükleniyor...") {
             const element = $(`#${elementId}`);
             if (element) {
                 element.html(`<p class="text-muted p-3"><span class="spinner-border spinner-border-sm mr-2" role="status" aria-hidden="true"></span>${message}</p>`);
             }
-             console.log("Loading:", message);
         }
-        function hideLoadingFeedback() { /* Şimdilik bir şey yapmıyor */ console.log("Loading finished."); }
+
+        // Buton yüklenme durumu
+        function setButtonLoading(buttonElement, isLoading) {
+            if (!buttonElement) return;
+            if (isLoading) {
+                buttonElement.disabled = true;
+                buttonElement.classList.add('btn-loading');
+                // Orijinal içeriği sakla (varsa)
+                if (!buttonElement.dataset.originalHtml) {
+                    buttonElement.dataset.originalHtml = buttonElement.innerHTML;
+                }
+                buttonElement.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> İşleniyor...';
+            } else {
+                buttonElement.disabled = false;
+                buttonElement.classList.remove('btn-loading');
+                // Orijinal içeriği geri yükle
+                if (buttonElement.dataset.originalHtml) {
+                    buttonElement.innerHTML = buttonElement.dataset.originalHtml;
+                }
+            }
+        }
+
 
         // --- Listeleri Render Etme Fonksiyonları ---
 
@@ -433,7 +475,7 @@
 
                      // Buton HTML'i (varsayılan değilse göster)
                      let buttonHtml = !isDefault
-                         ? `<button onclick="setDefaultPulseSink('${sink.name}')" class="btn btn-sm btn-outline-primary ml-2" style="white-space: nowrap;">Varsayılan Yap</button>`
+                         ? `<button onclick="setDefaultPulseSink(this, '${sink.name}')" class="btn btn-sm btn-outline-primary ml-2" style="white-space: nowrap;">Varsayılan Yap</button>`
                          : ''; // Zaten varsayılan ise buton gösterme
 
                      html += `
@@ -453,35 +495,45 @@
             listElement.html(html);
          }
 
-         // Bluetooth Cihaz Listesini Render Etme
+         // Bluetooth Cihaz Listesini Render Etme (Keşfedilenler dahil)
          function renderBluetoothList(devices) {
              const listElement = $('#bluetooth-list');
              let html = '';
              if (devices && devices.length > 0) {
                  devices.forEach(device => {
-                     // Bağlantı durumuna göre buton ve vurgu sınıfı ata
-                     let connectBtnClass = device.connected ? 'btn-outline-danger' : 'btn-success';
-                     let connectBtnText = device.connected ? 'Bağlantıyı Kes' : 'Bağlan';
-                     let connectAction = device.connected ? `disconnectDevice('${device.mac_address}')` : `pairDevice('${device.mac_address}')`;
-                     let activeClass = device.connected ? 'connected-bluetooth-device' : ''; // Bağlıysa vurgula
-                     let connectedBadge = device.connected ? '<span class="badge badge-primary ml-1">Bağlı</span>' : '';
+                     let cardClass = '';
+                     let actionButtonHtml = '';
+                     let statusBadge = '';
+
+                     if (device.paired) {
+                         if (device.connected) {
+                             cardClass = 'connected-bluetooth-device'; // Bağlı ve eşleşmiş
+                             statusBadge = '<span class="badge badge-primary ml-1">Bağlı</span>';
+                             actionButtonHtml = `<button onclick="disconnectDevice(this, '${device.mac_address}')" class="btn btn-sm btn-outline-danger ml-2" style="white-space: nowrap;">Bağlantıyı Kes</button>`;
+                         } else {
+                             cardClass = ''; // Eşleşmiş ama bağlı değil
+                             statusBadge = '<span class="badge badge-secondary ml-1">Eşleşmiş</span>';
+                             actionButtonHtml = `<button onclick="pairDevice(this, '${device.mac_address}')" class="btn btn-sm btn-success ml-2" style="white-space: nowrap;">Bağlan</button>`;
+                         }
+                     } else {
+                         cardClass = 'unpaired-bluetooth-device'; // Eşleşmemiş (yeni keşfedilmiş)
+                         statusBadge = '<span class="badge badge-light ml-1">Yeni</span>';
+                         actionButtonHtml = `<button onclick="pairDevice(this, '${device.mac_address}')" class="btn btn-sm btn-warning ml-2" style="white-space: nowrap;">Eşleştir ve Bağlan</button>`;
+                     }
 
                      html += `
-                     <div class="device-card mb-2 p-2 border rounded ${activeClass}">
+                     <div class="device-card mb-2 p-2 border rounded ${cardClass}">
                          <div class="d-flex justify-content-between align-items-center">
                              <div style="min-width: 0;">
-                                 <strong class="d-block text-truncate" title="${device.name}">${device.name}</strong>
-                                 <small class="text-muted">${device.mac_address} ${connectedBadge}</small>
+                                 <strong class="d-block text-truncate" title="${device.name}">${device.name || 'İsimsiz Cihaz'}</strong>
+                                 <small class="text-muted">${device.mac_address} ${statusBadge}</small>
                              </div>
-                             <button onclick="${connectAction}"
-                                     class="btn btn-sm ${connectBtnClass} ml-2" style="white-space: nowrap;">
-                                 ${connectBtnText}
-                             </button>
+                             ${actionButtonHtml}
                          </div>
                      </div>`;
                  });
              } else {
-                 html = '<p class="text-muted text-center">Eşleştirilmiş Bluetooth cihazı bulunamadı.</p>';
+                 html = '<p class="text-muted text-center">Bluetooth cihazı bulunamadı.</p>';
              }
              listElement.html(html);
          }
@@ -490,152 +542,192 @@
 
         // PulseAudio listesini yenile
         function refreshPulseAudioSinkList() {
-            showLoadingFeedback('pulseaudio-sinks-list', 'PulseAudio çıkışları yenileniyor...');
-            $.get('/api/pulseaudio-sinks', function(data) {
-                 if(data && data.sinks !== undefined && data.default_sink !== undefined) { // default_sink'in de geldiğini kontrol et
+            showListLoading('pulseaudio-sinks-list', 'PulseAudio çıkışları yenileniyor...');
+            $.get('/api/pulseaudio-sinks')
+             .done(function(data) {
+                 if(data && data.sinks !== undefined && data.default_sink !== undefined) {
                      renderPulseAudioSinkList(data.sinks, data.default_sink);
                  } else {
-                      $('#pulseaudio-sinks-list').html('<p class="text-danger">PulseAudio listesi alınamadı.</p>');
+                      $('#pulseaudio-sinks-list').html('<p class="text-danger">PulseAudio listesi alınamadı (Veri eksik).</p>');
                  }
-            }).fail(function(xhr) {
+            })
+            .fail(function(xhr) {
                  console.error("Error fetching PulseAudio sinks:", xhr);
                  $('#pulseaudio-sinks-list').html('<p class="text-danger">PulseAudio listesi alınamadı (API Hatası).</p>');
             });
         }
 
-        // Bluetooth listesini yenile
-        function refreshBluetoothList() {
-            showLoadingFeedback('bluetooth-list', 'Bluetooth cihazları listeleniyor...');
-            $.get('/api/scan-bluetooth', function(data) {
+        // Eşleşmiş Bluetooth listesini yenile
+        function refreshPairedBluetoothList() {
+            showListLoading('bluetooth-list', 'Eşleşmiş Bluetooth cihazları listeleniyor...');
+            $.get('/api/scan-bluetooth') // Bu endpoint artık eşleşmişleri getiriyor
+             .done(function(data) {
                 if(data && data.success && data.devices) {
-                    renderBluetoothList(data.devices);
+                    renderBluetoothList(data.devices); // Render fonksiyonu hem eşleşmiş hem keşfedilmişi destekliyor
                 } else {
-                    $('#bluetooth-list').html('<p class="text-danger">Bluetooth cihazları listelenemedi.</p>');
+                    $('#bluetooth-list').html('<p class="text-danger">Eşleşmiş Bluetooth cihazları listelenemedi.</p>');
                 }
-            }).fail(function(xhr) {
-                 console.error("Error fetching Bluetooth devices:", xhr);
+            })
+            .fail(function(xhr) {
+                 console.error("Error fetching paired Bluetooth devices:", xhr);
                  $('#bluetooth-list').html('<p class="text-danger">Bluetooth API\'sine ulaşılamadı.</p>');
             });
         }
 
-        // Tüm listeleri güncelleyen fonksiyon (API yanıtından sonra çağrılır)
+        // Yeni Bluetooth cihazlarını keşfet
+        function discoverBluetoothDevices() {
+            const discoverBtn = document.getElementById('discover-btn');
+            setButtonLoading(discoverBtn, true); // Tarama butonunu kitle
+            showListLoading('bluetooth-list', 'Yeni Bluetooth cihazları taranıyor...');
+            $.get('/api/discover-bluetooth')
+             .done(function(data) {
+                 if(data && data.success && data.devices) {
+                     renderBluetoothList(data.devices); // Render fonksiyonu hem eşleşmiş hem keşfedilmişi destekliyor
+                     showFlashMessage('Bluetooth taraması tamamlandı.', 'info');
+                 } else {
+                     $('#bluetooth-list').html('<p class="text-danger">Yeni Bluetooth cihazları bulunamadı veya listelenemedi.</p>');
+                     showFlashMessage('Bluetooth taraması sırasında hata oluştu.', 'warning');
+                 }
+             })
+             .fail(function(xhr) {
+                  console.error("Error discovering Bluetooth devices:", xhr);
+                  $('#bluetooth-list').html('<p class="text-danger">Bluetooth tarama API\'sine ulaşılamadı.</p>');
+                  showFlashMessage('Bluetooth taraması başarısız oldu.', 'danger');
+             })
+             .always(function() {
+                 setButtonLoading(discoverBtn, false); // Tarama butonunu tekrar aktif et
+             });
+        }
+
+
+        // Tüm ilgili listeleri güncelleyen fonksiyon (API yanıtından sonra çağrılır)
         function updateRelevantDeviceLists(data) {
              if (data.pulseaudio_sinks !== undefined && data.default_sink !== undefined) {
                  renderPulseAudioSinkList(data.pulseaudio_sinks, data.default_sink);
              }
+             // Bluetooth listesi için sadece eşleşmişleri yenilemek yeterli olabilir,
+             // çünkü bağlanma/çıkarma sadece eşleşmişleri etkiler.
+             // API yanıtında 'bluetooth_devices' varsa (eşleşmişler) onu kullanalım.
              if (data.bluetooth_devices !== undefined) {
                  renderBluetoothList(data.bluetooth_devices);
+             } else {
+                 // Yanıtta yoksa, eşleşmiş listeyi manuel yenileyelim
+                 refreshPairedBluetoothList();
              }
          }
 
         // --- Cihaz Yönetimi API Çağrıları ---
 
         // Varsayılan PulseAudio sink'ini ayarlama
-        function setDefaultPulseSink(sinkName) {
+        function setDefaultPulseSink(buttonElement, sinkName) {
             console.log("Setting default PulseAudio sink to:", sinkName);
-            if (!confirm(`"${sinkName}" cihazını sistemin varsayılan ses çıkışı yapmak istediğinizden emin misiniz? Bu, spotifyd gibi uygulamaların ses çıkışını etkileyebilir.`)) {
+            if (!confirm(`"${sinkName}" cihazını sistemin varsayılan ses çıkışı yapmak istediğinizden emin misiniz?`)) {
                  return;
             }
-            showLoadingFeedback('pulseaudio-sinks-list', `PulseAudio varsayılan çıkışı (${sinkName}) olarak ayarlanıyor...`);
+            setButtonLoading(buttonElement, true);
             $.ajax({
-                url: '/api/set-pulseaudio-sink', // API endpoint'i değişti
+                url: '/api/set-pulseaudio-sink',
                 type: 'POST',
                 contentType: 'application/json',
-                data: JSON.stringify({ sink_name: sinkName }), // Parametre adı değişti
+                data: JSON.stringify({ sink_name: sinkName }),
                 success: function(data) {
-                    hideLoadingFeedback();
                     if (data.success) {
                         showFlashMessage(data.message || 'Varsayılan ses çıkışı başarıyla değiştirildi!', 'success');
-                        updateRelevantDeviceLists(data); // Yanıttan gelen güncel listeleri render et
+                        updateRelevantDeviceLists(data);
                     } else {
                         showFlashMessage('Hata: ' + (data.error || 'Bilinmeyen bir hata oluştu.'), 'danger');
-                        // Hata olsa bile listeleri yenilemeyi dene
-                        refreshPulseAudioSinkList();
-                        refreshBluetoothList();
+                        refreshPulseAudioSinkList(); // Hata olsa bile listeyi yenile
                     }
                 },
                 error: function(xhr) {
-                     hideLoadingFeedback();
                      let errorMsg = 'Bilinmeyen bir sunucu hatası oluştu.';
                      try { if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; } } catch(e){}
                      console.error("Error setting default PulseAudio sink:", xhr);
                      showFlashMessage(`Hata: ${errorMsg}`, 'danger');
-                     // Hata olsa bile listeleri yenilemeyi dene
-                     refreshPulseAudioSinkList();
-                     refreshBluetoothList();
+                     refreshPulseAudioSinkList(); // Hata olsa bile listeyi yenile
+                },
+                complete: function() {
+                    setButtonLoading(buttonElement, false);
                 }
             });
         }
 
         // Bluetooth cihazına bağlanma/eşleştirme
-        function pairDevice(mac) {
-            showLoadingFeedback('bluetooth-list', `Bluetooth cihazına (${mac}) bağlanılıyor...`);
+        function pairDevice(buttonElement, mac) {
+            const isPairing = buttonElement.textContent.includes("Eşleştir");
+            const actionText = isPairing ? "eşleştiriliyor/bağlanılıyor" : "bağlanılıyor";
+            console.log(`Bluetooth device ${mac} ${actionText}...`);
+            setButtonLoading(buttonElement, true);
             $.ajax({
                 url: '/api/pair-bluetooth',
                 type: 'POST',
                 contentType: 'application/json',
                 data: JSON.stringify({ mac_address: mac }),
                 success: function(data) {
-                    hideLoadingFeedback();
                     if(data.success) {
-                        showFlashMessage(data.message || 'Bluetooth cihazı başarıyla bağlandı!', 'success');
+                        showFlashMessage(data.message || 'Bluetooth cihazı başarıyla bağlandı/eşleştirildi!', 'success');
                         updateRelevantDeviceLists(data); // İlgili listeleri güncelle
                     } else {
-                        showFlashMessage('Hata: ' + (data.error || data.message || 'Bağlanılamadı.'), 'danger');
-                        // Hata olsa bile listeleri yenilemeyi dene
+                        showFlashMessage('Hata: ' + (data.error || data.message || 'İşlem başarısız.'), 'danger');
+                        refreshPairedBluetoothList(); // Hata olsa bile eşleşmiş listeyi yenile
                         refreshPulseAudioSinkList();
-                        refreshBluetoothList();
                     }
                 },
                 error: function(xhr) {
-                    hideLoadingFeedback();
                     let errorMsg = 'Bilinmeyen bir sunucu hatası oluştu.';
                     try { if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; } } catch(e){}
                     showFlashMessage(`Hata: ${errorMsg}`, 'danger');
-                     // Hata olsa bile listeleri yenilemeyi dene
+                     refreshPairedBluetoothList(); // Hata olsa bile eşleşmiş listeyi yenile
                      refreshPulseAudioSinkList();
-                     refreshBluetoothList();
+                },
+                complete: function() {
+                    // Buton durumu renderBluetoothList içinde güncellenecek, burada tekrar false yapmaya gerek yok
+                    // setButtonLoading(buttonElement, false);
                 }
             });
         }
 
         // Bluetooth bağlantısını kesme
-        function disconnectDevice(mac) {
-             showLoadingFeedback('bluetooth-list', `Bluetooth cihazı (${mac}) bağlantısı kesiliyor...`);
+        function disconnectDevice(buttonElement, mac) {
+             console.log(`Disconnecting Bluetooth device ${mac}...`);
+             setButtonLoading(buttonElement, true);
              $.ajax({
                 url: '/api/disconnect-bluetooth',
                 type: 'POST',
                 contentType: 'application/json',
                 data: JSON.stringify({ mac_address: mac }),
                 success: function(data) {
-                    hideLoadingFeedback();
                     if(data.success) {
                         showFlashMessage(data.message || 'Bluetooth bağlantısı kesildi.', 'success');
                         updateRelevantDeviceLists(data); // İlgili listeleri güncelle
                     } else {
                         showFlashMessage('Hata: ' + (data.error || data.message || 'Bağlantı kesilemedi.'), 'danger');
-                         // Hata olsa bile listeleri yenilemeyi dene
+                         refreshPairedBluetoothList(); // Hata olsa bile eşleşmiş listeyi yenile
                          refreshPulseAudioSinkList();
-                         refreshBluetoothList();
                     }
                 },
                 error: function(xhr) {
-                     hideLoadingFeedback();
                      let errorMsg = 'Bilinmeyen bir sunucu hatası oluştu.';
                      try { if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; } } catch(e){}
                      showFlashMessage(`Hata: ${errorMsg}`, 'danger');
-                      // Hata olsa bile listeleri yenilemeyi dene
+                      refreshPairedBluetoothList(); // Hata olsa bile eşleşmiş listeyi yenile
                       refreshPulseAudioSinkList();
-                      refreshBluetoothList();
+                },
+                complete: function() {
+                     // setButtonLoading(buttonElement, false);
                 }
             });
         }
 
         // --- Sayfa Yüklendiğinde Çalışacak Kod ---
         $(document).ready(function() {
-            // Başlangıçta PulseAudio ve Bluetooth listelerini yükle
+            // Başlangıçta PulseAudio ve eşleşmiş Bluetooth listelerini yükle
             refreshPulseAudioSinkList();
-            refreshBluetoothList();
+            refreshPairedBluetoothList();
+
+            // Tarama süresini butona yaz (app.py'deki değişkene göre)
+            const scanDuration = {{ BLUETOOTH_SCAN_DURATION }}; // Jinja2 ile süreyi al
+             $('#discover-btn').text(`Yeni Cihazları Tara (${scanDuration}sn)`);
         });
     </script>
 
