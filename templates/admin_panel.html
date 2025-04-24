@@ -726,7 +726,7 @@
             refreshPairedBluetoothList();
 
             // Tarama süresini butona yaz (app.py'deki değişkene göre)
-            const scanDuration = {{ BLUETOOTH_SCAN_DURATION }}; // Jinja2 ile süreyi al
+            const scanDuration = { BLUETOOTH_SCAN_DURATION }; // Jinja2 ile süreyi al
              $('#discover-btn').text(`Yeni Cihazları Tara (${scanDuration}sn)`);
         });
     </script>
