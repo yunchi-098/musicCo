@@ -39,20 +39,20 @@
         .unpaired-bluetooth-device strong, .unpaired-bluetooth-device small {
              color: #343a40; /* Koyu gri metin */
         }
-        /* Varsayılan PulseAudio Sink */
-        .default-pulse-sink {
+        /* Varsayılan PipeWire Sink */
+        .default-pipewire-sink { /* Sınıf adı değişti */
             border-left: 4px solid #6f42c1 !important; /* Mor sol kenarlık */
             background-color: #f3eefe; /* Hafif mor arka plan */
         }
-        .default-pulse-sink strong, .default-pulse-sink small {
+        .default-pipewire-sink strong, .default-pipewire-sink small {
              color: #3d236a; /* Koyu mor metin */
         }
-        /* Çalışan PulseAudio Sink (varsayılan değilse) */
-        .running-pulse-sink:not(.default-pulse-sink) {
+        /* Çalışan PipeWire Sink (varsayılan değilse) */
+        .running-pipewire-sink:not(.default-pipewire-sink) { /* Sınıf adı değişti */
              border-left: 4px solid #ffc107 !important; /* Sarı sol kenarlık */
              background-color: #fff9e6; /* Hafif sarı arka plan */
         }
-         .running-pulse-sink:not(.default-pulse-sink) strong, .running-pulse-sink:not(.default-pulse-sink) small {
+         .running-pipewire-sink:not(.default-pipewire-sink) strong, .running-pipewire-sink:not(.default-pipewire-sink) small {
              color: #856404; /* Koyu sarı metin */
         }
 
@@ -344,25 +344,20 @@
                  </div>
              </div>
 
-        </div> <div class="audio-management-section shadow-sm">
-            <h4 class="mb-4 text-secondary">Ses Çıkış Yönetimi</h4>
+        </div> <div class="audio-management-section shadow-sm mt-4"> <h4 class="mb-4 text-secondary">Ses Çıkış Yönetimi</h4>
             <div class="row">
                 <div class="col-md-6 mb-3 mb-md-0">
                     <div class="card h-100">
                         <div class="card-header bg-dark text-white">
-                            <h5 class="mb-0">PulseAudio Çıkışları (Hedef Seçimi)</h5>
-                        </div>
-                        <div class="card-body card-body-scrollable" id="pulseaudio-sinks-list">
-                            <p class="text-muted">Yükleniyor...</p>
+                            <h5 class="mb-0">PipeWire Çıkışları (Hedef Seçimi)</h5> </div>
+                        <div class="card-body card-body-scrollable" id="pipewire-sinks-list"> <p class="text-muted">Yükleniyor...</p>
                         </div>
                         <div class="card-footer text-center">
-                             <button onclick="refreshPulseAudioSinkList()" class="btn btn-sm btn-dark">
-                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-clockwise" viewBox="0 0 16 16">
+                             <button onclick="refreshPipewireSinkList()" class="btn btn-sm btn-dark"> <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-clockwise" viewBox="0 0 16 16">
                                    <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2z"/>
                                    <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466"/>
                                  </svg>
-                                 PulseAudio Listesini Yenile
-                             </button>
+                                 PipeWire Listesini Yenile </button>
                              <small class="text-muted mt-2 d-block">Not: Seçilen cihaz sistemin varsayılan ses çıkışı olur.</small>
                         </div>
                     </div>
@@ -380,8 +375,7 @@
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-broadcast" viewBox="0 0 16 16">
                                   <path d="M3.05 3.05a7 7 0 0 0 0 9.9.5.5 0 0 1-.707.707 8 8 0 0 1 0-11.314.5.5 0 0 1 .707.707m2.122 2.122a4 4 0 0 0 0 5.656.5.5 0 1 1-.708.708 5 5 0 0 1 0-7.072.5.5 0 0 1 .708.708m5.656-.708a.5.5 0 0 1 .708 0 5 5 0 0 1 0 7.072.5.5 0 1 1-.708-.708 4 4 0 0 0 0-5.656.5.5 0 0 1 0-.708m2.122-2.12a.5.5 0 0 1 .707 0 8 8 0 0 1 0 11.314.5.5 0 0 1-.707-.707 7 7 0 0 0 0-9.9.5.5 0 0 1 0-.707zM10 8a2 2 0 1 1-4 0 2 2 0 0 1 4 0"/>
                                 </svg>
-                                Yeni Cihazları Tara ({{ BLUETOOTH_SCAN_DURATION }}sn)
-                            </button>
+                                Yeni Cihazları Tara (<span id="scan-duration-text">{{ BLUETOOTH_SCAN_DURATION }}</span>sn) </button>
                             <button onclick="refreshPairedBluetoothList()" class="btn btn-sm btn-info mb-2">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-bluetooth" viewBox="0 0 16 16">
                                   <path fill-rule="evenodd" d="M8.5 2.622a.5.5 0 0 1 .5.5v2.878l2.147-2.147a.5.5 0 0 1 .707.707L9.707 6.707l2.147 2.147a.5.5 0 0 1-.707.707L8.999 7.414v4.964a.5.5 0 0 1-1 0V7.414L5.854 9.557a.5.5 0 0 1-.707-.707L7.293 6.707 5.146 4.56a.5.5 0 0 1 .707-.707L8 5.998V3.122a.5.5 0 0 1 .5-.5m-1-.001a1.5 1.5 0 0 0-1.5 1.5v1.756l-1.854-1.853a1.5 1.5 0 0 0-2.121 2.121l2.146 2.147L2.147 8.854a1.5 1.5 0 0 0 2.121 2.121L6.121 9.121v1.756a1.5 1.5 0 0 0 1.5 1.5h.001a1.5 1.5 0 0 0 1.5-1.5v-1.756l1.854 1.854a1.5 1.5 0 0 0 2.121-2.121L9.854 8.854l2.147-2.147a1.5 1.5 0 0 0-2.121-2.121L8.025 6.44V4.684a1.5 1.5 0 0 0-1.5-1.5z"/>
@@ -402,6 +396,8 @@
         function showFlashMessage(message, category = 'info') {
             const flashDiv = document.getElementById('flash-messages');
             if (!flashDiv) return;
+            // Mevcut flash mesajlarını temizle (isteğe bağlı, çok fazla mesaj birikmesini önler)
+            // flashDiv.innerHTML = '';
             const alertHtml = `
                 <div class="alert alert-${category} alert-dismissible fade show mt-2" role="alert">
                     ${message}
@@ -412,7 +408,17 @@
             flashDiv.insertAdjacentHTML('afterbegin', alertHtml);
              // Otomatik kapatma (isteğe bağlı)
              window.setTimeout(() => {
-                 $(alertHtml).alert('close');
+                 // Element hala varsa kapatmayı dene
+                 const alertElement = flashDiv.querySelector('.alert');
+                 if (alertElement) {
+                    try {
+                        $(alertElement).alert('close');
+                    } catch (e) {
+                        // Bootstrap alert yoksa veya başka bir hata olursa yoksay
+                        console.warn("Flash mesajı otomatik kapatılamadı:", e);
+                        alertElement.remove(); // Manuel kaldır
+                    }
+                 }
              }, 7000); // 7 saniye sonra kapat
         }
 
@@ -420,7 +426,7 @@
         function showListLoading(elementId, message = "Yükleniyor...") {
             const element = $(`#${elementId}`);
             if (element) {
-                element.html(`<p class="text-muted p-3"><span class="spinner-border spinner-border-sm mr-2" role="status" aria-hidden="true"></span>${message}</p>`);
+                element.html(`<p class="text-muted p-3 text-center"><span class="spinner-border spinner-border-sm mr-2" role="status" aria-hidden="true"></span>${message}</p>`);
             }
         }
 
@@ -441,6 +447,15 @@
                 // Orijinal içeriği geri yükle
                 if (buttonElement.dataset.originalHtml) {
                     buttonElement.innerHTML = buttonElement.dataset.originalHtml;
+                    // Saklanan içeriği temizle (tekrar kullanılmayacaksa)
+                    // delete buttonElement.dataset.originalHtml;
+                } else {
+                     // Fallback: Orijinal içerik saklanmadıysa, genel bir metin kullan
+                     if(buttonElement.textContent.includes("Eşleştir")) buttonElement.textContent = "Eşleştir";
+                     else if(buttonElement.textContent.includes("Bağlan")) buttonElement.textContent = "Bağlan";
+                     else if(buttonElement.textContent.includes("Kes")) buttonElement.textContent = "Bağlantıyı Kes";
+                     else if(buttonElement.textContent.includes("Varsayılan Yap")) buttonElement.textContent = "Varsayılan Yap";
+                     // Diğer butonlar için de eklenebilir
                 }
             }
         }
@@ -448,22 +463,22 @@
 
         // --- Listeleri Render Etme Fonksiyonları ---
 
-         // PulseAudio Sink Listesini Render Etme
-         function renderPulseAudioSinkList(sinks, defaultSinkName) {
-            const listElement = $('#pulseaudio-sinks-list');
+         // PipeWire Sink Listesini Render Etme (Fonksiyon adı ve içerik güncellendi)
+         function renderPipewireSinkList(sinks, defaultSinkNodeName) {
+            const listElement = $('#pipewire-sinks-list'); // ID güncellendi
             let html = '';
             if (sinks && sinks.length > 0) {
                  sinks.forEach(sink => {
                      let stateBadge = '';
                      let stateClass = '';
-                     let isDefault = sink.name === defaultSinkName;
+                     let isDefault = sink.name === defaultSinkNodeName; // Karşılaştırma node adı ile yapılıyor
 
                      // Duruma göre badge ve vurgu sınıfı ata
                      if (isDefault) {
-                         stateClass = 'default-pulse-sink'; // Varsayılan için mor vurgu
+                         stateClass = 'default-pipewire-sink'; // Varsayılan için mor vurgu (sınıf adı güncellendi)
                          stateBadge = '<span class="badge badge-primary ml-1">Varsayılan</span>';
                      } else if (sink.state === 'RUNNING') {
-                         stateClass = 'running-pulse-sink'; // Çalışan (ama varsayılan olmayan) için sarı vurgu
+                         stateClass = 'running-pipewire-sink'; // Çalışan (ama varsayılan olmayan) için sarı vurgu (sınıf adı güncellendi)
                          stateBadge = '<span class="badge badge-success ml-1">Çalışıyor</span>';
                      } else if (sink.state === 'IDLE') {
                          stateBadge = '<span class="badge badge-secondary ml-1">Boşta</span>';
@@ -474,8 +489,9 @@
                      }
 
                      // Buton HTML'i (varsayılan değilse göster)
+                     // Buton artık setDefaultPipewireSink fonksiyonunu çağıracak ve sink.name (node adı) gönderecek
                      let buttonHtml = !isDefault
-                         ? `<button onclick="setDefaultPulseSink(this, '${sink.name}')" class="btn btn-sm btn-outline-primary ml-2" style="white-space: nowrap;">Varsayılan Yap</button>`
+                         ? `<button onclick="setDefaultPipewireSink(this, '${sink.name}')" class="btn btn-sm btn-outline-primary ml-2" style="white-space: nowrap;">Varsayılan Yap</button>`
                          : ''; // Zaten varsayılan ise buton gösterme
 
                      html += `
@@ -483,41 +499,43 @@
                          <div class="d-flex justify-content-between align-items-center">
                              <div style="min-width: 0;">
                                  <strong class="d-block text-truncate" title="${sink.description}">${sink.description}</strong>
-                                 <small class="text-muted d-block text-truncate">(Name: ${sink.name}) ${stateBadge}</small>
-                             </div>
+                                 <small class="text-muted d-block text-truncate" title="${sink.name}">(Node: ${sink.name}) ${stateBadge}</small> </div>
                              ${buttonHtml}
                          </div>
                      </div>`;
                  });
             } else {
-                 html = '<p class="text-muted text-center">PulseAudio çıkış cihazı (sink) bulunamadı.</p>';
+                 html = '<p class="text-muted text-center">PipeWire çıkış cihazı (sink) bulunamadı.</p>';
             }
             listElement.html(html);
          }
 
-         // Bluetooth Cihaz Listesini Render Etme (Keşfedilenler dahil)
+         // Bluetooth Cihaz Listesini Render Etme (Değişiklik yok, aynı kalabilir)
          function renderBluetoothList(devices) {
              const listElement = $('#bluetooth-list');
              let html = '';
              if (devices && devices.length > 0) {
                  devices.forEach(device => {
                      let cardClass = '';
-                     let actionButtonHtml = '';
+                     let actionButtonHtml = ''; // Buton HTML'ini burada oluşturacağız
                      let statusBadge = '';
 
                      if (device.paired) {
                          if (device.connected) {
                              cardClass = 'connected-bluetooth-device'; // Bağlı ve eşleşmiş
                              statusBadge = '<span class="badge badge-primary ml-1">Bağlı</span>';
+                             // Bağlantıyı kesme butonu (disconnectDevice fonksiyonunu kullanır)
                              actionButtonHtml = `<button onclick="disconnectDevice(this, '${device.mac_address}')" class="btn btn-sm btn-outline-danger ml-2" style="white-space: nowrap;">Bağlantıyı Kes</button>`;
                          } else {
                              cardClass = ''; // Eşleşmiş ama bağlı değil
                              statusBadge = '<span class="badge badge-secondary ml-1">Eşleşmiş</span>';
+                              // Bağlanma butonu (pairDevice fonksiyonunu kullanır, çünkü pair hem eşleştirir hem bağlar)
                              actionButtonHtml = `<button onclick="pairDevice(this, '${device.mac_address}')" class="btn btn-sm btn-success ml-2" style="white-space: nowrap;">Bağlan</button>`;
                          }
                      } else {
                          cardClass = 'unpaired-bluetooth-device'; // Eşleşmemiş (yeni keşfedilmiş)
                          statusBadge = '<span class="badge badge-light ml-1">Yeni</span>';
+                         // Eşleştirme ve bağlanma butonu (pairDevice fonksiyonunu kullanır)
                          actionButtonHtml = `<button onclick="pairDevice(this, '${device.mac_address}')" class="btn btn-sm btn-warning ml-2" style="white-space: nowrap;">Eşleştir ve Bağlan</button>`;
                      }
 
@@ -525,11 +543,10 @@
                      <div class="device-card mb-2 p-2 border rounded ${cardClass}">
                          <div class="d-flex justify-content-between align-items-center">
                              <div style="min-width: 0;">
-                                 <strong class="d-block text-truncate" title="${device.name}">${device.name || 'İsimsiz Cihaz'}</strong>
-                                 <small class="text-muted">${device.mac_address} ${statusBadge}</small>
+                                 <strong class="d-block text-truncate" title="${device.name}">${device.name}</strong>
+                                 <small class="text-muted d-block text-truncate">${device.mac_address} ${statusBadge}</small>
                              </div>
-                             ${actionButtonHtml}
-                         </div>
+                             ${actionButtonHtml} </div>
                      </div>`;
                  });
              } else {
@@ -540,24 +557,25 @@
 
         // --- API Çağrıları ve Liste Yenileme ---
 
-        // PulseAudio listesini yenile
-        function refreshPulseAudioSinkList() {
-            showListLoading('pulseaudio-sinks-list', 'PulseAudio çıkışları yenileniyor...');
-            $.get('/api/pulseaudio-sinks')
+        // PipeWire listesini yenile (Fonksiyon adı güncellendi)
+        function refreshPipewireSinkList() {
+            showListLoading('pipewire-sinks-list', 'PipeWire çıkışları yenileniyor...'); // ID güncellendi
+            $.get('/api/pipewire-sinks') // API endpoint güncellendi
              .done(function(data) {
+                 // Anahtar adları güncellendi (pipewire_sinks)
                  if(data && data.sinks !== undefined && data.default_sink !== undefined) {
-                     renderPulseAudioSinkList(data.sinks, data.default_sink);
+                     renderPipewireSinkList(data.sinks, data.default_sink); // Fonksiyon adı güncellendi
                  } else {
-                      $('#pulseaudio-sinks-list').html('<p class="text-danger">PulseAudio listesi alınamadı (Veri eksik).</p>');
+                      $('#pipewire-sinks-list').html('<p class="text-danger">PipeWire listesi alınamadı (Veri eksik).</p>'); // ID güncellendi
                  }
             })
             .fail(function(xhr) {
-                 console.error("Error fetching PulseAudio sinks:", xhr);
-                 $('#pulseaudio-sinks-list').html('<p class="text-danger">PulseAudio listesi alınamadı (API Hatası).</p>');
+                 console.error("Error fetching PipeWire sinks:", xhr);
+                 $('#pipewire-sinks-list').html('<p class="text-danger">PipeWire listesi alınamadı (API Hatası).</p>'); // ID güncellendi
             });
         }
 
-        // Eşleşmiş Bluetooth listesini yenile
+        // Eşleşmiş Bluetooth listesini yenile (Değişiklik yok)
         function refreshPairedBluetoothList() {
             showListLoading('bluetooth-list', 'Eşleşmiş Bluetooth cihazları listeleniyor...');
             $.get('/api/scan-bluetooth') // Bu endpoint artık eşleşmişleri getiriyor
@@ -574,7 +592,7 @@
             });
         }
 
-        // Yeni Bluetooth cihazlarını keşfet
+        // Yeni Bluetooth cihazlarını keşfet (Değişiklik yok)
         function discoverBluetoothDevices() {
             const discoverBtn = document.getElementById('discover-btn');
             setButtonLoading(discoverBtn, true); // Tarama butonunu kitle
@@ -602,9 +620,14 @@
 
         // Tüm ilgili listeleri güncelleyen fonksiyon (API yanıtından sonra çağrılır)
         function updateRelevantDeviceLists(data) {
-             if (data.pulseaudio_sinks !== undefined && data.default_sink !== undefined) {
-                 renderPulseAudioSinkList(data.pulseaudio_sinks, data.default_sink);
+             // PipeWire listesini güncelle (Anahtar adı değişti)
+             if (data.pipewire_sinks !== undefined && data.default_sink !== undefined) {
+                 renderPipewireSinkList(data.pipewire_sinks, data.default_sink); // Fonksiyon adı değişti
+             } else {
+                 // Yanıtta yoksa, pipewire listesini manuel yenileyelim
+                 refreshPipewireSinkList();
              }
+
              // Bluetooth listesi için sadece eşleşmişleri yenilemek yeterli olabilir,
              // çünkü bağlanma/çıkarma sadece eşleşmişleri etkiler.
              // API yanıtında 'bluetooth_devices' varsa (eşleşmişler) onu kullanalım.
@@ -618,102 +641,111 @@
 
         // --- Cihaz Yönetimi API Çağrıları ---
 
-        // Varsayılan PulseAudio sink'ini ayarlama
-        function setDefaultPulseSink(buttonElement, sinkName) {
-            console.log("Setting default PulseAudio sink to:", sinkName);
-            if (!confirm(`"${sinkName}" cihazını sistemin varsayılan ses çıkışı yapmak istediğinizden emin misiniz?`)) {
+        // Varsayılan PipeWire sink'ini ayarlama (Fonksiyon adı ve içerik güncellendi)
+        function setDefaultPipewireSink(buttonElement, nodeName) { // Parametre adı nodeName oldu
+            // Açıklamayı butondan veya listeden almak yerine node adını kullanalım
+            console.log("Setting default PipeWire sink to node:", nodeName);
+            if (!confirm(`"${nodeName}" adlı PipeWire Node'unu sistemin varsayılan ses çıkışı yapmak istediğinizden emin misiniz?`)) {
                  return;
             }
             setButtonLoading(buttonElement, true);
             $.ajax({
-                url: '/api/set-pulseaudio-sink',
+                url: '/api/set-pipewire-sink', // API endpoint güncellendi
                 type: 'POST',
                 contentType: 'application/json',
-                data: JSON.stringify({ sink_name: sinkName }),
+                data: JSON.stringify({ node_name: nodeName }), // Gönderilen veri node_name oldu
                 success: function(data) {
                     if (data.success) {
                         showFlashMessage(data.message || 'Varsayılan ses çıkışı başarıyla değiştirildi!', 'success');
-                        updateRelevantDeviceLists(data);
+                        updateRelevantDeviceLists(data); // Listeleri güncelle
                     } else {
                         showFlashMessage('Hata: ' + (data.error || 'Bilinmeyen bir hata oluştu.'), 'danger');
-                        refreshPulseAudioSinkList(); // Hata olsa bile listeyi yenile
+                        refreshPipewireSinkList(); // Hata olsa bile listeyi yenile
                     }
                 },
                 error: function(xhr) {
                      let errorMsg = 'Bilinmeyen bir sunucu hatası oluştu.';
                      try { if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; } } catch(e){}
-                     console.error("Error setting default PulseAudio sink:", xhr);
+                     console.error("Error setting default PipeWire sink:", xhr);
                      showFlashMessage(`Hata: ${errorMsg}`, 'danger');
-                     refreshPulseAudioSinkList(); // Hata olsa bile listeyi yenile
+                     refreshPipewireSinkList(); // Hata olsa bile listeyi yenile
                 },
                 complete: function() {
-                    setButtonLoading(buttonElement, false);
+                    // Buton durumu updateRelevantDeviceLists -> renderPipewireSinkList içinde güncellenecek
+                    // setButtonLoading(buttonElement, false);
                 }
             });
         }
 
-        // Bluetooth cihazına bağlanma/eşleştirme
+        // Bluetooth cihazına bağlanma/eşleştirme (Fonksiyon adı değişti, içerik aynı)
         function pairDevice(buttonElement, mac) {
             const isPairing = buttonElement.textContent.includes("Eşleştir");
             const actionText = isPairing ? "eşleştiriliyor/bağlanılıyor" : "bağlanılıyor";
             console.log(`Bluetooth device ${mac} ${actionText}...`);
             setButtonLoading(buttonElement, true);
             $.ajax({
-                url: '/api/pair-bluetooth',
+                url: '/api/pair-bluetooth', // Bu endpoint aynı kalabilir
                 type: 'POST',
                 contentType: 'application/json',
                 data: JSON.stringify({ mac_address: mac }),
                 success: function(data) {
                     if(data.success) {
                         showFlashMessage(data.message || 'Bluetooth cihazı başarıyla bağlandı/eşleştirildi!', 'success');
-                        updateRelevantDeviceLists(data); // İlgili listeleri güncelle
+                        // Başarılı olunca hem PipeWire hem Bluetooth listelerini güncelle
+                        updateRelevantDeviceLists(data);
                     } else {
                         showFlashMessage('Hata: ' + (data.error || data.message || 'İşlem başarısız.'), 'danger');
-                        refreshPairedBluetoothList(); // Hata olsa bile eşleşmiş listeyi yenile
-                        refreshPulseAudioSinkList();
+                        // Hata olsa bile listeleri yenilemeyi dene
+                        refreshPairedBluetoothList();
+                        refreshPipewireSinkList();
                     }
                 },
                 error: function(xhr) {
                     let errorMsg = 'Bilinmeyen bir sunucu hatası oluştu.';
                     try { if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; } } catch(e){}
                     showFlashMessage(`Hata: ${errorMsg}`, 'danger');
-                     refreshPairedBluetoothList(); // Hata olsa bile eşleşmiş listeyi yenile
-                     refreshPulseAudioSinkList();
+                     // Hata olsa bile listeleri yenilemeyi dene
+                     refreshPairedBluetoothList();
+                     refreshPipewireSinkList();
                 },
                 complete: function() {
-                    // Buton durumu renderBluetoothList içinde güncellenecek, burada tekrar false yapmaya gerek yok
+                    // Buton durumu renderBluetoothList içinde güncellenecek
                     // setButtonLoading(buttonElement, false);
                 }
             });
         }
 
-        // Bluetooth bağlantısını kesme
+        // Bluetooth bağlantısını kesme (Fonksiyon adı değişti, içerik aynı)
         function disconnectDevice(buttonElement, mac) {
              console.log(`Disconnecting Bluetooth device ${mac}...`);
              setButtonLoading(buttonElement, true);
              $.ajax({
-                url: '/api/disconnect-bluetooth',
+                url: '/api/disconnect-bluetooth', // Bu endpoint aynı kalabilir
                 type: 'POST',
                 contentType: 'application/json',
                 data: JSON.stringify({ mac_address: mac }),
                 success: function(data) {
                     if(data.success) {
                         showFlashMessage(data.message || 'Bluetooth bağlantısı kesildi.', 'success');
-                        updateRelevantDeviceLists(data); // İlgili listeleri güncelle
+                         // Başarılı olunca hem PipeWire hem Bluetooth listelerini güncelle
+                        updateRelevantDeviceLists(data);
                     } else {
                         showFlashMessage('Hata: ' + (data.error || data.message || 'Bağlantı kesilemedi.'), 'danger');
-                         refreshPairedBluetoothList(); // Hata olsa bile eşleşmiş listeyi yenile
-                         refreshPulseAudioSinkList();
+                         // Hata olsa bile listeleri yenilemeyi dene
+                         refreshPairedBluetoothList();
+                         refreshPipewireSinkList();
                     }
                 },
                 error: function(xhr) {
                      let errorMsg = 'Bilinmeyen bir sunucu hatası oluştu.';
                      try { if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; } } catch(e){}
                      showFlashMessage(`Hata: ${errorMsg}`, 'danger');
-                      refreshPairedBluetoothList(); // Hata olsa bile eşleşmiş listeyi yenile
-                      refreshPulseAudioSinkList();
+                      // Hata olsa bile listeleri yenilemeyi dene
+                      refreshPairedBluetoothList();
+                      refreshPipewireSinkList();
                 },
                 complete: function() {
+                     // Buton durumu renderBluetoothList içinde güncellenecek
                      // setButtonLoading(buttonElement, false);
                 }
             });
@@ -721,14 +753,16 @@
 
         // --- Sayfa Yüklendiğinde Çalışacak Kod ---
         $(document).ready(function() {
-            // Başlangıçta PulseAudio ve eşleşmiş Bluetooth listelerini yükle
-            refreshPulseAudioSinkList();
+            // Başlangıçta PipeWire ve eşleşmiş Bluetooth listelerini yükle
+            refreshPipewireSinkList(); // Fonksiyon adı değişti
             refreshPairedBluetoothList();
 
             // Tarama süresini butona yaz (app.py'deki değişkene göre)
-            const scanDuration = { BLUETOOTH_SCAN_DURATION }; // Jinja2 ile süreyi al
-             $('#discover-btn').text(`Yeni Cihazları Tara (${scanDuration}sn)`);
+            // Bu kısım Jinja2 ile doğru şekilde doldurulmalı
+            // const scanDuration = {{ BLUETOOTH_SCAN_DURATION }};
+            // $('#scan-duration-text').text(scanDuration); // ID ile span'ı bulup içini doldur
         });
+
     </script>
 
 </body>

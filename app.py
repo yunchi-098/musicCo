@@ -33,16 +33,17 @@ logger = logging.getLogger(__name__)
 
 
 class AudioManager:
-    """PulseAudio ve Bluetooth ile ses cihazlarını yöneten sınıf."""
+    """PipeWire ve Bluetooth ile ses cihazlarını yöneten sınıf."""
 
     @staticmethod
     def _run_command(command, timeout=10):
         """Helper function to run shell commands."""
         try:
+            # PipeWire komutları genellikle daha hızlıdır, ancak timeout kalabilir
             result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=timeout)
             return True, result.stdout, result.stderr
         except FileNotFoundError:
-            logger.error(f"Command not found: {command[0]}. Is it installed and in PATH?")
+            logger.error(f"Command not found: {command[0]}. Is PipeWire installed and in PATH?")
             return False, "", f"Command not found: {command[0]}"
         except subprocess.CalledProcessError as e:
             logger.error(f"Command '{' '.join(command)}' failed with error: {e.stderr}")
@@ -55,84 +56,132 @@ class AudioManager:
             return False, "", f"Unexpected error: {e}"
 
     @staticmethod
-    def get_default_pulseaudio_sink():
-        """Sistemin mevcut varsayılan PulseAudio sink'ini alır."""
-        success, stdout, stderr = AudioManager._run_command(['pactl', 'get-default-sink'], timeout=5)
-        if success:
-            default_sink_name = stdout.strip()
-            logger.debug(f"Varsayılan PulseAudio sink: {default_sink_name}")
-            return default_sink_name
+    def get_default_pipewire_sink_info():
+        """Sistemin mevcut varsayılan PipeWire sink'inin bilgilerini (node adı ve açıklama) alır."""
+        default_sink_name = None
+        default_sink_description = None
+
+        # 1. Varsayılan sink'in node adını al
+        success_meta, stdout_meta, stderr_meta = AudioManager._run_command(['pw-metadata', '-n', 'settings', '0', 'default.audio.sink'], timeout=5)
+        if success_meta:
+            # Çıktı genellikle şu formatta olur: 'default.audio.sink = {"name":"alsa_output.pci-0000_00_1f.3.analog-stereo"}'
+            match = re.search(r'"name"\s*:\s*"([^"]+)"', stdout_meta)
+            if match:
+                default_sink_name = match.group(1)
+                logger.debug(f"Varsayılan PipeWire sink node adı: {default_sink_name}")
+
+                # 2. Node adını kullanarak açıklamasını al (pw-dump ile)
+                success_dump, stdout_dump, stderr_dump = AudioManager._run_command(['pw-dump', 'Node', default_sink_name], timeout=5)
+                if success_dump:
+                    try:
+                        # pw-dump tek bir node için bile liste döndürür
+                        node_info_list = json.loads(stdout_dump)
+                        if node_info_list and isinstance(node_info_list, list):
+                            node_info = node_info_list[0] # İlk elemanı al
+                            props = node_info.get('info', {}).get('props', {})
+                            default_sink_description = props.get('node.description', default_sink_name) # Açıklama yoksa node adını kullan
+                            logger.debug(f"Varsayılan PipeWire sink açıklaması: {default_sink_description}")
+                        else:
+                             logger.warning(f"Varsayılan sink ({default_sink_name}) için pw-dump çıktısı anlaşılamadı.")
+                             default_sink_description = default_sink_name # Fallback
+                    except json.JSONDecodeError as e:
+                        logger.error(f"pw-dump çıktısı JSON olarak ayrıştırılamadı: {e}")
+                        default_sink_description = default_sink_name # Fallback
+                    except Exception as e:
+                        logger.error(f"pw-dump çıktısı işlenirken hata: {e}", exc_info=True)
+                        default_sink_description = default_sink_name # Fallback
+                else:
+                    logger.warning(f"Varsayılan sink ({default_sink_name}) için pw-dump başarısız: {stderr_dump}")
+                    default_sink_description = default_sink_name # Fallback
+            else:
+                logger.error(f"pw-metadata çıktısından varsayılan sink adı çıkarılamadı: {stdout_meta}")
         else:
-            logger.error(f"Could not get default PulseAudio sink: {stderr}")
-            return None
+            logger.error(f"Varsayılan PipeWire sink alınamadı: {stderr_meta}")
+
+        return default_sink_name, default_sink_description
 
     @staticmethod
-    def set_default_pulseaudio_sink(sink_name):
-        """Belirtilen sink'i sistemin varsayılan PulseAudio sink'i olarak ayarlar."""
-        logger.info(f"Setting default PulseAudio sink to '{sink_name}'...")
-        success, stdout, stderr = AudioManager._run_command(['pactl', 'set-default-sink', sink_name], timeout=10)
+    def set_default_pipewire_sink(node_name):
+        """Belirtilen node adını sistemin varsayılan PipeWire sink'i olarak ayarlar."""
+        logger.info(f"Setting default PipeWire sink to node '{node_name}'...")
+        # JSON formatında node adını içeren komutu oluştur
+        command = ['pw-metadata', '-n', 'settings', '0', 'default.audio.sink', f'{{"name":"{node_name}"}}']
+        success, stdout, stderr = AudioManager._run_command(command, timeout=10)
         if success:
-            logger.info(f"Default PulseAudio sink successfully set to '{sink_name}'.")
-            return True, f"Varsayılan ses çıkışı '{sink_name}' olarak ayarlandı. spotifyd'nin değişikliği alması için yeniden başlatmanız gerekebilir."
+            logger.info(f"Default PipeWire sink successfully set to node '{node_name}'.")
+            # Açıklamayı tekrar alıp mesajda göstermek daha kullanıcı dostu olabilir
+            _, sink_desc = AudioManager.get_default_pipewire_sink_info()
+            friendly_name = sink_desc if sink_desc else node_name
+            return True, f"Varsayılan ses çıkışı '{friendly_name}' olarak ayarlandı."
         else:
-            err_msg = f"'{sink_name}' varsayılan yapılamadı: {stderr}"
-            if "No such entity" in stderr: err_msg = f"Sink bulunamadı: '{sink_name}'."
-            elif "Invalid argument" in stderr: err_msg = f"Geçersiz sink adı: '{sink_name}'."
-            logger.error(f"Failed to set default PulseAudio sink: {stderr}")
+            err_msg = f"Node '{node_name}' varsayılan yapılamadı: {stderr}"
+            if "No such object" in stderr or "invalid node" in stderr: # PipeWire hata mesajları değişebilir
+                 err_msg = f"Sink (Node) bulunamadı veya geçersiz: '{node_name}'."
+            logger.error(f"Failed to set default PipeWire sink: {stderr}")
             return False, err_msg
 
     @staticmethod
-    def get_pulseaudio_sinks():
-        """Mevcut PulseAudio sink'lerini ve varsayılanı listeler."""
+    def get_pipewire_sinks():
+        """Mevcut PipeWire sink'lerini (Node) ve varsayılanı listeler."""
         sinks = []
-        default_sink_name = AudioManager.get_default_pulseaudio_sink()
+        default_sink_node_name, _ = AudioManager.get_default_pipewire_sink_info() # Sadece node adını al
 
-        success_short, stdout_short, stderr_short = AudioManager._run_command(['pactl', 'list', 'sinks', 'short'], timeout=5)
-        success_long, stdout_long, stderr_long = AudioManager._run_command(['pactl', 'list', 'sinks'], timeout=5)
+        success_dump, stdout_dump, stderr_dump = AudioManager._run_command(['pw-dump', 'Node'], timeout=10)
 
-        if not success_short:
-            logger.error(f"Error listing short PulseAudio sinks: {stderr_short}")
-            return [], default_sink_name # Return default even if list fails
+        if not success_dump:
+            logger.error(f"Error listing PipeWire nodes (pw-dump): {stderr_dump}")
+            return [], default_sink_node_name # Return default even if list fails
 
-        if not success_long:
-            logger.warning(f"Could not get detailed sink descriptions: {stderr_long}")
-            # Continue without detailed descriptions if long list fails
+        try:
+            all_nodes = json.loads(stdout_dump)
+            if not isinstance(all_nodes, list):
+                 logger.error("pw-dump çıktısı beklenildiği gibi bir liste değil.")
+                 return [], default_sink_node_name
 
-        for line in stdout_short.splitlines():
-            parts = line.strip().split('\t')
-            if len(parts) >= 5:
-                try:
-                    sink_index_str = parts[0]
-                    sink_name = parts[1]
-                    state = parts[4]
-                    description = sink_name # Default description
+            for node in all_nodes:
+                if not isinstance(node, dict): continue # Beklenmeyen formatı atla
 
-                    # Extract description from the detailed output if available
-                    if success_long:
-                        sink_section_match = re.search(rf'Sink #{sink_index_str}(.*?)(?=Sink #|\Z)', stdout_long, re.DOTALL)
-                        if sink_section_match:
-                            sink_details = sink_section_match.group(1)
-                            desc_match = re.search(r'Description:\s*(.*)', sink_details)
-                            if desc_match:
-                                description = desc_match.group(1).strip()
-                                if "bluez_sink" in sink_name:
-                                    bt_name_match = re.search(r'Description:\s*([^(\n]+)', sink_details)
-                                    if bt_name_match: description = bt_name_match.group(1).strip()
+                info = node.get('info', {})
+                props = info.get('props', {})
+                media_class = props.get('media.class')
 
-                    is_default = (sink_name == default_sink_name)
-                    sinks.append({
-                        'index': sink_index_str,
-                        'name': sink_name,
-                        'description': description,
-                        'state': state,
-                        'is_default': is_default
-                    })
-                except Exception as parse_err:
-                    logger.warning(f"Could not parse PulseAudio sink line: {line} - Error: {parse_err}")
+                # Sadece ses çıkışlarını (sink) al
+                if media_class == 'Audio/Sink':
+                    try:
+                        node_id = node.get('id') # Node ID (sayısal)
+                        node_name = props.get('node.name', f'node_{node_id}') # Benzersiz node adı
+                        # Açıklama için çeşitli yerlere bakılabilir
+                        description = props.get('node.description', props.get('device.description', node_name))
+                        # Bluetooth cihaz adını daha iyi almak için:
+                        if 'bluez' in node_name:
+                            # 'device.alias' veya 'bluez5.device.alias' daha iyi olabilir
+                            bt_alias = props.get('device.alias', props.get('bluez5.device.alias', description))
+                            description = bt_alias if bt_alias != description else description # Eğer alias farklıysa onu kullan
 
-        logger.info(f"Found PulseAudio sinks: {len(sinks)} (Default: {default_sink_name})")
-        return sinks, default_sink_name
+                        state = info.get('state', 'unknown').upper() # Durumu al (running, idle, suspended)
+                        is_default = (node_name == default_sink_node_name)
 
+                        sinks.append({
+                            'id': node_id, # PipeWire Node ID
+                            'name': node_name, # PipeWire Node Name (benzersiz)
+                            'description': description, # Kullanıcı dostu açıklama
+                            'state': state,
+                            'is_default': is_default
+                        })
+                    except Exception as parse_err:
+                        logger.warning(f"Could not parse PipeWire node info: {node.get('id', 'N/A')} - Error: {parse_err}")
+
+            logger.info(f"Found PipeWire sinks: {len(sinks)} (Default Node: {default_sink_node_name})")
+            return sinks, default_sink_node_name
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Error decoding JSON from pw-dump: {e}")
+            return [], default_sink_node_name
+        except Exception as e:
+            logger.error(f"Error processing pw-dump output: {e}", exc_info=True)
+            return [], default_sink_node_name
+
+    # --- Bluetooth Fonksiyonları (Değişiklik Yok) ---
     @staticmethod
     def get_paired_bluetooth_devices():
         """Sadece eşleştirilmiş Bluetooth cihazlarını listeler."""
@@ -250,7 +299,6 @@ class AudioManager:
         return result_list
 
 
-    # --- Bluetooth Pairing/Connection Fonksiyonları (Değişiklik Yok) ---
     @staticmethod
     def pair_bluetooth_device(mac_address):
         """Belirtilen MAC adresine sahip bluetooth cihazını eşleştirir ve bağlar."""
@@ -309,6 +357,7 @@ class AudioManager:
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'varsayilan_guvensiz_anahtar_lutfen_degistirin')
 app.jinja_env.globals['AudioManager'] = AudioManager
+app.jinja_env.globals['BLUETOOTH_SCAN_DURATION'] = BLUETOOTH_SCAN_DURATION # Şablona ekle
 
 # --- Global Değişkenler ---
 spotify_client = None
@@ -477,8 +526,8 @@ def admin_panel():
     spotify_user = None
     currently_playing_info = None
 
-    # PulseAudio sink'lerini ve varsayılanı al
-    pulseaudio_sinks, default_pulse_sink = AudioManager.get_pulseaudio_sinks()
+    # PipeWire sink'lerini ve varsayılanı al
+    pipewire_sinks, default_pipewire_sink_node_name = AudioManager.get_pipewire_sinks()
 
     if spotify:
         try:
@@ -512,8 +561,8 @@ def admin_panel():
         spotify_authenticated=spotify_authenticated,
         spotify_user=session.get('spotify_user'),
         active_spotify_connect_device_id=settings.get('active_device_id'),
-        pulseaudio_sinks=pulseaudio_sinks, # PulseAudio listesi
-        default_pulseaudio_sink=default_pulse_sink, # Varsayılan PulseAudio sink adı
+        pipewire_sinks=pipewire_sinks, # PipeWire listesi
+        default_pipewire_sink=default_pipewire_sink_node_name, # Varsayılan PipeWire sink node adı
         currently_playing_info=currently_playing_info,
         auto_advance_enabled=auto_advance_enabled
     )
@@ -668,6 +717,38 @@ def add_song():
     except Exception as e: logger.error(f"Admin eklerken genel hata (ID={song_id}): {e}", exc_info=True); flash("Şarkı eklenirken hata.", "danger")
     return redirect(url_for('admin_panel'))
 
+# --- Bluetooth API Rotaları (Değişiklik Yok) ---
+@app.route('/pair-bluetooth-device', methods=['POST'])
+@admin_login_required
+def pair_bluetooth_device_route():
+    data = request.get_json()
+    mac = data.get('mac_address')
+    if not mac:
+        return jsonify({'success': False, 'message': 'MAC adresi eksik.'}), 400
+    success = AudioManager.pair_bluetooth_device(mac)
+    return jsonify({'success': success, 'message': 'Cihaz eşleştirildi.' if success else 'Eşleştirme başarısız.'})
+
+@app.route('/connect-bluetooth-device', methods=['POST'])
+@admin_login_required
+def connect_bluetooth_device_route():
+    data = request.get_json()
+    mac = data.get('mac_address')
+    if not mac:
+        return jsonify({'success': False, 'message': 'MAC adresi eksik.'}), 400
+    success = AudioManager.pair_bluetooth_device(mac)  # pairing bağlamayı da kapsar
+    return jsonify({'success': success, 'message': 'Cihaz bağlandı.' if success else 'Bağlantı başarısız.'})
+
+@app.route('/disconnect-bluetooth-device', methods=['POST'])
+@admin_login_required
+def disconnect_bluetooth_device_route():
+    data = request.get_json()
+    mac = data.get('mac_address')
+    if not mac:
+        return jsonify({'success': False, 'message': 'MAC adresi eksik.'}), 400
+    success = AudioManager.disconnect_bluetooth_device(mac)
+    return jsonify({'success': success, 'message': 'Bağlantı kesildi.' if success else 'Bağlantı kesilemedi.'})
+
+# --- Queue Rotaları (Değişiklik Yok) ---
 @app.route('/add-to-queue', methods=['POST'])
 def add_to_queue():
     if not request.is_json: return jsonify({'error': 'Geçersiz format.'}), 400
@@ -731,34 +812,34 @@ def view_queue():
 def api_get_queue():
     return jsonify({'queue': song_queue, 'queue_length': len(song_queue), 'max_length': settings.get('max_queue_length', 20)})
 
-# --- PulseAudio/Bluetooth API Rotaları ---
-@app.route('/api/pulseaudio-sinks')
+# --- PipeWire/Bluetooth API Rotaları ---
+@app.route('/api/pipewire-sinks') # URL güncellendi
 @admin_login_required
-def api_pulseaudio_sinks():
-    """Mevcut PulseAudio sink'lerini ve varsayılanı döndürür."""
-    sinks, default_sink = AudioManager.get_pulseaudio_sinks()
-    return jsonify({'sinks': sinks, 'default_sink': default_sink})
+def api_pipewire_sinks():
+    """Mevcut PipeWire sink'lerini (Node) ve varsayılanı döndürür."""
+    sinks, default_sink_node_name = AudioManager.get_pipewire_sinks()
+    return jsonify({'sinks': sinks, 'default_sink': default_sink_node_name})
 
-@app.route('/api/set-pulseaudio-sink', methods=['POST'])
+@app.route('/api/set-pipewire-sink', methods=['POST']) # URL ve parametre güncellendi
 @admin_login_required
-def api_set_pulseaudio_sink():
-    """Seçilen sink'i sistemin varsayılan PulseAudio sink'i olarak ayarlar."""
+def api_set_pipewire_sink():
+    """Seçilen node'u sistemin varsayılan PipeWire sink'i olarak ayarlar."""
     if not request.is_json: return jsonify({'success': False, 'error': 'JSON isteği gerekli'}), 400
-    data = request.get_json(); sink_name = data.get('sink_name')
-    if not sink_name: logger.error("API isteğinde 'sink_name' eksik."); return jsonify({'success': False, 'error': 'Sink adı gerekli'}), 400
+    data = request.get_json(); node_name = data.get('node_name') # Parametre adı değişti
+    if not node_name: logger.error("API isteğinde 'node_name' eksik."); return jsonify({'success': False, 'error': 'Node adı gerekli'}), 400
 
-    logger.info(f"API: Varsayılan PulseAudio sink ayarlama isteği: {sink_name}")
-    success, message = AudioManager.set_default_pulseaudio_sink(sink_name)
+    logger.info(f"API: Varsayılan PipeWire sink ayarlama isteği: {node_name}")
+    success, message = AudioManager.set_default_pipewire_sink(node_name)
 
     # İşlem sonrası güncel listeleri al
-    updated_pulse_sinks, new_default_sink = AudioManager.get_pulseaudio_sinks()
+    updated_pipewire_sinks, new_default_sink_node_name = AudioManager.get_pipewire_sinks()
     # Bluetooth listesini de alalım (bağlantı durumu değişmiş olabilir)
     updated_bt_devices = AudioManager.get_paired_bluetooth_devices() # Sadece eşleşmişleri alalım
     status_code = 200 if success else 500
     response_data = {
         'success': success,
-        'pulseaudio_sinks': updated_pulse_sinks,
-        'default_sink': new_default_sink,
+        'pipewire_sinks': updated_pipewire_sinks, # Anahtar adı değişti
+        'default_sink': new_default_sink_node_name,
         'bluetooth_devices': updated_bt_devices
     }
     if success: response_data['message'] = message
@@ -792,15 +873,15 @@ def api_pair_bluetooth():
     if not mac_address: return jsonify({'success': False, 'error': 'MAC adresi gerekli'}), 400
     logger.info(f"API: Bluetooth cihazı eşleştirme/bağlama isteği: {mac_address}")
     success = AudioManager.pair_bluetooth_device(mac_address)
-    # İşlem sonrası güncel listeleri al (eşleşmişleri ve pulse'ı)
-    updated_pulse_sinks, new_default_sink = AudioManager.get_pulseaudio_sinks()
+    # İşlem sonrası güncel listeleri al (eşleşmişleri ve pipewire'ı)
+    updated_pipewire_sinks, new_default_sink = AudioManager.get_pipewire_sinks()
     updated_bt_devices = AudioManager.get_paired_bluetooth_devices()
     message = f"Bluetooth cihazı bağlandı/eşleştirildi: {mac_address}" if success else f"Bluetooth cihazı ({mac_address}) bağlanamadı/eşleştirilemedi."
     status_code = 200 if success else 500
     return jsonify({
         'success': success,
         'message': message,
-        'pulseaudio_sinks': updated_pulse_sinks,
+        'pipewire_sinks': updated_pipewire_sinks, # Anahtar adı değişti
         'default_sink': new_default_sink,
         'bluetooth_devices': updated_bt_devices # Sadece eşleşmişleri döndür
     }), status_code
@@ -814,15 +895,15 @@ def api_disconnect_bluetooth():
     if not mac_address: return jsonify({'success': False, 'error': 'MAC adresi gerekli'}), 400
     logger.info(f"API: Bluetooth cihazı bağlantısını kesme isteği: {mac_address}")
     success = AudioManager.disconnect_bluetooth_device(mac_address)
-    # İşlem sonrası güncel listeleri al (eşleşmişleri ve pulse'ı)
-    updated_pulse_sinks, new_default_sink = AudioManager.get_pulseaudio_sinks()
+    # İşlem sonrası güncel listeleri al (eşleşmişleri ve pipewire'ı)
+    updated_pipewire_sinks, new_default_sink = AudioManager.get_pipewire_sinks()
     updated_bt_devices = AudioManager.get_paired_bluetooth_devices()
     message = f"Bluetooth cihazı bağlantısı kesildi: {mac_address}" if success else f"Bluetooth cihazı ({mac_address}) bağlantısı kesilemedi."
     status_code = 200 if success else 500
     return jsonify({
         'success': success,
         'message': message,
-        'pulseaudio_sinks': updated_pulse_sinks,
+        'pipewire_sinks': updated_pipewire_sinks, # Anahtar adı değişti
         'default_sink': new_default_sink,
         'bluetooth_devices': updated_bt_devices # Sadece eşleşmişleri döndür
     }), status_code
