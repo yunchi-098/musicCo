@@ -859,7 +859,10 @@ def player_pause():
         flash('Müzik duraklatıldı ve otomatik geçiş kapatıldı.', 'success')
     except spotipy.SpotifyException as e:
         logger.error(f"Spotify duraklatma hatası: {e}")
-        if e.http_status == 401 or e.http_status == 403: flash('Spotify yetkilendirme hatası.', 'danger'); global spotify_client; spotify_client = None; if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
+        if e.http_status == 401 or e.http_status == 403: flash('Spotify yetkilendirme hatası.', 'danger'); 
+        global spotify_client;
+        spotify_client = None; 
+        if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
         elif e.http_status == 404: flash(f'Duraklatma hatası: Cihaz bulunamadı ({e.msg})', 'warning')
         elif e.reason == 'NO_ACTIVE_DEVICE': flash('Aktif Spotify cihazı bulunamadı!', 'warning')
         else: flash(f'Spotify duraklatma hatası: {e.msg}', 'danger')
@@ -879,7 +882,10 @@ def player_resume():
         flash('Müzik sürdürüldü ve otomatik sıraya geçiş açıldı.', 'success')
     except spotipy.SpotifyException as e:
         logger.error(f"Spotify sürdürme hatası: {e}")
-        if e.http_status == 401 or e.http_status == 403: flash('Spotify yetkilendirme hatası.', 'danger'); global spotify_client; spotify_client = None; if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
+        if e.http_status == 401 or e.http_status == 403: flash('Spotify yetkilendirme hatası.', 'danger');
+        global spotify_client;
+        spotify_client = None;
+        if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
         elif e.http_status == 404: flash(f'Sürdürme hatası: Cihaz bulunamadı ({e.msg})', 'warning')
         elif e.reason == 'NO_ACTIVE_DEVICE': flash('Aktif Spotify cihazı bulunamadı!', 'warning')
         elif e.reason == 'PREMIUM_REQUIRED': flash('Bu işlem için Spotify Premium gerekli.', 'warning')
@@ -905,7 +911,10 @@ def refresh_devices():
     except Exception as e:
         logger.error(f"Spotify Connect Cihazlarını yenilerken hata: {e}")
         flash('Spotify Connect cihaz listesi yenilenirken bir hata oluştu.', 'danger')
-        if isinstance(e, spotipy.SpotifyException) and (e.http_status == 401 or e.http_status == 403): global spotify_client; spotify_client = None; if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
+        if isinstance(e, spotipy.SpotifyException) and (e.http_status == 401 or e.http_status == 403): 
+            global spotify_client; 
+            spotify_client = None; 
+        if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
     return redirect(url_for('admin_panel'))
 
 @app.route('/update-settings', methods=['POST'])
@@ -1077,7 +1086,10 @@ def view_queue():
                 logger.debug(f"Şu An Çalıyor (Kuyruk): {track_name} - {'Çalıyor' if is_playing else 'Duraklatıldı'}")
         except spotipy.SpotifyException as e:
             logger.warning(f"Çalma durumu hatası (Kuyruk): {e}")
-            if e.http_status == 401 or e.http_status == 403: spotify_client = None; if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
+            if e.http_status == 401 or e.http_status == 403: 
+                spotify_client = None; 
+                if os.path.exists(TOKEN_FILE): 
+                    os.remove(TOKEN_FILE)
         except Exception as e: logger.error(f"Çalma durumu genel hatası (Kuyruk): {e}", exc_info=True)
     return render_template('queue.html', queue=current_q, currently_playing_info=currently_playing_info)
 
@@ -1261,7 +1273,9 @@ def background_queue_player():
             try: current_playback = spotify.current_playback(additional_types='track,episode', market='TR')
             except spotipy.SpotifyException as pb_err:
                 logger.error(f"Arka plan: Playback kontrol hatası: {pb_err}")
-                if pb_err.http_status == 401 or pb_err.http_status == 403: spotify_client = None; if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
+                if pb_err.http_status == 401 or pb_err.http_status == 403: 
+                    spotify_client = None; 
+                if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
                 time.sleep(10); continue
             except Exception as pb_err: logger.error(f"Arka plan: Playback kontrol genel hata: {pb_err}", exc_info=True); time.sleep(15); continue
             is_playing_now = False; current_track_id_now = None
@@ -1283,7 +1297,10 @@ def background_queue_player():
                 except spotipy.SpotifyException as start_err:
                     logger.error(f"Arka plan: Şarkı başlatılamadı ({next_song.get('id')}): {start_err}")
                     song_queue.insert(0, next_song)
-                    if start_err.http_status == 401 or start_err.http_status == 403: spotify_client = None; if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
+                    if start_err.http_status == 401 or start_err.http_status == 403: 
+                        spotify_client = None; 
+                        if os.path.exists(TOKEN_FILE):
+                            os.remove(TOKEN_FILE)
                     elif start_err.http_status == 404 and 'device_id' in str(start_err).lower(): logger.warning(f"Aktif Spotify Connect cihazı ({active_spotify_connect_device_id}) bulunamadı."); settings['active_device_id'] = None; save_settings(settings)
                     time.sleep(5); continue
                 except Exception as start_err: logger.error(f"Arka plan: Şarkı başlatılırken genel hata ({next_song.get('id')}): {start_err}", exc_info=True); song_queue.insert(0, next_song); time.sleep(10); continue
