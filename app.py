@@ -145,19 +145,24 @@ class AudioManager:
             success_dump_node, stdout_dump_node, stderr_dump_node = AudioManager._run_command(['pw-dump', 'Node', default_sink_name], timeout=5)
             if success_dump_node:
                 try:
+                    # pw-dump bir node için liste içinde tek bir obje döndürür
                     node_info_list = json.loads(stdout_dump_node)
-                    if node_info_list and isinstance(node_info_list, list):
-                        node_info = node_info_list[0]
-                        props = node_info.get('info', {}).get('props', {})
-                        # Açıklama için çeşitli yerlere bak
-                        desc = props.get('node.description', props.get('device.description', props.get('device.alias', default_sink_name)))
-                        default_sink_description = desc
-                        logger.debug(f"Description for default node '{default_sink_name}': {default_sink_description}")
+                    if node_info_list and isinstance(node_info_list, list) and len(node_info_list) > 0:
+                        node_info = node_info_list[0] # İlk (ve tek) elemanı al
+                        if isinstance(node_info, dict): # İçeriğin dict olduğundan emin ol
+                            props = node_info.get('info', {}).get('props', {})
+                            # Açıklama için çeşitli yerlere bak
+                            desc = props.get('node.description', props.get('device.description', props.get('device.alias', default_sink_name)))
+                            default_sink_description = desc
+                            logger.debug(f"Description for default node '{default_sink_name}': {default_sink_description}")
+                        else:
+                            logger.warning(f"Node info item is not a dictionary for node '{default_sink_name}'.")
+                            default_sink_description = default_sink_name # Fallback
                     else:
-                         logger.warning(f"Could not parse node info from pw-dump for node '{default_sink_name}'.")
+                         logger.warning(f"Could not parse node info list from pw-dump for node '{default_sink_name}'. Output: {stdout_dump_node}")
                          default_sink_description = default_sink_name # Fallback
                 except json.JSONDecodeError:
-                    logger.error(f"Failed to parse JSON from pw-dump for node '{default_sink_name}'.")
+                    logger.error(f"Failed to parse JSON from pw-dump for node '{default_sink_name}'. Output: {stdout_dump_node}")
                     default_sink_description = default_sink_name # Fallback
                 except Exception as e:
                     logger.error(f"Error processing pw-dump output for node '{default_sink_name}': {e}", exc_info=True)
@@ -182,6 +187,8 @@ class AudioManager:
         if success:
             logger.info(f"Default PipeWire sink successfully set to node '{node_name}'.")
             # Açıklamayı tekrar alıp mesajda göstermek daha kullanıcı dostu olabilir
+            # Biraz bekleme ekleyelim, varsayılan hemen güncellenmeyebilir
+            time.sleep(1)
             _, sink_desc = AudioManager.get_default_pipewire_sink_info() # Güncellenmiş fonksiyonu kullan
             friendly_name = sink_desc if sink_desc and sink_desc != node_name else node_name # Açıklama varsa onu kullan
             return True, f"Varsayılan ses çıkışı '{friendly_name}' olarak ayarlandı."
@@ -229,7 +236,7 @@ class AudioManager:
                         node_id = node.get('id') # Node ID (sayısal)
                         node_name = props.get('node.name', f'node_{node_id}') # Benzersiz node adı
                         # Açıklama için çeşitli yerlere bakılabilir
-                        description = props.get('node.description', props.get('device.description', node_name))
+                        description = props.get('node.description', props.get('device.description', props.get('device.alias', node_name)))
                         # Bluetooth cihaz adını daha iyi almak için:
                         if 'bluez' in node_name:
                             # 'device.alias' veya 'bluez5.device.alias' daha iyi olabilir
@@ -245,7 +252,8 @@ class AudioManager:
                             'name': node_name, # PipeWire Node Name (benzersiz)
                             'description': description, # Kullanıcı dostu açıklama
                             'state': state,
-                            'is_default': is_default
+                            'is_default': is_default,
+                            'is_alsa': ('alsa' in node_name.lower() or 'analog' in node_name.lower() or 'hdmi' in node_name.lower() or 'iec958' in node_name.lower() or 'pci-' in node_name.lower()) # ALSA tespiti için ek flag
                         })
                     except Exception as parse_err:
                         logger.warning(f"Could not parse PipeWire node info: {node.get('id', 'N/A')} - Error: {parse_err}")
@@ -260,7 +268,7 @@ class AudioManager:
             logger.error(f"Error processing pw-dump output: {e}", exc_info=True)
             return [], default_sink_node_name
 
-    # --- Bluetooth Fonksiyonları (Değişiklik Yok - Ancak hataları loglamak önemli) ---
+    # --- Bluetooth Fonksiyonları (Değişiklik Yok) ---
     @staticmethod
     def get_paired_bluetooth_devices():
         """Sadece eşleştirilmiş Bluetooth cihazlarını listeler."""
@@ -473,6 +481,154 @@ class AudioManager:
         except Exception as e:
              logger.error(f"Unexpected error during Bluetooth disconnection ({mac_address}): {e}", exc_info=True); return False
 
+
+    # --- Yeni Eklenen Fonksiyonlar ---
+
+    @staticmethod
+    def get_spotifyd_pid():
+        """Çalışan spotifyd süreçlerinin PID'sini bulur."""
+        try:
+            # universal_newlines=True is deprecated, use text=True
+            output = subprocess.check_output(["pgrep", "spotifyd"], text=True)
+            pids = output.strip().split("\n")
+            logger.debug(f"Found spotifyd PIDs: {pids}")
+            return pids
+        except subprocess.CalledProcessError:
+            logger.info("No running spotifyd process found.")
+            return []
+        except FileNotFoundError:
+            logger.error("Command 'pgrep' not found.")
+            return []
+        except Exception as e:
+            logger.error(f"Error getting spotifyd PID: {e}", exc_info=True)
+            return []
+
+    @staticmethod
+    def restart_spotifyd():
+        """Spotifyd servisini yeniden başlatır."""
+        logger.info("Attempting to restart spotifyd...")
+        pids = AudioManager.get_spotifyd_pid()
+        killed_pids = []
+        start_success = False
+        messages = []
+
+        # Terminate existing processes
+        if pids:
+            for pid in pids:
+                try:
+                    pid_int = int(pid)
+                    os.kill(pid_int, 15)  # SIGTERM sinyali gönder
+                    killed_pids.append(pid)
+                    logger.info(f"Sent SIGTERM to spotifyd (PID: {pid}). Waiting briefly...")
+                    messages.append(f"Çalışan Spotifyd (PID: {pid}) sonlandırıldı.")
+                    time.sleep(1) # Allow time for termination
+                except ValueError:
+                     logger.warning(f"Invalid PID found: {pid}")
+                     messages.append(f"Geçersiz PID bulundu: {pid}")
+                except ProcessLookupError:
+                    logger.info(f"Spotifyd (PID: {pid}) already terminated.")
+                    # Başarıyla sonlandı sayılabilir
+                except Exception as e:
+                    logger.error(f"Error terminating spotifyd (PID: {pid}): {e}", exc_info=True)
+                    messages.append(f"Spotifyd (PID: {pid}) sonlandırılırken hata: {e}")
+        else:
+             messages.append("Çalışan Spotifyd süreci bulunamadı.")
+
+        # Start new process
+        spotifyd_command = None
+        spotifyd_config_path_home = os.path.expanduser("~/.config/spotifyd/spotifyd.conf")
+        spotifyd_config_path_etc = "/etc/spotifyd.conf" # Common alternative
+
+        # Try with user config first
+        if os.path.exists(spotifyd_config_path_home):
+            spotifyd_command = ["spotifyd", "--config-path", spotifyd_config_path_home, "--no-daemon"] # No-daemon helps capture logs if needed, adjust if you run as service
+            logger.info(f"Using spotifyd config: {spotifyd_config_path_home}")
+        # Try with system config
+        elif os.path.exists(spotifyd_config_path_etc):
+             spotifyd_command = ["spotifyd", "--config-path", spotifyd_config_path_etc, "--no-daemon"]
+             logger.info(f"Using spotifyd config: {spotifyd_config_path_etc}")
+        # Try default (no config specified)
+        else:
+            spotifyd_command = ["spotifyd", "--no-daemon"]
+            logger.info("No spotifyd config file found, attempting to start with defaults.")
+
+        if spotifyd_command:
+            try:
+                # Popen to start in background and not wait
+                subprocess.Popen(spotifyd_command)
+                # Check if it started (wait a bit)
+                time.sleep(2)
+                new_pids = AudioManager.get_spotifyd_pid()
+                if new_pids and any(pid not in killed_pids for pid in new_pids): # Ensure a *new* process started
+                    logger.info(f"Spotifyd restarted successfully. New PIDs: {new_pids}")
+                    messages.append("Spotifyd başarıyla yeniden başlatıldı.")
+                    start_success = True
+                else:
+                     logger.error("Spotifyd process did not start after attempting restart.")
+                     messages.append("Spotifyd başarıyla sonlandırıldı ancak yeniden başlatılamadı.")
+                     start_success = False # Explicitly set false
+
+            except FileNotFoundError:
+                logger.error("Command 'spotifyd' not found. Is spotifyd installed and in PATH?")
+                messages.append("Hata: 'spotifyd' komutu bulunamadı. Yüklü mü?")
+                start_success = False
+            except Exception as e:
+                logger.error(f"Error starting spotifyd: {e}", exc_info=True)
+                messages.append(f"Spotifyd başlatılırken hata: {e}")
+                start_success = False
+        else:
+             # Should not happen if default is used, but as a safeguard
+             messages.append("Spotifyd başlatılamadı (komut oluşturulamadı).")
+             start_success = False
+
+        return start_success, " ".join(messages)
+
+
+    @staticmethod
+    def switch_to_alsa_sink():
+        """Varsa ilk bulunan ALSA uyumlu sink'e geçiş yapar."""
+        logger.info("Attempting to switch to an ALSA sink...")
+        sinks, default_sink = AudioManager.get_pipewire_sinks()
+        alsa_sinks = []
+
+        if not sinks:
+            logger.warning("No audio sinks found.")
+            return False, "Hiç ses çıkış cihazı bulunamadı."
+
+        # ALSA sink'lerini bul (is_alsa flag'ini kullanarak)
+        alsa_sinks = [s for s in sinks if s.get('is_alsa')]
+
+        if not alsa_sinks:
+            logger.warning("No ALSA compatible sinks found in the list.")
+            return False, "ALSA uyumlu ses çıkış cihazı bulunamadı."
+
+        # Tercihen bağlı olmayan veya varsayılan olmayan ilk ALSA sink'ini seç
+        target_sink = None
+        # 1. Varsayılan olmayan ALSA'yı bul
+        for sink in alsa_sinks:
+            if not sink.get('is_default'):
+                target_sink = sink
+                break
+        # 2. Hepsi varsayılan ise (veya tek ALSA varsa), ilkini seç
+        if not target_sink:
+            target_sink = alsa_sinks[0]
+
+        if target_sink.get('is_default'):
+            logger.info(f"ALSA sink '{target_sink.get('description')}' is already the default.")
+            return True, f"ALSA ses çıkışı ('{target_sink.get('description')}') zaten varsayılan."
+
+        logger.info(f"Found ALSA sink to switch to: {target_sink.get('description')} (Node: {target_sink.get('name')})")
+
+        # Seçilen ALSA sink'ini varsayılan yap
+        success, message = AudioManager.set_default_pipewire_sink(target_sink.get('name'))
+
+        if success:
+            # Başarılı mesajı set_default_pipewire_sink'ten gelenle birleştir
+             return True, f"ALSA ses çıkışına geçildi: {message}"
+        else:
+             # Hata mesajı set_default_pipewire_sink'ten geldi
+             return False, f"ALSA ses çıkışına geçiş yapılamadı: {message}"
+
 # --- Flask Uygulaması ---
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'varsayilan_guvensiz_anahtar_lutfen_degistirin')
@@ -538,11 +694,13 @@ def get_spotify_client():
         try: new_spotify_client.current_user(); spotify_client = new_spotify_client; return spotify_client
         except Exception as e:
             logger.error(f"Yeni Spotify istemcisi ile doğrulama hatası: {e}")
-            if "invalid access token" in str(e).lower() or "token expired" in str(e).lower() or "unauthorized" in str(e).lower(): os.remove(TOKEN_FILE)
+            if "invalid access token" in str(e).lower() or "token expired" in str(e).lower() or "unauthorized" in str(e).lower():
+                if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
             spotify_client = None; return None
     except spotipy.SpotifyException as e:
         logger.error(f"Spotify API hatası (token işlemi sırasında): {e}")
-        if e.http_status == 401 or e.http_status == 403: os.remove(TOKEN_FILE)
+        if e.http_status == 401 or e.http_status == 403:
+             if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
         spotify_client = None; return None
     except Exception as e:
         logger.error(f"Spotify token işlemi sırasında genel hata: {e}", exc_info=True)
@@ -681,8 +839,8 @@ def admin_panel():
         spotify_authenticated=spotify_authenticated,
         spotify_user=session.get('spotify_user'),
         active_spotify_connect_device_id=settings.get('active_device_id'),
-        pipewire_sinks=pipewire_sinks, # PipeWire listesi
-        default_pipewire_sink=default_pipewire_sink_node_name, # Varsayılan PipeWire sink node adı
+        pipewire_sinks=pipewire_sinks, # PipeWire listesi (Şablonun kullanması için)
+        default_pipewire_sink=default_pipewire_sink_node_name, # Varsayılan PipeWire sink node adı (Şablonun kullanması için)
         currently_playing_info=currently_playing_info,
         auto_advance_enabled=auto_advance_enabled
     )
@@ -701,7 +859,7 @@ def player_pause():
         flash('Müzik duraklatıldı ve otomatik geçiş kapatıldı.', 'success')
     except spotipy.SpotifyException as e:
         logger.error(f"Spotify duraklatma hatası: {e}")
-        if e.http_status == 401 or e.http_status == 403: flash('Spotify yetkilendirme hatası.', 'danger'); global spotify_client; spotify_client = None; os.remove(TOKEN_FILE)
+        if e.http_status == 401 or e.http_status == 403: flash('Spotify yetkilendirme hatası.', 'danger'); global spotify_client; spotify_client = None; if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
         elif e.http_status == 404: flash(f'Duraklatma hatası: Cihaz bulunamadı ({e.msg})', 'warning')
         elif e.reason == 'NO_ACTIVE_DEVICE': flash('Aktif Spotify cihazı bulunamadı!', 'warning')
         else: flash(f'Spotify duraklatma hatası: {e.msg}', 'danger')
@@ -721,7 +879,7 @@ def player_resume():
         flash('Müzik sürdürüldü ve otomatik sıraya geçiş açıldı.', 'success')
     except spotipy.SpotifyException as e:
         logger.error(f"Spotify sürdürme hatası: {e}")
-        if e.http_status == 401 or e.http_status == 403: flash('Spotify yetkilendirme hatası.', 'danger'); global spotify_client; spotify_client = None; os.remove(TOKEN_FILE)
+        if e.http_status == 401 or e.http_status == 403: flash('Spotify yetkilendirme hatası.', 'danger'); global spotify_client; spotify_client = None; if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
         elif e.http_status == 404: flash(f'Sürdürme hatası: Cihaz bulunamadı ({e.msg})', 'warning')
         elif e.reason == 'NO_ACTIVE_DEVICE': flash('Aktif Spotify cihazı bulunamadı!', 'warning')
         elif e.reason == 'PREMIUM_REQUIRED': flash('Bu işlem için Spotify Premium gerekli.', 'warning')
@@ -747,7 +905,7 @@ def refresh_devices():
     except Exception as e:
         logger.error(f"Spotify Connect Cihazlarını yenilerken hata: {e}")
         flash('Spotify Connect cihaz listesi yenilenirken bir hata oluştu.', 'danger')
-        if isinstance(e, spotipy.SpotifyException) and (e.http_status == 401 or e.http_status == 403): global spotify_client; spotify_client = None; os.remove(TOKEN_FILE)
+        if isinstance(e, spotipy.SpotifyException) and (e.http_status == 401 or e.http_status == 403): global spotify_client; spotify_client = None; if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
     return redirect(url_for('admin_panel'))
 
 @app.route('/update-settings', methods=['POST'])
@@ -758,10 +916,12 @@ def update_settings():
         settings['max_queue_length'] = int(request.form.get('max_queue_length', 20))
         settings['max_user_requests'] = int(request.form.get('max_user_requests', 5))
         settings['active_genres'] = [genre for genre in ALLOWED_GENRES if request.form.get(f'genre_{genre}')]
+        # Spotify Connect cihazı ayarı admin panelinden form ile geliyorsa güncellenir
         if 'active_spotify_connect_device_id' in request.form:
              new_spotify_device_id = request.form.get('active_spotify_connect_device_id')
              settings['active_device_id'] = new_spotify_device_id if new_spotify_device_id else None
              logger.info(f"Aktif Spotify Connect cihazı ayarlandı: {settings['active_device_id']}")
+
         save_settings(settings); logger.info(f"Ayarlar güncellendi: {settings}")
         flash("Ayarlar başarıyla güncellendi.", "success")
     except ValueError: logger.error("Ayarları güncellerken geçersiz sayısal değer."); flash("Geçersiz sayısal değer girildi!", "danger")
@@ -816,10 +976,12 @@ def add_song():
     song_input = request.form.get('song_id', '').strip()
     if not song_input: flash("Şarkı ID/URL girin.", "warning"); return redirect(url_for('admin_panel'))
     song_id = song_input
-    if 'https://developer.spotify.com/documentation/web-api/reference/add-to-queue2' in song_input:
+    # Check for Spotify URL and extract ID
+    if 'https://developer.spotify.com/documentation/web-api/reference/add-to-queue2' in song_input or 'open.spotify.com/track/' in song_input:
         match = re.search(r'/track/([a-zA-Z0-9]+)', song_input)
         if match: song_id = match.group(1)
         else: logger.warning(f"Geçersiz Spotify URL: {song_input}"); flash("Geçersiz Spotify URL.", "danger"); return redirect(url_for('admin_panel'))
+
     if len(song_queue) >= settings.get('max_queue_length', 20): logger.warning(f"Kuyruk dolu, admin ekleyemedi: {song_id}"); flash("Kuyruk dolu!", "warning"); return redirect(url_for('admin_panel'))
     spotify = get_spotify_client()
     if not spotify: logger.warning("Admin ekleme: Spotify gerekli"); flash("Spotify yetkilendirmesi gerekli.", "warning"); return redirect(url_for('spotify_auth'))
@@ -837,45 +999,10 @@ def add_song():
     except Exception as e: logger.error(f"Admin eklerken genel hata (ID={song_id}): {e}", exc_info=True); flash("Şarkı eklenirken hata.", "danger")
     return redirect(url_for('admin_panel'))
 
-# --- Bluetooth API Rotaları (Değişiklik Yok) ---
-@app.route('/pair-bluetooth-device', methods=['POST'])
-@admin_login_required
-def pair_bluetooth_device_route():
-    data = request.get_json()
-    mac = data.get('mac_address')
-    if not mac:
-        return jsonify({'success': False, 'message': 'MAC adresi eksik.'}), 400
-    success = AudioManager.pair_bluetooth_device(mac)
-    # Yanıtı API endpoint'inden alalım
-    # return jsonify({'success': success, 'message': 'Cihaz eşleştirildi.' if success else 'Eşleştirme başarısız.'})
-    # Bunun yerine API endpoint'ini çağıralım (daha tutarlı olur)
-    return api_pair_bluetooth()
-
-
-@app.route('/connect-bluetooth-device', methods=['POST'])
-@admin_login_required
-def connect_bluetooth_device_route():
-    # Bu rota aslında /api/pair-bluetooth ile aynı işi yapıyor
-    # Doğrudan api_pair_bluetooth'u çağırmak daha mantıklı
-    return api_pair_bluetooth()
-    # data = request.get_json()
-    # mac = data.get('mac_address')
-    # if not mac:
-    #     return jsonify({'success': False, 'message': 'MAC adresi eksik.'}), 400
-    # success = AudioManager.pair_bluetooth_device(mac)  # pairing bağlamayı da kapsar
-    # return jsonify({'success': success, 'message': 'Cihaz bağlandı.' if success else 'Bağlantı başarısız.'})
-
-@app.route('/disconnect-bluetooth-device', methods=['POST'])
-@admin_login_required
-def disconnect_bluetooth_device_route():
-    # Bu rota aslında /api/disconnect-bluetooth ile aynı işi yapıyor
-    return api_disconnect_bluetooth()
-    # data = request.get_json()
-    # mac = data.get('mac_address')
-    # if not mac:
-    #     return jsonify({'success': False, 'message': 'MAC adresi eksik.'}), 400
-    # success = AudioManager.disconnect_bluetooth_device(mac)
-    # return jsonify({'success': success, 'message': 'Bağlantı kesildi.' if success else 'Bağlantı kesilemedi.'})
+# --- Bluetooth API Rotaları (Kaldırıldı - /api/* olanlar kullanılacak) ---
+# @app.route('/pair-bluetooth-device', methods=['POST']) ... kaldırıldı
+# @app.route('/connect-bluetooth-device', methods=['POST']) ... kaldırıldı
+# @app.route('/disconnect-bluetooth-device', methods=['POST']) ... kaldırıldı
 
 # --- Queue Rotaları (Değişiklik Yok) ---
 @app.route('/add-to-queue', methods=['POST'])
@@ -950,7 +1077,7 @@ def view_queue():
                 logger.debug(f"Şu An Çalıyor (Kuyruk): {track_name} - {'Çalıyor' if is_playing else 'Duraklatıldı'}")
         except spotipy.SpotifyException as e:
             logger.warning(f"Çalma durumu hatası (Kuyruk): {e}")
-            if e.http_status == 401 or e.http_status == 403: spotify_client = None; os.remove(TOKEN_FILE)
+            if e.http_status == 401 or e.http_status == 403: spotify_client = None; if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
         except Exception as e: logger.error(f"Çalma durumu genel hatası (Kuyruk): {e}", exc_info=True)
     return render_template('queue.html', queue=current_q, currently_playing_info=currently_playing_info)
 
@@ -1027,7 +1154,7 @@ def api_pair_bluetooth():
     updated_bt_devices = AudioManager.get_paired_bluetooth_devices()
 
     # Mesajı ve durumu belirle
-    message = f"Bluetooth cihazı '{mac_address}' bağlandı/eşleştirildi." if success else f"Bluetooth cihazı '{mac_address}' bağlanamadı/eşleştirilemedi. Lütfen cihazın açık ve eşleşme modunda olduğundan emin olun veya sistem loglarını kontrol edin."
+    message = f"Bluetooth cihazı '{mac_address}' başarıyla bağlandı/eşleştirildi." if success else f"Bluetooth cihazı '{mac_address}' bağlanamadı/eşleştirilemedi. Lütfen cihazın açık ve eşleşme modunda olduğundan emin olun veya sistem loglarını kontrol edin."
     status_code = 200 if success else 500 # Başarısızlık durumunda 500 Internal Server Error
 
     return jsonify({
@@ -1055,6 +1182,14 @@ def api_disconnect_bluetooth():
     message = f"Bluetooth cihazı '{mac_address}' bağlantısı kesildi." if success else f"Bluetooth cihazı '{mac_address}' bağlantısı kesilemedi."
     status_code = 200 if success else 500
 
+    # ALSA'ya geçiş yapıp yapmayacağını sorma mantığı kaldırıldı, ALSA'ya geçiş için ayrı buton olacak.
+    # if success:
+    #    # Otomatik ALSA geçişi yerine kullanıcıya bırakalım
+    #    # success_alsa, msg_alsa = AudioManager.switch_to_alsa_sink()
+    #    # if success_alsa: message += f" {msg_alsa}"
+    #    # else: message += f" ALSA'ya geçiş yapılamadı: {msg_alsa}"
+    #    pass
+
     return jsonify({
         'success': success,
         'message': message,
@@ -1062,6 +1197,54 @@ def api_disconnect_bluetooth():
         'default_sink': new_default_sink,
         'bluetooth_devices': updated_bt_devices # Sadece eşleşmişleri döndür
     }), status_code
+
+# --- Yeni API Endpoints ---
+@app.route('/api/switch-to-alsa', methods=['POST'])
+@admin_login_required
+def api_switch_to_alsa():
+    """Varsayılan ses çıkışını uygun bir ALSA cihazına değiştirir."""
+    logger.info("API: ALSA ses çıkışına geçiş isteği alındı.")
+    success, message = AudioManager.switch_to_alsa_sink()
+
+    # İşlem sonrası güncel listeleri al
+    updated_pipewire_sinks, new_default_sink = AudioManager.get_pipewire_sinks()
+    updated_bt_devices = AudioManager.get_paired_bluetooth_devices()
+    status_code = 200 if success else 500
+
+    response_data = {
+        'success': success,
+        'pipewire_sinks': updated_pipewire_sinks,
+        'default_sink': new_default_sink,
+        'bluetooth_devices': updated_bt_devices
+    }
+    if success: response_data['message'] = message
+    else: response_data['error'] = message # Hata mesajını 'error' anahtarıyla gönderelim
+    return jsonify(response_data), status_code
+
+@app.route('/api/restart-spotifyd', methods=['POST'])
+@admin_login_required
+def api_restart_spotifyd():
+    """Spotifyd servisini yeniden başlatır."""
+    logger.info("API: Spotifyd yeniden başlatma isteği alındı.")
+    success, message = AudioManager.restart_spotifyd()
+    status_code = 200 if success else 500
+
+    # Yeniden başlatma sonrası listeleri güncellemek gerekmeyebilir,
+    # ancak yine de tutarlılık için gönderilebilir.
+    updated_pipewire_sinks, new_default_sink = AudioManager.get_pipewire_sinks()
+    updated_bt_devices = AudioManager.get_paired_bluetooth_devices()
+
+    response_data = {
+        'success': success,
+        'pipewire_sinks': updated_pipewire_sinks,
+        'default_sink': new_default_sink,
+        'bluetooth_devices': updated_bt_devices
+    }
+    # Mesajı başarı veya hata durumuna göre ekleyelim
+    if success: response_data['message'] = message
+    else: response_data['error'] = message
+
+    return jsonify(response_data), status_code
 
 
 # --- Arka Plan Şarkı Çalma İş Parçacığı (Değişiklik Yok) ---
@@ -1078,7 +1261,7 @@ def background_queue_player():
             try: current_playback = spotify.current_playback(additional_types='track,episode', market='TR')
             except spotipy.SpotifyException as pb_err:
                 logger.error(f"Arka plan: Playback kontrol hatası: {pb_err}")
-                if pb_err.http_status == 401 or pb_err.http_status == 403: spotify_client = None; os.remove(TOKEN_FILE)
+                if pb_err.http_status == 401 or pb_err.http_status == 403: spotify_client = None; if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
                 time.sleep(10); continue
             except Exception as pb_err: logger.error(f"Arka plan: Playback kontrol genel hata: {pb_err}", exc_info=True); time.sleep(15); continue
             is_playing_now = False; current_track_id_now = None
@@ -1100,7 +1283,7 @@ def background_queue_player():
                 except spotipy.SpotifyException as start_err:
                     logger.error(f"Arka plan: Şarkı başlatılamadı ({next_song.get('id')}): {start_err}")
                     song_queue.insert(0, next_song)
-                    if start_err.http_status == 401 or start_err.http_status == 403: spotify_client = None; os.remove(TOKEN_FILE)
+                    if start_err.http_status == 401 or start_err.http_status == 403: spotify_client = None; if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
                     elif start_err.http_status == 404 and 'device_id' in str(start_err).lower(): logger.warning(f"Aktif Spotify Connect cihazı ({active_spotify_connect_device_id}) bulunamadı."); settings['active_device_id'] = None; save_settings(settings)
                     time.sleep(5); continue
                 except Exception as start_err: logger.error(f"Arka plan: Şarkı başlatılırken genel hata ({next_song.get('id')}): {start_err}", exc_info=True); song_queue.insert(0, next_song); time.sleep(10); continue

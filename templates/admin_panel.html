@@ -115,6 +115,14 @@
             border-width: .15em;
             vertical-align: -0.125em;
         }
+        /* Diğer İşlemler Bölümü Stili */
+        .other-actions-section {
+             background-color: #ffffff;
+             padding: 20px;
+             border-radius: 8px;
+             border: 1px solid #dee2e6;
+             margin-top: 1rem;
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -344,49 +352,80 @@
                  </div>
              </div>
 
-        </div> <div class="audio-management-section shadow-sm mt-4"> <h4 class="mb-4 text-secondary">Ses Çıkış Yönetimi</h4>
-            <div class="row">
-                <div class="col-md-6 mb-3 mb-md-0">
-                    <div class="card h-100">
-                        <div class="card-header bg-dark text-white">
-                            <h5 class="mb-0">PipeWire Çıkışları (Hedef Seçimi)</h5> </div>
-                        <div class="card-body card-body-scrollable" id="pipewire-sinks-list"> <p class="text-muted">Yükleniyor...</p>
-                        </div>
-                        <div class="card-footer text-center">
-                             <button onclick="refreshPipewireSinkList()" class="btn btn-sm btn-dark"> <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-clockwise" viewBox="0 0 16 16">
-                                   <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2z"/>
-                                   <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466"/>
+             <div class="col-lg-4 col-md-6">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header bg-secondary text-white">
+                        <h5 class="mb-0">Diğer İşlemler</h5>
+                    </div>
+                    <div class="card-body d-flex flex-column justify-content-around">
+                         <button onclick="switchToAlsa(this)" id="alsa-switch-btn" class="btn btn-outline-dark btn-block mb-3">
+                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pc-display-horizontal" viewBox="0 0 16 16">
+                               <path d="M1.5 0A1.5 1.5 0 0 0 0 1.5v7A1.5 1.5 0 0 0 1.5 10H6v1H1a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1h-5v-1h4.5A1.5 1.5 0 0 0 16 8.5v-7A1.5 1.5 0 0 0 14.5 0zm0 1h13a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-.5.5h-13a.5.5 0 0 1-.5-.5v-7a.5.5 0 0 1 .5-.5M12 12.5a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0m2 0a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0M1.5 12h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1 0-1M1 14.5a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 0 1h-13a.5.5 0 0 1-.5-.5"/>
+                             </svg>
+                             ALSA Cihazına Geçiş Yap
+                         </button>
+                         <button onclick="restartSpotifyd(this)" id="spotifyd-restart-btn" class="btn btn-outline-danger btn-block">
+                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-repeat" viewBox="0 0 16 16">
+                               <path d="M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41m-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9z"/>
+                               <path fill-rule="evenodd" d="M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.5A5.002 5.002 0 0 0 8 3M3.5 13A5.002 5.002 0 0 0 8 15c1.552 0 2.94-.707 3.857-1.818a.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9H3.5z"/>
+                             </svg>
+                             Spotifyd'yi Yeniden Başlat
+                         </button>
+                         <small class="text-muted text-center mt-3">Not: Ses cihazı değişikliklerinden sonra Spotify'ın yeni cihazı görmesi için yeniden başlatma gerekebilir.</small>
+                    </div>
+                </div>
+            </div>
+
+        </div> <div class="audio-management-section shadow-sm mt-4">
+             <h4 class="mb-4 text-secondary">Ses Çıkış Yönetimi</h4>
+             <div class="row">
+                 <div class="col-md-6 mb-3 mb-md-0">
+                     <div class="card h-100">
+                         <div class="card-header bg-dark text-white">
+                             <h5 class="mb-0">PipeWire Çıkışları (Hedef Seçimi)</h5>
+                         </div>
+                         <div class="card-body card-body-scrollable" id="pipewire-sinks-list">
+                             <p class="text-muted">Yükleniyor...</p>
+                         </div>
+                         <div class="card-footer text-center">
+                              <button onclick="refreshPipewireSinkList()" class="btn btn-sm btn-dark">
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-clockwise" viewBox="0 0 16 16">
+                                    <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2z"/>
+                                    <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466"/>
+                                  </svg>
+                                  PipeWire Listesini Yenile
+                              </button>
+                              <small class="text-muted mt-2 d-block">Not: Seçilen cihaz sistemin varsayılan ses çıkışı olur.</small>
+                         </div>
+                     </div>
+                 </div>
+                  <div class="col-md-6">
+                     <div class="card h-100">
+                         <div class="card-header bg-info text-white">
+                             <h5 class="mb-0">Bluetooth Cihazları</h5>
+                         </div>
+                         <div class="card-body card-body-scrollable" id="bluetooth-list">
+                             <p class="text-muted">Yükleniyor...</p>
+                         </div>
+                         <div class="card-footer text-center">
+                             <button onclick="discoverBluetoothDevices()" id="discover-btn" class="btn btn-sm btn-warning mb-2">
+                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-broadcast" viewBox="0 0 16 16">
+                                   <path d="M3.05 3.05a7 7 0 0 0 0 9.9.5.5 0 0 1-.707.707 8 8 0 0 1 0-11.314.5.5 0 0 1 .707.707m2.122 2.122a4 4 0 0 0 0 5.656.5.5 0 1 1-.708.708 5 5 0 0 1 0-7.072.5.5 0 0 1 .708.708m5.656-.708a.5.5 0 0 1 .708 0 5 5 0 0 1 0 7.072.5.5 0 1 1-.708-.708 4 4 0 0 0 0-5.656.5.5 0 0 1 0-.708m2.122-2.12a.5.5 0 0 1 .707 0 8 8 0 0 1 0 11.314.5.5 0 0 1-.707-.707 7 7 0 0 0 0-9.9.5.5 0 0 1 0-.707zM10 8a2 2 0 1 1-4 0 2 2 0 0 1 4 0"/>
                                  </svg>
-                                 PipeWire Listesini Yenile </button>
-                             <small class="text-muted mt-2 d-block">Not: Seçilen cihaz sistemin varsayılan ses çıkışı olur.</small>
-                        </div>
-                    </div>
-                </div>
-                 <div class="col-md-6">
-                    <div class="card h-100">
-                        <div class="card-header bg-info text-white">
-                            <h5 class="mb-0">Bluetooth Cihazları</h5>
-                        </div>
-                        <div class="card-body card-body-scrollable" id="bluetooth-list">
-                            <p class="text-muted">Yükleniyor...</p>
-                        </div>
-                        <div class="card-footer text-center">
-                            <button onclick="discoverBluetoothDevices()" id="discover-btn" class="btn btn-sm btn-warning mb-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-broadcast" viewBox="0 0 16 16">
-                                  <path d="M3.05 3.05a7 7 0 0 0 0 9.9.5.5 0 0 1-.707.707 8 8 0 0 1 0-11.314.5.5 0 0 1 .707.707m2.122 2.122a4 4 0 0 0 0 5.656.5.5 0 1 1-.708.708 5 5 0 0 1 0-7.072.5.5 0 0 1 .708.708m5.656-.708a.5.5 0 0 1 .708 0 5 5 0 0 1 0 7.072.5.5 0 1 1-.708-.708 4 4 0 0 0 0-5.656.5.5 0 0 1 0-.708m2.122-2.12a.5.5 0 0 1 .707 0 8 8 0 0 1 0 11.314.5.5 0 0 1-.707-.707 7 7 0 0 0 0-9.9.5.5 0 0 1 0-.707zM10 8a2 2 0 1 1-4 0 2 2 0 0 1 4 0"/>
-                                </svg>
-                                Yeni Cihazları Tara (<span id="scan-duration-text">{{ BLUETOOTH_SCAN_DURATION }}</span>sn) </button>
-                            <button onclick="refreshPairedBluetoothList()" class="btn btn-sm btn-info mb-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-bluetooth" viewBox="0 0 16 16">
-                                  <path fill-rule="evenodd" d="M8.5 2.622a.5.5 0 0 1 .5.5v2.878l2.147-2.147a.5.5 0 0 1 .707.707L9.707 6.707l2.147 2.147a.5.5 0 0 1-.707.707L8.999 7.414v4.964a.5.5 0 0 1-1 0V7.414L5.854 9.557a.5.5 0 0 1-.707-.707L7.293 6.707 5.146 4.56a.5.5 0 0 1 .707-.707L8 5.998V3.122a.5.5 0 0 1 .5-.5m-1-.001a1.5 1.5 0 0 0-1.5 1.5v1.756l-1.854-1.853a1.5 1.5 0 0 0-2.121 2.121l2.146 2.147L2.147 8.854a1.5 1.5 0 0 0 2.121 2.121L6.121 9.121v1.756a1.5 1.5 0 0 0 1.5 1.5h.001a1.5 1.5 0 0 0 1.5-1.5v-1.756l1.854 1.854a1.5 1.5 0 0 0 2.121-2.121L9.854 8.854l2.147-2.147a1.5 1.5 0 0 0-2.121-2.121L8.025 6.44V4.684a1.5 1.5 0 0 0-1.5-1.5z"/>
-                                </svg>
-                                Eşleşmiş Listeyi Yenile
-                            </button>
-                             <small class="text-muted mt-2 d-block">Not: Yeni cihazları görmek için önce tarayın, sonra eşleştirin.</small>
-                        </div>
-                    </div>
-                </div>
-            </div> </div> </div> <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+                                 Yeni Cihazları Tara (<span id="scan-duration-text">{{ BLUETOOTH_SCAN_DURATION }}</span>sn)
+                              </button>
+                             <button onclick="refreshPairedBluetoothList()" class="btn btn-sm btn-info mb-2">
+                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-bluetooth" viewBox="0 0 16 16">
+                                   <path fill-rule="evenodd" d="M8.5 2.622a.5.5 0 0 1 .5.5v2.878l2.147-2.147a.5.5 0 0 1 .707.707L9.707 6.707l2.147 2.147a.5.5 0 0 1-.707.707L8.999 7.414v4.964a.5.5 0 0 1-1 0V7.414L5.854 9.557a.5.5 0 0 1-.707-.707L7.293 6.707 5.146 4.56a.5.5 0 0 1 .707-.707L8 5.998V3.122a.5.5 0 0 1 .5-.5m-1-.001a1.5 1.5 0 0 0-1.5 1.5v1.756l-1.854-1.853a1.5 1.5 0 0 0-2.121 2.121l2.146 2.147L2.147 8.854a1.5 1.5 0 0 0 2.121 2.121L6.121 9.121v1.756a1.5 1.5 0 0 0 1.5 1.5h.001a1.5 1.5 0 0 0 1.5-1.5v-1.756l1.854 1.854a1.5 1.5 0 0 0 2.121-2.121L9.854 8.854l2.147-2.147a1.5 1.5 0 0 0-2.121-2.121L8.025 6.44V4.684a1.5 1.5 0 0 0-1.5-1.5z"/>
+                                 </svg>
+                                 Eşleşmiş Listeyi Yenile
+                             </button>
+                              <small class="text-muted mt-2 d-block">Not: Yeni cihazları görmek için önce tarayın, sonra eşleştirin.</small>
+                         </div>
+                     </div>
+                 </div>
+             </div>
+        </div> </div> <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 
@@ -451,11 +490,15 @@
                     // delete buttonElement.dataset.originalHtml;
                 } else {
                      // Fallback: Orijinal içerik saklanmadıysa, genel bir metin kullan
-                     if(buttonElement.textContent.includes("Eşleştir")) buttonElement.textContent = "Eşleştir";
+                     // Buton içeriğini daha spesifik olarak ayarlamak daha iyi olabilir
+                     const btnId = buttonElement.id;
+                     if (btnId === 'alsa-switch-btn') buttonElement.textContent = 'ALSA Cihazına Geçiş Yap';
+                     else if (btnId === 'spotifyd-restart-btn') buttonElement.textContent = "Spotifyd'yi Yeniden Başlat";
+                     else if(buttonElement.textContent.includes("Eşleştir")) buttonElement.textContent = "Eşleştir ve Bağlan";
                      else if(buttonElement.textContent.includes("Bağlan")) buttonElement.textContent = "Bağlan";
                      else if(buttonElement.textContent.includes("Kes")) buttonElement.textContent = "Bağlantıyı Kes";
                      else if(buttonElement.textContent.includes("Varsayılan Yap")) buttonElement.textContent = "Varsayılan Yap";
-                     // Diğer butonlar için de eklenebilir
+                     else buttonElement.textContent = "İşlem"; // Genel fallback
                 }
             }
         }
@@ -499,7 +542,8 @@
                          <div class="d-flex justify-content-between align-items-center">
                              <div style="min-width: 0;">
                                  <strong class="d-block text-truncate" title="${sink.description}">${sink.description}</strong>
-                                 <small class="text-muted d-block text-truncate" title="${sink.name}">(Node: ${sink.name}) ${stateBadge}</small> </div>
+                                 <small class="text-muted d-block text-truncate" title="${sink.name}">(Node: ${sink.name}) ${stateBadge}</small>
+                             </div>
                              ${buttonHtml}
                          </div>
                      </div>`;
@@ -546,7 +590,8 @@
                                  <strong class="d-block text-truncate" title="${device.name}">${device.name}</strong>
                                  <small class="text-muted d-block text-truncate">${device.mac_address} ${statusBadge}</small>
                              </div>
-                             ${actionButtonHtml} </div>
+                             ${actionButtonHtml}
+                         </div>
                      </div>`;
                  });
              } else {
@@ -660,7 +705,8 @@
                         updateRelevantDeviceLists(data); // Listeleri güncelle
                     } else {
                         showFlashMessage('Hata: ' + (data.error || 'Bilinmeyen bir hata oluştu.'), 'danger');
-                        refreshPipewireSinkList(); // Hata olsa bile listeyi yenile
+                        // Hata olsa bile listeyi yenile, buton durumu renderPipewireSinkList içinde düzelir
+                         refreshPipewireSinkList();
                     }
                 },
                 error: function(xhr) {
@@ -672,7 +718,10 @@
                 },
                 complete: function() {
                     // Buton durumu updateRelevantDeviceLists -> renderPipewireSinkList içinde güncellenecek
-                    // setButtonLoading(buttonElement, false);
+                    // renderPipewireSinkList içinde setButtonLoading çağrılmadığı için burada manuel düzeltelim
+                    // VEYA en iyisi setButtonLoading'i render fonksiyonlarından sonra çağırmak
+                    // Şimdilik burada bırakalım, render fonksiyonu butonu yeniden oluşturacak.
+                    // setButtonLoading(buttonElement, false); // Render sonrası eski buton yok olabilir.
                 }
             });
         }
@@ -710,7 +759,7 @@
                 },
                 complete: function() {
                     // Buton durumu renderBluetoothList içinde güncellenecek
-                    // setButtonLoading(buttonElement, false);
+                    // setButtonLoading(buttonElement, false); // Gerek yok, render fonksiyonu halleder
                 }
             });
         }
@@ -746,10 +795,81 @@
                 },
                 complete: function() {
                      // Buton durumu renderBluetoothList içinde güncellenecek
-                     // setButtonLoading(buttonElement, false);
+                     // setButtonLoading(buttonElement, false); // Gerek yok, render fonksiyonu halleder
                 }
             });
         }
+
+         // --- Yeni Eklenen Fonksiyonlar ---
+
+         // ALSA Cihazına Geçiş Yapma
+         function switchToAlsa(buttonElement) {
+            console.log("Switching to ALSA sink...");
+            if (!confirm('Varsayılan ses çıkışını ALSA uyumlu bir cihaza değiştirmek istediğinizden emin misiniz?')) {
+                 return;
+            }
+            setButtonLoading(buttonElement, true);
+            $.ajax({
+                url: '/api/switch-to-alsa',
+                type: 'POST',
+                contentType: 'application/json', // Gövde boş olsa bile belirtmek iyi pratik
+                data: JSON.stringify({}), // Boş JSON gövdesi gönderelim
+                success: function(data) {
+                    if (data.success) {
+                        showFlashMessage(data.message || 'Başarıyla ALSA ses çıkışına geçildi.', 'success');
+                        updateRelevantDeviceLists(data); // Listeleri güncelle
+                    } else {
+                        showFlashMessage('ALSA Geçiş Hatası: ' + (data.error || 'Bilinmeyen bir hata oluştu.'), 'danger');
+                        refreshPipewireSinkList(); // Hata olsa bile listeyi yenile
+                    }
+                },
+                error: function(xhr) {
+                     let errorMsg = 'ALSA geçişi sırasında sunucu hatası.';
+                     try { if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; } } catch(e){}
+                     console.error("Error switching to ALSA:", xhr);
+                     showFlashMessage(`Hata: ${errorMsg}`, 'danger');
+                     refreshPipewireSinkList(); // Hata olsa bile listeyi yenile
+                },
+                complete: function() {
+                    setButtonLoading(buttonElement, false); // İşlem bitince butonu normale döndür
+                }
+            });
+         }
+
+         // Spotifyd'yi Yeniden Başlatma
+         function restartSpotifyd(buttonElement) {
+             console.log("Restarting spotifyd...");
+             if (!confirm('Spotifyd servisini yeniden başlatmak istediğinizden emin misiniz? Bu işlem çalışan Spotify bağlantısını kesebilir.')) {
+                  return;
+             }
+             setButtonLoading(buttonElement, true);
+             $.ajax({
+                 url: '/api/restart-spotifyd',
+                 type: 'POST',
+                 contentType: 'application/json',
+                 data: JSON.stringify({}), // Boş JSON gövdesi
+                 success: function(data) {
+                     // Yanıt mesajını göster (başarı veya hata)
+                     if (data.success) {
+                         showFlashMessage(data.message || 'Spotifyd başarıyla yeniden başlatıldı.', 'success');
+                     } else {
+                          showFlashMessage('Spotifyd Yeniden Başlatma Hatası: ' + (data.error || 'Bilinmeyen hata.'), 'warning');
+                     }
+                     // Listeleri güncellemek genellikle gerekli olmaz ama tutarlılık için yapılabilir
+                     // updateRelevantDeviceLists(data);
+                 },
+                 error: function(xhr) {
+                      let errorMsg = 'Spotifyd yeniden başlatılırken sunucu hatası.';
+                      try { if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; } } catch(e){}
+                      console.error("Error restarting spotifyd:", xhr);
+                      showFlashMessage(`Hata: ${errorMsg}`, 'danger');
+                 },
+                 complete: function() {
+                     setButtonLoading(buttonElement, false); // İşlem bitince butonu normale döndür
+                 }
+             });
+         }
+
 
         // --- Sayfa Yüklendiğinde Çalışacak Kod ---
         $(document).ready(function() {
@@ -759,8 +879,13 @@
 
             // Tarama süresini butona yaz (app.py'deki değişkene göre)
             // Bu kısım Jinja2 ile doğru şekilde doldurulmalı
-            // const scanDuration = {{ BLUETOOTH_SCAN_DURATION }};
-            // $('#scan-duration-text').text(scanDuration); // ID ile span'ı bulup içini doldur
+            const scanDurationTextElement = document.getElementById('scan-duration-text');
+            if (scanDurationTextElement && typeof BLUETOOTH_SCAN_DURATION !== 'undefined') {
+                 scanDurationTextElement.textContent = BLUETOOTH_SCAN_DURATION;
+            } else if (scanDurationTextElement) {
+                // Eğer Jinja değişkeni yoksa (bir sorun varsa) varsayılanı göster
+                 scanDurationTextElement.textContent = '12'; // Varsayılan süre
+            }
         });
 
     </script>
