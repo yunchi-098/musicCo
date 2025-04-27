@@ -438,7 +438,7 @@
 
     <script>
         // --- Global Değişkenler (Ayarları Saklamak İçin) ---
-        let currentSettings = {{ settings | tojson }}; // Backend'den gelen ayarları al
+        let currentSettings = { settings }; // Backend'den gelen ayarları al
 
         // --- Yardımcı Fonksiyonlar (önceki gibi) ---
         function showFlashMessage(message, category = 'info') { /* ... */ }
