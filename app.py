@@ -4,14 +4,15 @@ import json
 import threading
 import time
 import logging
-import re # Regex kütüphanesi
-import subprocess
+import re # Gerekli olabilir (örn. Spotify URL parse)
+import subprocess # spotifyd ve bluetoothctl için hala gerekli
 from functools import wraps
 # flash mesajları için import
 from flask import Flask, request, render_template, redirect, url_for, session, jsonify, flash
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import traceback # Hata ayıklama için eklendi
+import pulsectl # Yeni eklenen kütüphane
 
 # --- Yapılandırılabilir Ayarlar ---
 # Spotify API Bilgileri - KENDİ BİLGİLERİNİZLE DEĞİŞTİRİN!
@@ -31,609 +32,521 @@ BLUETOOTH_SCAN_DURATION = 12 # Saniye cinsinden Bluetooth tarama süresi
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(threadName)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# --- Yardımcı Fonksiyon: Komut Çalıştırma (bluetoothctl ve spotifyd için) ---
+def _run_command(command, timeout=10):
+    """Helper function to run shell commands."""
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=timeout)
+        logger.debug(f"Command '{' '.join(command)}' succeeded. Output:\n{result.stdout[:200]}...") # Log success and partial output
+        return True, result.stdout, result.stderr
+    except FileNotFoundError:
+        logger.error(f"Command not found: {command[0]}. Is it installed and in PATH?")
+        return False, "", f"Command not found: {command[0]}"
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Command '{' '.join(command)}' failed with return code {e.returncode}. Stderr:\n{e.stderr}")
+        return False, e.stdout, e.stderr
+    except subprocess.TimeoutExpired:
+        logger.error(f"Command '{' '.join(command)}' timed out after {timeout} seconds.")
+        return False, "", f"Command timed out after {timeout} seconds."
+    except Exception as e:
+        logger.error(f"Error running command '{' '.join(command)}': {e}", exc_info=True)
+        return False, "", f"Unexpected error: {e}"
 
-class AudioManager:
-    """PipeWire ve Bluetooth ile ses cihazlarını yöneten sınıf."""
+# --- Yeni AudioSinkManager Sınıfı (ex.py'den uyarlandı) ---
+class AudioSinkManager:
+    """PulseAudio/PipeWire sink'lerini pulsectl kullanarak yönetir."""
 
-    @staticmethod
-    def _run_command(command, timeout=10):
-        """Helper function to run shell commands."""
-        try:
-            # PipeWire komutları genellikle daha hızlıdır, ancak timeout kalabilir
-            result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=timeout)
-            logger.debug(f"Command '{' '.join(command)}' succeeded. Output:\n{result.stdout[:200]}...") # Log success and partial output
-            return True, result.stdout, result.stderr
-        except FileNotFoundError:
-            logger.error(f"Command not found: {command[0]}. Is it installed and in PATH?")
-            return False, "", f"Command not found: {command[0]}"
-        except subprocess.CalledProcessError as e:
-            # Log stderr for CalledProcessError specifically
-            logger.error(f"Command '{' '.join(command)}' failed with return code {e.returncode}. Stderr:\n{e.stderr}")
-            return False, e.stdout, e.stderr
-        except subprocess.TimeoutExpired:
-            logger.error(f"Command '{' '.join(command)}' timed out after {timeout} seconds.")
-            return False, "", f"Command timed out after {timeout} seconds."
-        except Exception as e:
-            logger.error(f"Error running command '{' '.join(command)}': {e}", exc_info=True)
-            return False, "", f"Unexpected error: {e}"
+    def __init__(self, app_name='MekanMuzikYonetim'):
+        self.app_name = app_name
+        self._pulse = None # Bağlantıyı yönetmek için
 
-    @staticmethod
-    def get_default_pipewire_sink_info():
-        """
-        Sistemin mevcut varsayılan PipeWire sink'inin bilgilerini (node adı ve açıklama) alır.
-        Önce `pw-metadata` dener, başarısız olursa `pactl get-default-sink` kullanır.
-        """
+    def _get_pulse_client(self):
+        """PulseAudio/PipeWire bağlantısını alır veya oluşturur."""
+        # Bu fonksiyon doğrudan route içinde çağrılacak (with bloğu ile)
+        # Böylece her istekte yeni bir bağlantı kurulur ve kapatılır.
+        # Veya uzun süreli bir bağlantı yönetimi yapılabilir, ancak bu daha karmaşık olabilir.
+        # Şimdilik 'with' bloğunu tercih edelim.
+        # Örnek: with pulsectl.Pulse(self.app_name) as pulse: ...
+        # Bu nedenle bu _get_pulse_client fonksiyonu aslında gereksiz.
+        pass
+
+    def list_sinks(self):
+        """Tüm mevcut ses çıkış cihazlarını (sink) listeler ve durumu döndürür."""
+        sinks_info = []
         default_sink_name = None
-        default_sink_description = None
+        try:
+            with pulsectl.Pulse(self.app_name + '-sink-list') as pulse:
+                raw_sinks = pulse.sink_list()
+                server_info = pulse.server_info()
+                default_sink_name = server_info.default_sink_name
 
-        # --- Yöntem 1: pw-metadata ile deneme ---
-        logger.debug("Trying to get default sink name via pw-metadata...")
-        success_meta, stdout_meta, stderr_meta = AudioManager._run_command(['pw-metadata', '-n', 'settings', '0', 'default.audio.sink'], timeout=5)
-        if success_meta:
-            # Çıktı genellikle şu formatta olur: 'default.audio.sink = {"name":"alsa_output.pci-0000_00_1f.3.analog-stereo"}'
-            # Veya bazen sadece 'name = "alsa_output...."' şeklinde olabilir
-            match = re.search(r'"name"\s*:\s*"([^"]+)"', stdout_meta) # JSON formatı
-            if not match:
-                 match = re.search(r'name\s*=\s*"([^"]+)"', stdout_meta) # Basit format
+                if not raw_sinks:
+                    logger.info("Hiç ses çıkış cihazı (sink) bulunamadı.")
+                    return [], None # Boş liste ve varsayılan yok
 
-            if match:
-                default_sink_name = match.group(1)
-                logger.info(f"Default sink node name found via pw-metadata: {default_sink_name}")
-            else:
-                # Hata logundaki gibi bir çıktı geldiyse veya format anlaşılamadıysa
-                logger.warning(f"Could not parse default sink name from pw-metadata output: {stdout_meta}. Falling back to pactl.")
-                # default_sink_name None olarak kalır, fallback'e geçilir
-        else:
-            logger.warning(f"pw-metadata command failed: {stderr_meta}. Falling back to pactl.")
-            # default_sink_name None olarak kalır, fallback'e geçilir
+                logger.debug(f"Found {len(raw_sinks)} sinks. Default: {default_sink_name}")
 
-        # --- Yöntem 2: pactl ile fallback (eğer pw-metadata başarısız olduysa) ---
-        if default_sink_name is None:
-            logger.debug("Trying to get default sink name via pactl get-default-sink...")
-            success_pactl, stdout_pactl, stderr_pactl = AudioManager._run_command(['pactl', 'get-default-sink'], timeout=5)
-            if success_pactl and stdout_pactl.strip():
-                # pactl doğrudan sink adını (örn: bluez_sink...) döndürür, bu PipeWire node adı olmayabilir!
-                # Bu adı kullanarak PipeWire node adını bulmamız gerekebilir.
-                pactl_sink_name = stdout_pactl.strip()
-                logger.info(f"Default sink name found via pactl: {pactl_sink_name}. Trying to find corresponding PipeWire node name...")
+                for sink in raw_sinks:
+                    is_default = sink.name == default_sink_name
+                    # pulsectl sink objesini doğrudan JSON'a çeviremeyiz, dict oluşturalım
+                    sinks_info.append({
+                        'index': sink.index,
+                        'name': sink.name,
+                        'description': sink.description,
+                        'state': str(sink.state), # Enum'ı string'e çevir
+                        'mute': sink.mute,
+                        'volume': round(sink.volume.value_flat * 100), # Yüzde olarak al
+                        'is_default': is_default,
+                        # 'properties': sink.proplist # Çok fazla veri, genellikle gereksiz
+                    })
+                logger.info(f"Listed {len(sinks_info)} sinks. Default sink name: {default_sink_name}")
+                return sinks_info, default_sink_name # Liste ve varsayılan sink'in ADI döndürülüyor
 
-                # Şimdi bu pactl adıyla eşleşen PipeWire node'unu bulalım
-                success_dump_all, stdout_dump_all, stderr_dump_all = AudioManager._run_command(['pw-dump', 'Node'], timeout=10)
-                if success_dump_all:
+        except pulsectl.PulseError as e:
+             logger.error(f"PulseAudio/PipeWire bağlantı hatası (list_sinks): {e}", exc_info=True)
+             # Belki PipeWire/PulseAudio çalışmıyordur?
+             return [], None # Hata durumunda boş liste
+        except Exception as e:
+            logger.error(f"Ses cihazları listelenirken genel hata oluştu: {e}", exc_info=True)
+            return [], None # Hata durumunda boş liste
+
+    def switch_to_sink(self, sink_identifier):
+        """Belirtilen sink'e (index veya isim ile) geçiş yapar."""
+        target_sink = None
+        try:
+            with pulsectl.Pulse(self.app_name + '-sink-switcher') as pulse:
+                sinks = pulse.sink_list()
+                if not sinks:
+                     logger.error("Sink değiştirilemiyor, hiç sink bulunamadı.")
+                     return False, "Hiç ses çıkış cihazı bulunamadı."
+
+                # Hedef sink'i bul
+                if isinstance(sink_identifier, int) or sink_identifier.isdigit():
+                    # Eğer index olarak verilmişse
                     try:
-                        all_nodes = json.loads(stdout_dump_all)
-                        found_node_name = None
-                        for node in all_nodes:
-                            if not isinstance(node, dict): continue
-                            info = node.get('info', {})
-                            props = info.get('props', {})
-                            # PulseAudio sink adı genellikle 'node.name' veya bazen 'device.name' ile eşleşir
-                            # veya 'alsa.card_name' + 'alsa.profile.name' gibi bir kombinasyon olabilir.
-                            # En güvenlisi 'node.name' ile başlamak.
-                            node_name_prop = props.get('node.name')
-                            if node_name_prop == pactl_sink_name:
-                                found_node_name = node_name_prop
-                                break
-                            # Bazen bluez cihazları için format farklı olabilir, 'device.description' veya 'device.alias' kontrol edilebilir
-                            elif 'bluez' in pactl_sink_name and (props.get('device.description') == pactl_sink_name or props.get('device.alias') == pactl_sink_name):
-                                found_node_name = node_name_prop # Asıl node adını al
-                                break
-
-                        if found_node_name:
-                            default_sink_name = found_node_name
-                            logger.info(f"Found matching PipeWire node name for pactl sink '{pactl_sink_name}': {default_sink_name}")
-                        else:
-                            logger.warning(f"Could not find a matching PipeWire node for pactl default sink '{pactl_sink_name}'. Using pactl name as fallback node name.")
-                            # Eşleşme bulunamazsa, pactl adını kullanmayı deneyebiliriz, ancak set_default için bu genellikle çalışmaz.
-                            # Bu durumu loglamak önemli. Belki de doğrudan pactl set-default-sink kullanmak daha iyi olurdu? Şimdilik node adı olarak kalsın.
-                            default_sink_name = pactl_sink_name # Geçici çözüm, set_default başarısız olabilir.
-
-                    except json.JSONDecodeError:
-                        logger.error("Failed to parse pw-dump output while matching pactl sink name.")
-                    except Exception as e:
-                         logger.error(f"Error processing pw-dump for matching pactl sink name: {e}", exc_info=True)
+                        sink_index = int(sink_identifier)
+                        target_sink = pulse.sink_info(sink_index) # Index ile doğrudan al
+                        if not target_sink:
+                             raise ValueError # Bulunamazsa hata ver
+                    except (ValueError, pulsectl.PulseError):
+                         logger.error(f"Geçersiz veya bulunamayan sink indeksi: {sink_identifier}")
+                         return False, f"Geçersiz veya bulunamayan sink indeksi: {sink_identifier}"
                 else:
-                    logger.error("Failed to run pw-dump to match pactl sink name.")
+                    # Eğer isim veya açıklama olarak verilmişse
+                    found = False
+                    for s in sinks:
+                        # Hem isme hem açıklamaya bakalım (küçük/büyük harf duyarsız)
+                        if sink_identifier.lower() in s.name.lower() or sink_identifier.lower() in s.description.lower():
+                            target_sink = s # Eşleşen sink objesini al
+                            found = True
+                            break
+                    if not found:
+                        logger.error(f"'{sink_identifier}' isimli/açıklamalı sink bulunamadı!")
+                        return False, f"'{sink_identifier}' isimli/açıklamalı sink bulunamadı!"
 
-            else:
-                logger.error(f"Both pw-metadata and pactl failed to get default sink. pw-metadata stderr: {stderr_meta}, pactl stderr: {stderr_pactl}")
-                return None, None # İki yöntem de başarısız oldu
+                if not target_sink: # Ekstra kontrol
+                     logger.error(f"Hedef sink belirlenemedi: {sink_identifier}")
+                     return False, f"Hedef sink belirlenemedi: {sink_identifier}"
 
-        # --- Açıklamayı Al ---
-        # Node adını bulduysak (pw-metadata veya pactl->pw-dump ile), açıklamasını alalım
-        if default_sink_name:
-            success_dump_node, stdout_dump_node, stderr_dump_node = AudioManager._run_command(['pw-dump', 'Node', default_sink_name], timeout=5)
-            if success_dump_node:
-                try:
-                    # pw-dump bir node için liste içinde tek bir obje döndürür
-                    node_info_list = json.loads(stdout_dump_node)
-                    if node_info_list and isinstance(node_info_list, list) and len(node_info_list) > 0:
-                        node_info = node_info_list[0] # İlk (ve tek) elemanı al
-                        if isinstance(node_info, dict): # İçeriğin dict olduğundan emin ol
-                            props = node_info.get('info', {}).get('props', {})
-                            # Açıklama için çeşitli yerlere bak
-                            desc = props.get('node.description', props.get('device.description', props.get('device.alias', default_sink_name)))
-                            default_sink_description = desc
-                            logger.debug(f"Description for default node '{default_sink_name}': {default_sink_description}")
-                        else:
-                            logger.warning(f"Node info item is not a dictionary for node '{default_sink_name}'.")
-                            default_sink_description = default_sink_name # Fallback
-                    else:
-                         logger.warning(f"Could not parse node info list from pw-dump for node '{default_sink_name}'. Output: {stdout_dump_node}")
-                         default_sink_description = default_sink_name # Fallback
-                except json.JSONDecodeError:
-                    logger.error(f"Failed to parse JSON from pw-dump for node '{default_sink_name}'. Output: {stdout_dump_node}")
-                    default_sink_description = default_sink_name # Fallback
-                except Exception as e:
-                    logger.error(f"Error processing pw-dump output for node '{default_sink_name}': {e}", exc_info=True)
-                    default_sink_description = default_sink_name # Fallback
-            else:
-                logger.warning(f"pw-dump failed for node '{default_sink_name}': {stderr_dump_node}. Using node name as description.")
-                default_sink_description = default_sink_name # Fallback
-        else:
-             # Eğer node adı hiç bulunamadıysa açıklama da None olur
-             default_sink_description = None
+                logger.info(f"Varsayılan sink '{target_sink.description}' (Index: {target_sink.index}) olarak ayarlanıyor...")
 
-        logger.info(f"Final default sink info - Node Name: {default_sink_name}, Description: {default_sink_description}")
-        return default_sink_name, default_sink_description
+                # Varsayılan sink'i değiştir
+                pulse.default_set(target_sink)
 
-    @staticmethod
-    def set_default_pipewire_sink(node_name):
-        """Belirtilen node adını sistemin varsayılan PipeWire sink'i olarak ayarlar."""
-        logger.info(f"Setting default PipeWire sink to node '{node_name}'...")
-        # JSON formatında node adını içeren komutu oluştur
-        command = ['pw-metadata', '-n', 'settings', '0', 'default.audio.sink', f'{{"name":"{node_name}"}}']
-        success, stdout, stderr = AudioManager._run_command(command, timeout=10)
-        if success:
-            logger.info(f"Default PipeWire sink successfully set to node '{node_name}'.")
-            # Açıklamayı tekrar alıp mesajda göstermek daha kullanıcı dostu olabilir
-            # Biraz bekleme ekleyelim, varsayılan hemen güncellenmeyebilir
-            time.sleep(1)
-            _, sink_desc = AudioManager.get_default_pipewire_sink_info() # Güncellenmiş fonksiyonu kullan
-            friendly_name = sink_desc if sink_desc and sink_desc != node_name else node_name # Açıklama varsa onu kullan
-            return True, f"Varsayılan ses çıkışı '{friendly_name}' olarak ayarlandı."
-        else:
-            err_msg = f"Node '{node_name}' varsayılan yapılamadı: {stderr}"
-            # PipeWire hata mesajları daha spesifik olabilir, kontrol edilebilir
-            if "No such object" in stderr or "invalid node" in stderr or "Cannot find metadata" in stderr:
-                 err_msg = f"Sink (Node) bulunamadı, geçersiz veya metadata ayarlanamıyor: '{node_name}'."
-            elif "Connection refused" in stderr or "Connection timed out" in stderr:
-                 err_msg = "PipeWire servisine bağlanılamadı. Servis çalışıyor mu?"
-            logger.error(f"Failed to set default PipeWire sink: {stderr}")
-            return False, err_msg
+                # İsteğe bağlı: Tüm mevcut stream'leri yeni sink'e taşıma
+                # Bu bazen istenmeyebilir, kullanıcı sadece yeni uygulamaların yeni sink'e gitmesini isteyebilir.
+                # Şimdilik bu kısmı kapalı tutalım. Gerekirse açılabilir.
+                # try:
+                #    logger.info(f"Mevcut ses akışları '{target_sink.description}' hedefine taşınıyor...")
+                #    for stream in pulse.sink_input_list():
+                #        pulse.sink_input_move(stream.index, target_sink.index)
+                #    logger.info("Akışlar taşındı.")
+                # except Exception as move_err:
+                #      logger.warning(f"Akışlar taşınırken hata oluştu (genellikle kritik değil): {move_err}")
 
-    @staticmethod
-    def get_pipewire_sinks():
-        """Mevcut PipeWire sink'lerini (Node) ve varsayılanı listeler."""
-        sinks = []
-        # Güncellenmiş fonksiyonu kullanarak varsayılan node adını al
-        default_sink_node_name, _ = AudioManager.get_default_pipewire_sink_info()
+                logger.info(f"Varsayılan ses çıkışı '{target_sink.description}' olarak başarıyla ayarlandı.")
+                return True, f"Varsayılan ses çıkışı '{target_sink.description}' olarak ayarlandı."
 
-        success_dump, stdout_dump, stderr_dump = AudioManager._run_command(['pw-dump', 'Node'], timeout=10)
-
-        if not success_dump:
-            logger.error(f"Error listing PipeWire nodes (pw-dump): {stderr_dump}")
-            # Hata durumunda bile varsayılanı döndürmeye çalışalım (eğer bulunduysa)
-            return [], default_sink_node_name
-
-        try:
-            all_nodes = json.loads(stdout_dump)
-            if not isinstance(all_nodes, list):
-                 logger.error("pw-dump çıktısı beklenildiği gibi bir liste değil.")
-                 return [], default_sink_node_name
-
-            for node in all_nodes:
-                if not isinstance(node, dict): continue # Beklenmeyen formatı atla
-
-                info = node.get('info', {})
-                props = info.get('props', {})
-                media_class = props.get('media.class')
-
-                # Sadece ses çıkışlarını (sink) al
-                # Bazen 'Stream/Output/Audio' da olabilir, ancak genellikle 'Audio/Sink' yeterlidir
-                if media_class == 'Audio/Sink':
-                    try:
-                        node_id = node.get('id') # Node ID (sayısal)
-                        node_name = props.get('node.name', f'node_{node_id}') # Benzersiz node adı
-                        # Açıklama için çeşitli yerlere bakılabilir
-                        description = props.get('node.description', props.get('device.description', props.get('device.alias', node_name)))
-                        # Bluetooth cihaz adını daha iyi almak için:
-                        if 'bluez' in node_name:
-                            # 'device.alias' veya 'bluez5.device.alias' daha iyi olabilir
-                            bt_alias = props.get('device.alias', props.get('bluez5.device.alias', description))
-                            # Eğer alias varsa ve farklıysa onu kullan, yoksa mevcut açıklamayı koru
-                            description = bt_alias if bt_alias and bt_alias != description else description
-
-                        state = info.get('state', 'unknown').upper() # Durumu al (running, idle, suspended)
-                        is_default = (node_name == default_sink_node_name)
-
-                        sinks.append({
-                            'id': node_id, # PipeWire Node ID
-                            'name': node_name, # PipeWire Node Name (benzersiz)
-                            'description': description, # Kullanıcı dostu açıklama
-                            'state': state,
-                            'is_default': is_default,
-                            'is_alsa': ('alsa' in node_name.lower() or 'analog' in node_name.lower() or 'hdmi' in node_name.lower() or 'iec958' in node_name.lower() or 'pci-' in node_name.lower()) # ALSA tespiti için ek flag
-                        })
-                    except Exception as parse_err:
-                        logger.warning(f"Could not parse PipeWire node info: {node.get('id', 'N/A')} - Error: {parse_err}")
-
-            logger.info(f"Found PipeWire sinks: {len(sinks)} (Default Node: {default_sink_node_name})")
-            return sinks, default_sink_node_name
-
-        except json.JSONDecodeError as e:
-            logger.error(f"Error decoding JSON from pw-dump: {e}")
-            return [], default_sink_node_name
+        except pulsectl.PulseError as e:
+             logger.error(f"PulseAudio/PipeWire bağlantı hatası (switch_to_sink): {e}", exc_info=True)
+             return False, f"Ses sunucusuna bağlanılamadı: {e}"
         except Exception as e:
-            logger.error(f"Error processing pw-dump output: {e}", exc_info=True)
-            return [], default_sink_node_name
+            logger.error(f"Sink değiştirilirken genel hata oluştu: {e}", exc_info=True)
+            return False, f"Sink değiştirilirken hata: {e}"
 
-    # --- Bluetooth Fonksiyonları (Değişiklik Yok) ---
-    @staticmethod
-    def get_paired_bluetooth_devices():
-        """Sadece eşleştirilmiş Bluetooth cihazlarını listeler."""
-        devices = []
-        # Komutun başarısız olma ihtimaline karşı loglama ekleyelim
-        logger.debug("Attempting to list paired Bluetooth devices using 'bluetoothctl paired-devices'...")
-        success_paired, stdout_paired, stderr_paired = AudioManager._run_command(['bluetoothctl', 'paired-devices'], timeout=10)
-        if not success_paired:
-             # Hata mesajını logla
-             logger.error(f"Error listing paired Bluetooth devices. Stderr: {stderr_paired}")
-             # Kullanıcıya bilgi vermek için belki bir flash mesajı tetiklenebilir veya boş liste döndürülür.
-             return [] # Boş liste döndür
-
-        paired_macs = set()
-        for line in stdout_paired.splitlines():
-            if line.startswith("Device"):
-                parts = line.strip().split(' ', 2)
-                if len(parts) >= 2:
-                    paired_macs.add(parts[1]) # MAC adresi ikinci eleman
-
-        logger.debug(f"Found {len(paired_macs)} paired MAC addresses: {paired_macs}")
-
-        for mac_address in paired_macs:
-            is_connected = False
-            alias = mac_address # Default name
-            logger.debug(f"Getting info for paired device {mac_address}...")
-            success_info, stdout_info, stderr_info = AudioManager._run_command(['bluetoothctl', 'info', mac_address], timeout=5)
-            if success_info:
-                if 'Connected: yes' in stdout_info: is_connected = True
-                alias_match = re.search(r'Alias:\s*(.*)', stdout_info)
-                if alias_match: alias = alias_match.group(1).strip()
-                name_match = re.search(r'Name:\s*(.*)', stdout_info) # Fallback to Name if Alias fails
-                if not alias_match and name_match: alias = name_match.group(1).strip()
-                logger.debug(f"Info for {mac_address}: Name='{alias}', Connected={is_connected}")
-            else:
-                 # Info komutu başarısız olursa logla
-                 logger.warning(f"Could not get info for paired device {mac_address}. Stderr: {stderr_info}")
-
-            devices.append({
-                'mac_address': mac_address,
-                'name': alias,
-                'type': 'bluetooth',
-                'connected': is_connected,
-                'paired': True # Mark as paired
-            })
-        logger.info(f"Listed paired Bluetooth devices: {len(devices)}")
-        return devices
-
-    @staticmethod
-    def discover_bluetooth_devices(scan_duration=BLUETOOTH_SCAN_DURATION):
-        """Kısa süreliğine Bluetooth taraması yapar ve bulunan tüm cihazları listeler."""
-        logger.info(f"Starting Bluetooth discovery for {scan_duration} seconds...")
-        scan_process = None
-        discovered_devices = {} # Use dict to avoid duplicates by MAC
-
+    def find_sink_by_device_name(self, device_name):
+        """Cihaz adına göre ilgili sink'i bulur (Bluetooth bağlantısı sonrası kullanılabilir)."""
         try:
-            # Start scanning in the background
-            logger.debug("Running 'bluetoothctl scan on'...")
-            scan_process = subprocess.Popen(['bluetoothctl', 'scan', 'on'], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE) # Capture stderr
-            time.sleep(scan_duration) # Wait for devices to be discovered
-            logger.debug("Scan duration finished.")
+            with pulsectl.Pulse(self.app_name + '-device-finder') as pulse:
+                sinks = pulse.sink_list()
+                if not sinks: return None
+                # Cihaz adının sink adı veya açıklamasında geçip geçmediğini kontrol et
+                # Bluetooth cihazları genellikle 'bluez_sink.' ile başlar
+                search_term = device_name.lower()
+                bluez_search_term = f"bluez_sink.{device_name.replace(':', '_').lower()}" # MAC adresinden türetilen isim
+
+                for sink in sinks:
+                    name_lower = sink.name.lower()
+                    desc_lower = sink.description.lower()
+                    if search_term in name_lower or \
+                       search_term in desc_lower or \
+                       bluez_search_term in name_lower:
+                        logger.info(f"'{device_name}' için eşleşen sink bulundu: {sink.description} (Index: {sink.index})")
+                        # Eşleşen sink'in dict temsilini döndürelim
+                        return {
+                            'index': sink.index,
+                            'name': sink.name,
+                            'description': sink.description,
+                            'state': str(sink.state),
+                            'is_default': sink.name == pulse.server_info().default_sink_name
+                        }
+                logger.warning(f"'{device_name}' için eşleşen sink bulunamadı.")
+                return None
+        except pulsectl.PulseError as e:
+             logger.error(f"PulseAudio/PipeWire bağlantı hatası (find_sink_by_device_name): {e}", exc_info=True)
+             return None
         except Exception as e:
-            logger.error(f"Failed to start Bluetooth scan: {e}")
-        finally:
-            # Ensure scanning is turned off
-            if scan_process:
-                logger.debug("Terminating bluetoothctl scan process...")
-                try:
-                    scan_process.terminate() # Try terminating gently first
-                    _, stderr_scan = scan_process.communicate(timeout=2) # Get stderr
-                    if scan_process.returncode != 0 and stderr_scan:
-                         logger.warning(f"Error output during scan termination: {stderr_scan.decode(errors='ignore')}")
-                except subprocess.TimeoutExpired:
-                    logger.warning("Scan process termination timed out, killing.")
-                    scan_process.kill() # Force kill if terminate fails
-                except Exception as term_err:
-                     logger.error(f"Error during scan process termination: {term_err}") # Ignore other errors during cleanup
+            logger.error(f"Cihaz için sink aranırken genel hata: {e}", exc_info=True)
+            return None
 
-            # Explicitly turn scan off
-            logger.debug("Running 'bluetoothctl scan off'...")
-            off_success, _, off_stderr = AudioManager._run_command(['bluetoothctl', 'scan', 'off'], timeout=5)
-            if not off_success: logger.warning(f"Could not turn off Bluetooth scan explicitly. Stderr: {off_stderr}")
+# --- Bluetooth Yönetim Fonksiyonları (Eski AudioManager'dan alındı, _run_command kullanıyor) ---
+def bt_get_paired_bluetooth_devices():
+    """Sadece eşleştirilmiş Bluetooth cihazlarını listeler."""
+    devices = []
+    logger.debug("Attempting to list paired Bluetooth devices using 'bluetoothctl paired-devices'...")
+    success_paired, stdout_paired, stderr_paired = _run_command(['bluetoothctl', 'paired-devices'], timeout=10)
+    if not success_paired:
+         logger.error(f"Error listing paired Bluetooth devices. Stderr: {stderr_paired}")
+         return []
 
-        logger.info("Bluetooth discovery finished. Fetching device list...")
+    paired_macs = set()
+    for line in stdout_paired.splitlines():
+        if line.strip().startswith("Device"):
+            parts = line.strip().split(' ', 2)
+            if len(parts) >= 2:
+                paired_macs.add(parts[1]) # MAC adresi ikinci eleman
 
-        # Get all devices visible after scan
-        logger.debug("Running 'bluetoothctl devices'...")
-        success_devs, stdout_devs, stderr_devs = AudioManager._run_command(['bluetoothctl', 'devices'], timeout=10)
-        if not success_devs:
-            logger.error(f"Error listing discovered Bluetooth devices. Stderr: {stderr_devs}")
-            return []
+    logger.debug(f"Found {len(paired_macs)} paired MAC addresses: {paired_macs}")
 
-        # Get paired devices to mark them
-        logger.debug("Running 'bluetoothctl paired-devices' again to mark discovered devices...")
-        success_paired, stdout_paired, stderr_paired = AudioManager._run_command(['bluetoothctl', 'paired-devices'], timeout=10)
-        paired_macs = set()
-        if success_paired:
-            for line in stdout_paired.splitlines():
-                if line.startswith("Device"):
-                    parts = line.strip().split(' ', 1)
-                    if len(parts) >= 2: paired_macs.add(parts[1].split(' ')[0]) # Get only MAC
+    for mac_address in paired_macs:
+        is_connected = False
+        alias = mac_address # Default name
+        logger.debug(f"Getting info for paired device {mac_address}...")
+        success_info, stdout_info, stderr_info = _run_command(['bluetoothctl', 'info', mac_address], timeout=5)
+        if success_info:
+            if 'Connected: yes' in stdout_info: is_connected = True
+            alias_match = re.search(r'Alias:\s*(.*)', stdout_info)
+            if alias_match: alias = alias_match.group(1).strip()
+            name_match = re.search(r'Name:\s*(.*)', stdout_info) # Fallback to Name if Alias fails
+            if not alias_match and name_match: alias = name_match.group(1).strip()
+            logger.debug(f"Info for {mac_address}: Name='{alias}', Connected={is_connected}")
         else:
-            logger.warning(f"Could not get paired devices list while processing discovered devices. Stderr: {stderr_paired}")
+             logger.warning(f"Could not get info for paired device {mac_address}. Stderr: {stderr_info}")
 
-        # Process discovered devices
-        for line in stdout_devs.splitlines():
-            if line.startswith("Device"):
-                parts = line.strip().split(' ', 2)
-                if len(parts) >= 3:
-                    mac_address = parts[1]
-                    device_name = parts[2]
-                    is_paired = mac_address in paired_macs
-                    is_connected = False # Assume not connected unless confirmed
+        devices.append({
+            'mac_address': mac_address,
+            'name': alias,
+            'type': 'bluetooth', # Frontend'in beklemediği bir alan olabilir, kontrol et
+            'connected': is_connected,
+            'paired': True
+        })
+    logger.info(f"Listed paired Bluetooth devices: {len(devices)}")
+    return devices
 
-                    # Get connection status only for paired devices (info often fails for unpaired)
-                    if is_paired:
-                        logger.debug(f"Getting info for discovered paired device {mac_address}...")
-                        success_info, stdout_info, stderr_info = AudioManager._run_command(['bluetoothctl', 'info', mac_address], timeout=3)
-                        if success_info:
-                             if 'Connected: yes' in stdout_info:
-                                 is_connected = True
-                             # Use alias from info if available for paired devices
-                             alias_match = re.search(r'Alias:\s*(.*)', stdout_info)
-                             if alias_match: device_name = alias_match.group(1).strip()
-                             logger.debug(f"Info for discovered {mac_address}: Name='{device_name}', Connected={is_connected}")
-                        else:
-                             logger.warning(f"Could not get info for discovered paired device {mac_address}. Stderr: {stderr_info}")
+def bt_discover_bluetooth_devices(scan_duration=BLUETOOTH_SCAN_DURATION):
+    """Kısa süreliğine Bluetooth taraması yapar ve bulunan tüm cihazları listeler."""
+    logger.info(f"Starting Bluetooth discovery for {scan_duration} seconds...")
+    scan_process = None
+    discovered_devices = {} # Use dict to avoid duplicates by MAC
 
-
-                    discovered_devices[mac_address] = {
-                        'mac_address': mac_address,
-                        'name': device_name,
-                        'type': 'bluetooth',
-                        'connected': is_connected,
-                        'paired': is_paired
-                    }
-
-        result_list = list(discovered_devices.values())
-        logger.info(f"Discovered {len(result_list)} Bluetooth devices after scan.")
-        return result_list
-
-
-    @staticmethod
-    def pair_bluetooth_device(mac_address):
-        """Belirtilen MAC adresine sahip bluetooth cihazını eşleştirir ve bağlar."""
-        # Bu fonksiyon içindeki komut hataları _run_command tarafından loglanacak
-        try:
-            logging.info(f"Pairing/Connecting Bluetooth device {mac_address}...")
-            # Önce bağlantıyı kesmeyi dene (hata verse de devam et)
-            logging.debug(f"Attempting to disconnect {mac_address} before pairing...")
-            AudioManager._run_command(['bluetoothctl', 'disconnect', mac_address], timeout=5)
-            time.sleep(1)
-
-            # Eşleştir
-            logger.info(f"Attempting to pair with {mac_address}...")
-            success_pair, _, stderr_pair = AudioManager._run_command(['bluetoothctl', 'pair', mac_address], timeout=20) # Pairing can take time
-            if not success_pair and "already exists" not in stderr_pair.lower():
-                logger.error(f"Pairing failed for {mac_address}. Stderr: {stderr_pair}")
-                # Hata olsa bile güvenip bağlanmayı deneyelim
-            else:
-                 logger.info(f"Pairing successful or device already paired: {mac_address}")
-
-            # Güven
-            logger.info(f"Attempting to trust {mac_address}...")
-            success_trust, _, stderr_trust = AudioManager._run_command(['bluetoothctl', 'trust', mac_address], timeout=10)
-            if not success_trust:
-                 # Güvenme hatası genellikle kritik değil, sadece uyar
-                 logging.warning(f"Could not trust device {mac_address} (might be already trusted). Stderr: {stderr_trust}")
-            else: logger.info(f"Device trusted: {mac_address}")
-
-            # Bağlan (İlk deneme)
-            logger.info(f"Attempting to connect to {mac_address} (Attempt 1)...")
-            success_conn1, stdout_conn1, stderr_conn1 = AudioManager._run_command(['bluetoothctl', 'connect', mac_address], timeout=30)
-            if success_conn1 and ('Connection successful' in stdout_conn1.lower() or 'already connected' in stderr_conn1.lower()):
-                logging.info(f"Bluetooth device successfully connected: {mac_address}"); time.sleep(3); return True
-            else:
-                logging.warning(f"First connection attempt failed for {mac_address}. Stderr: {stderr_conn1}. Retrying...")
-                time.sleep(3)
-                # Bağlan (İkinci deneme)
-                logger.info(f"Attempting to connect to {mac_address} (Attempt 2)...")
-                success_conn2, stdout_conn2, stderr_conn2 = AudioManager._run_command(['bluetoothctl', 'connect', mac_address], timeout=30)
-                if success_conn2 and ('Connection successful' in stdout_conn2.lower() or 'already connected' in stderr_conn2.lower()):
-                     logging.info(f"Bluetooth device successfully connected on second attempt: {mac_address}"); time.sleep(3); return True
-                else:
-                     # İkinci deneme de başarısız olduysa logla ve başarısız dön
-                     logging.error(f"Bluetooth device connection failed on second attempt for {mac_address}. Stderr: {stderr_conn2}")
-                     # Son bir kez bağlantıyı kesmeyi dene
-                     AudioManager._run_command(['bluetoothctl', 'disconnect', mac_address], timeout=10)
-                     return False
-        except Exception as e:
-            # _run_command dışındaki genel hatalar
-            logger.error(f"Unexpected error during Bluetooth pairing/connection ({mac_address}): {e}", exc_info=True);
-            return False
-
-    @staticmethod
-    def disconnect_bluetooth_device(mac_address):
-        """Belirtilen MAC adresine sahip bluetooth cihazının bağlantısını keser."""
-        try:
-            logging.info(f"Disconnecting Bluetooth device {mac_address}...")
-            success, _, stderr = AudioManager._run_command(['bluetoothctl', 'disconnect', mac_address], timeout=10)
-            if success:
-                logging.info(f"Bluetooth device successfully disconnected: {mac_address}"); time.sleep(2); return True
-            else:
-                # Hata _run_command içinde loglandı, burada tekrar loglamaya gerek yok ama kontrol edebiliriz
-                if 'not connected' in stderr.lower():
-                    logging.info(f"Device ({mac_address}) was already disconnected."); return True # Zaten bağlı değilse başarılı say
-                else:
-                    # Diğer hatalar için başarısız dön
-                    return False
-        except Exception as e:
-             logger.error(f"Unexpected error during Bluetooth disconnection ({mac_address}): {e}", exc_info=True); return False
-
-
-    # --- Yeni Eklenen Fonksiyonlar ---
-
-    @staticmethod
-    def get_spotifyd_pid():
-        """Çalışan spotifyd süreçlerinin PID'sini bulur."""
-        try:
-            # universal_newlines=True is deprecated, use text=True
-            output = subprocess.check_output(["pgrep", "spotifyd"], text=True)
-            pids = output.strip().split("\n")
-            logger.debug(f"Found spotifyd PIDs: {pids}")
-            return pids
-        except subprocess.CalledProcessError:
-            logger.info("No running spotifyd process found.")
-            return []
-        except FileNotFoundError:
-            logger.error("Command 'pgrep' not found.")
-            return []
-        except Exception as e:
-            logger.error(f"Error getting spotifyd PID: {e}", exc_info=True)
-            return []
-
-    @staticmethod
-    def restart_spotifyd():
-        """Spotifyd servisini yeniden başlatır."""
-        logger.info("Attempting to restart spotifyd...")
-        pids = AudioManager.get_spotifyd_pid()
-        killed_pids = []
-        start_success = False
-        messages = []
-
-        # Terminate existing processes
-        if pids:
-            for pid in pids:
-                try:
-                    pid_int = int(pid)
-                    os.kill(pid_int, 15)  # SIGTERM sinyali gönder
-                    killed_pids.append(pid)
-                    logger.info(f"Sent SIGTERM to spotifyd (PID: {pid}). Waiting briefly...")
-                    messages.append(f"Çalışan Spotifyd (PID: {pid}) sonlandırıldı.")
-                    time.sleep(1) # Allow time for termination
-                except ValueError:
-                     logger.warning(f"Invalid PID found: {pid}")
-                     messages.append(f"Geçersiz PID bulundu: {pid}")
-                except ProcessLookupError:
-                    logger.info(f"Spotifyd (PID: {pid}) already terminated.")
-                    # Başarıyla sonlandı sayılabilir
-                except Exception as e:
-                    logger.error(f"Error terminating spotifyd (PID: {pid}): {e}", exc_info=True)
-                    messages.append(f"Spotifyd (PID: {pid}) sonlandırılırken hata: {e}")
-        else:
-             messages.append("Çalışan Spotifyd süreci bulunamadı.")
-
-        # Start new process
-        spotifyd_command = None
-        spotifyd_config_path_home = os.path.expanduser("~/.config/spotifyd/spotifyd.conf")
-        spotifyd_config_path_etc = "/etc/spotifyd.conf" # Common alternative
-
-        # Try with user config first
-        if os.path.exists(spotifyd_config_path_home):
-            spotifyd_command = ["spotifyd", "--config-path", spotifyd_config_path_home, "--no-daemon"] # No-daemon helps capture logs if needed, adjust if you run as service
-            logger.info(f"Using spotifyd config: {spotifyd_config_path_home}")
-        # Try with system config
-        elif os.path.exists(spotifyd_config_path_etc):
-             spotifyd_command = ["spotifyd", "--config-path", spotifyd_config_path_etc, "--no-daemon"]
-             logger.info(f"Using spotifyd config: {spotifyd_config_path_etc}")
-        # Try default (no config specified)
-        else:
-            spotifyd_command = ["spotifyd", "--no-daemon"]
-            logger.info("No spotifyd config file found, attempting to start with defaults.")
-
-        if spotifyd_command:
+    try:
+        logger.debug("Running 'bluetoothctl scan on'...")
+        scan_process = subprocess.Popen(['bluetoothctl', 'scan', 'on'], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE) # Capture stderr
+        time.sleep(scan_duration)
+        logger.debug("Scan duration finished.")
+    except Exception as e:
+        logger.error(f"Failed to start Bluetooth scan: {e}")
+    finally:
+        if scan_process:
+            logger.debug("Terminating bluetoothctl scan process...")
             try:
-                # Popen to start in background and not wait
-                subprocess.Popen(spotifyd_command)
-                # Check if it started (wait a bit)
-                time.sleep(2)
-                new_pids = AudioManager.get_spotifyd_pid()
-                if new_pids and any(pid not in killed_pids for pid in new_pids): # Ensure a *new* process started
-                    logger.info(f"Spotifyd restarted successfully. New PIDs: {new_pids}")
-                    messages.append("Spotifyd başarıyla yeniden başlatıldı.")
-                    start_success = True
-                else:
+                scan_process.terminate()
+                _, stderr_scan = scan_process.communicate(timeout=2)
+                if scan_process.returncode != 0 and stderr_scan:
+                     logger.warning(f"Error output during scan termination: {stderr_scan.decode(errors='ignore')}")
+            except subprocess.TimeoutExpired:
+                logger.warning("Scan process termination timed out, killing.")
+                scan_process.kill()
+            except Exception as term_err:
+                 logger.error(f"Error during scan process termination: {term_err}")
+
+        logger.debug("Running 'bluetoothctl scan off'...")
+        off_success, _, off_stderr = _run_command(['bluetoothctl', 'scan', 'off'], timeout=5)
+        if not off_success: logger.warning(f"Could not turn off Bluetooth scan explicitly. Stderr: {off_stderr}")
+
+    logger.info("Bluetooth discovery finished. Fetching device list...")
+
+    logger.debug("Running 'bluetoothctl devices'...")
+    success_devs, stdout_devs, stderr_devs = _run_command(['bluetoothctl', 'devices'], timeout=10)
+    if not success_devs:
+        logger.error(f"Error listing discovered Bluetooth devices. Stderr: {stderr_devs}")
+        return []
+
+    logger.debug("Running 'bluetoothctl paired-devices' again to mark discovered devices...")
+    success_paired, stdout_paired, stderr_paired = _run_command(['bluetoothctl', 'paired-devices'], timeout=10)
+    paired_macs = set()
+    if success_paired:
+        for line in stdout_paired.splitlines():
+            if line.strip().startswith("Device"):
+                parts = line.strip().split(' ', 2)
+                if len(parts) >= 2: paired_macs.add(parts[1])
+    else:
+        logger.warning(f"Could not get paired devices list while processing discovered devices. Stderr: {stderr_paired}")
+
+    for line in stdout_devs.splitlines():
+        if line.strip().startswith("Device"):
+            parts = line.strip().split(' ', 2)
+            if len(parts) >= 3:
+                mac_address = parts[1]
+                device_name = parts[2]
+                is_paired = mac_address in paired_macs
+                is_connected = False
+
+                if is_paired:
+                    logger.debug(f"Getting info for discovered paired device {mac_address}...")
+                    success_info, stdout_info, stderr_info = _run_command(['bluetoothctl', 'info', mac_address], timeout=3)
+                    if success_info:
+                         if 'Connected: yes' in stdout_info:
+                             is_connected = True
+                         alias_match = re.search(r'Alias:\s*(.*)', stdout_info)
+                         if alias_match: device_name = alias_match.group(1).strip()
+                         logger.debug(f"Info for discovered {mac_address}: Name='{device_name}', Connected={is_connected}")
+                    else:
+                         logger.warning(f"Could not get info for discovered paired device {mac_address}. Stderr: {stderr_info}")
+
+                discovered_devices[mac_address] = {
+                    'mac_address': mac_address,
+                    'name': device_name,
+                    'type': 'bluetooth',
+                    'connected': is_connected,
+                    'paired': is_paired
+                }
+
+    result_list = list(discovered_devices.values())
+    logger.info(f"Discovered {len(result_list)} Bluetooth devices after scan.")
+    return result_list
+
+def bt_pair_bluetooth_device(mac_address):
+    """Belirtilen MAC adresine sahip bluetooth cihazını eşleştirir ve bağlar."""
+    try:
+        logging.info(f"Pairing/Connecting Bluetooth device {mac_address}...")
+        logging.debug(f"Attempting to disconnect {mac_address} before pairing...")
+        _run_command(['bluetoothctl', 'disconnect', mac_address], timeout=5)
+        time.sleep(1)
+
+        logger.info(f"Attempting to pair with {mac_address}...")
+        success_pair, _, stderr_pair = _run_command(['bluetoothctl', 'pair', mac_address], timeout=20)
+        if not success_pair and "already exists" not in stderr_pair.lower():
+            logger.error(f"Pairing failed for {mac_address}. Stderr: {stderr_pair}")
+        else:
+             logger.info(f"Pairing successful or device already paired: {mac_address}")
+
+        logger.info(f"Attempting to trust {mac_address}...")
+        success_trust, _, stderr_trust = _run_command(['bluetoothctl', 'trust', mac_address], timeout=10)
+        if not success_trust:
+             logging.warning(f"Could not trust device {mac_address} (might be already trusted). Stderr: {stderr_trust}")
+        else: logger.info(f"Device trusted: {mac_address}")
+
+        logger.info(f"Attempting to connect to {mac_address} (Attempt 1)...")
+        success_conn1, stdout_conn1, stderr_conn1 = _run_command(['bluetoothctl', 'connect', mac_address], timeout=30)
+        if success_conn1 and ('Connection successful' in stdout_conn1.lower() or 'already connected' in stderr_conn1.lower()):
+            logging.info(f"Bluetooth device successfully connected: {mac_address}"); time.sleep(3); return True, f"Bluetooth cihazı '{mac_address}' başarıyla bağlandı."
+        else:
+            logging.warning(f"First connection attempt failed for {mac_address}. Stderr: {stderr_conn1}. Retrying...")
+            time.sleep(3)
+            logger.info(f"Attempting to connect to {mac_address} (Attempt 2)...")
+            success_conn2, stdout_conn2, stderr_conn2 = _run_command(['bluetoothctl', 'connect', mac_address], timeout=30)
+            if success_conn2 and ('Connection successful' in stdout_conn2.lower() or 'already connected' in stderr_conn2.lower()):
+                 logging.info(f"Bluetooth device successfully connected on second attempt: {mac_address}"); time.sleep(3); return True, f"Bluetooth cihazı '{mac_address}' başarıyla bağlandı (2. deneme)."
+            else:
+                 logging.error(f"Bluetooth device connection failed on second attempt for {mac_address}. Stderr: {stderr_conn2}")
+                 _run_command(['bluetoothctl', 'disconnect', mac_address], timeout=10)
+                 return False, f"Bluetooth cihazı '{mac_address}' bağlanamadı. Cihazın açık ve eşleşme modunda olduğundan emin olun. Hata: {stderr_conn2}"
+    except Exception as e:
+        logger.error(f"Unexpected error during Bluetooth pairing/connection ({mac_address}): {e}", exc_info=True);
+        return False, f"Bluetooth işlemi sırasında beklenmedik hata: {e}"
+
+def bt_disconnect_bluetooth_device(mac_address):
+    """Belirtilen MAC adresine sahip bluetooth cihazının bağlantısını keser."""
+    try:
+        logging.info(f"Disconnecting Bluetooth device {mac_address}...")
+        success, _, stderr = _run_command(['bluetoothctl', 'disconnect', mac_address], timeout=10)
+        if success:
+            logging.info(f"Bluetooth device successfully disconnected: {mac_address}"); time.sleep(2); return True, f"Bluetooth cihazı '{mac_address}' bağlantısı kesildi."
+        else:
+            if 'not connected' in stderr.lower():
+                logging.info(f"Device ({mac_address}) was already disconnected."); return True, f"Bluetooth cihazı '{mac_address}' zaten bağlı değildi."
+            else:
+                logger.error(f"Failed to disconnect {mac_address}. Stderr: {stderr}")
+                return False, f"Bluetooth cihazı '{mac_address}' bağlantısı kesilemedi. Hata: {stderr}"
+    except Exception as e:
+         logger.error(f"Unexpected error during Bluetooth disconnection ({mac_address}): {e}", exc_info=True); return False, f"Bluetooth bağlantısı kesilirken beklenmedik hata: {e}"
+
+# --- Spotifyd ve ALSA Yardımcı Fonksiyonları (ex.py'den uyarlandı) ---
+def get_spotifyd_pid():
+    """Çalışan spotifyd süreçlerinin PID'sini bulur."""
+    try:
+        # universal_newlines=True is deprecated, use text=True
+        output = subprocess.check_output(["pgrep", "spotifyd"], text=True)
+        pids = output.strip().split("\n")
+        logger.debug(f"Found spotifyd PIDs: {pids}")
+        return pids
+    except subprocess.CalledProcessError:
+        logger.info("No running spotifyd process found.")
+        return []
+    except FileNotFoundError:
+        logger.error("Command 'pgrep' not found.")
+        return []
+    except Exception as e:
+        logger.error(f"Error getting spotifyd PID: {e}", exc_info=True)
+        return []
+
+def restart_spotifyd():
+    """Spotifyd servisini yeniden başlatır."""
+    logger.info("Attempting to restart spotifyd...")
+    pids = get_spotifyd_pid()
+    killed_pids = []
+    start_success = False
+    messages = []
+
+    # Terminate existing processes
+    if pids:
+        for pid in pids:
+            try:
+                pid_int = int(pid)
+                os.kill(pid_int, 15)  # SIGTERM
+                killed_pids.append(pid)
+                logger.info(f"Sent SIGTERM to spotifyd (PID: {pid}). Waiting briefly...")
+                messages.append(f"Çalışan Spotifyd (PID: {pid}) sonlandırıldı.")
+                time.sleep(1)
+            except ValueError:
+                 logger.warning(f"Invalid PID found: {pid}")
+                 messages.append(f"Geçersiz PID bulundu: {pid}")
+            except ProcessLookupError:
+                logger.info(f"Spotifyd (PID: {pid}) already terminated.")
+            except Exception as e:
+                logger.error(f"Error terminating spotifyd (PID: {pid}): {e}", exc_info=True)
+                messages.append(f"Spotifyd (PID: {pid}) sonlandırılırken hata: {e}")
+    else:
+         messages.append("Çalışan Spotifyd süreci bulunamadı.")
+
+    # Start new process
+    spotifyd_command = None
+    # Kullanıcı ve sistem config yollarını kontrol et
+    spotifyd_config_path_home = os.path.expanduser("~/.config/spotifyd/spotifyd.conf")
+    spotifyd_config_path_etc = "/etc/spotifyd.conf"
+
+    if os.path.exists(spotifyd_config_path_home):
+        spotifyd_command = ["spotifyd", "--config-path", spotifyd_config_path_home, "--no-daemon"]
+        logger.info(f"Using spotifyd config: {spotifyd_config_path_home}")
+    elif os.path.exists(spotifyd_config_path_etc):
+         spotifyd_command = ["spotifyd", "--config-path", spotifyd_config_path_etc, "--no-daemon"]
+         logger.info(f"Using spotifyd config: {spotifyd_config_path_etc}")
+    else:
+        spotifyd_command = ["spotifyd", "--no-daemon"]
+        logger.info("No spotifyd config file found, attempting to start with defaults.")
+
+    if spotifyd_command:
+        try:
+            subprocess.Popen(spotifyd_command)
+            time.sleep(2) # Başlaması için bekle
+            new_pids = get_spotifyd_pid()
+            if new_pids and any(pid not in killed_pids for pid in new_pids):
+                logger.info(f"Spotifyd restarted successfully. New PIDs: {new_pids}")
+                messages.append("Spotifyd başarıyla yeniden başlatıldı.")
+                start_success = True
+            else:
+                 # Başlamadıysa veya sadece eski PID'ler varsa
+                 if not new_pids:
                      logger.error("Spotifyd process did not start after attempting restart.")
                      messages.append("Spotifyd başarıyla sonlandırıldı ancak yeniden başlatılamadı.")
-                     start_success = False # Explicitly set false
+                 else:
+                      logger.warning(f"Spotifyd restart seemed to fail, only old PIDs found? PIDs: {new_pids}")
+                      messages.append("Spotifyd yeniden başlatma durumu belirsiz, yeni süreç bulunamadı.")
+                 start_success = False
 
-            except FileNotFoundError:
-                logger.error("Command 'spotifyd' not found. Is spotifyd installed and in PATH?")
-                messages.append("Hata: 'spotifyd' komutu bulunamadı. Yüklü mü?")
-                start_success = False
-            except Exception as e:
-                logger.error(f"Error starting spotifyd: {e}", exc_info=True)
-                messages.append(f"Spotifyd başlatılırken hata: {e}")
-                start_success = False
-        else:
-             # Should not happen if default is used, but as a safeguard
-             messages.append("Spotifyd başlatılamadı (komut oluşturulamadı).")
-             start_success = False
+        except FileNotFoundError:
+            logger.error("Command 'spotifyd' not found. Is spotifyd installed and in PATH?")
+            messages.append("Hata: 'spotifyd' komutu bulunamadı. Yüklü mü?")
+            start_success = False
+        except Exception as e:
+            logger.error(f"Error starting spotifyd: {e}", exc_info=True)
+            messages.append(f"Spotifyd başlatılırken hata: {e}")
+            start_success = False
+    else:
+         messages.append("Spotifyd başlatılamadı (komut oluşturulamadı).")
+         start_success = False
 
-        return start_success, " ".join(messages)
+    return start_success, " ".join(messages)
 
 
-    @staticmethod
-    def switch_to_alsa_sink():
-        """Varsa ilk bulunan ALSA uyumlu sink'e geçiş yapar."""
-        logger.info("Attempting to switch to an ALSA sink...")
-        sinks, default_sink = AudioManager.get_pipewire_sinks()
-        alsa_sinks = []
+def switch_to_alsa_sink(audio_manager):
+    """Varsa ilk bulunan ALSA uyumlu sink'e geçiş yapar."""
+    logger.info("Attempting to switch to an ALSA sink...")
+    sinks, default_sink_name = audio_manager.list_sinks() # list_sinks artık tuple döndürüyor
+    alsa_sinks = []
 
-        if not sinks:
-            logger.warning("No audio sinks found.")
-            return False, "Hiç ses çıkış cihazı bulunamadı."
+    if not sinks:
+        logger.warning("No audio sinks found.")
+        return False, "Hiç ses çıkış cihazı bulunamadı."
 
-        # ALSA sink'lerini bul (is_alsa flag'ini kullanarak)
-        alsa_sinks = [s for s in sinks if s.get('is_alsa')]
+    # ALSA sink'lerini bul (isim veya açıklamada 'alsa', 'analog', 'builtin' geçenler)
+    for sink in sinks:
+        name_lower = sink.get('name', '').lower()
+        desc_lower = sink.get('description', '').lower()
+        if "alsa" in name_lower or "analog" in name_lower or "builtin" in desc_lower:
+             # Bluetooth olmayanları tercih et
+             if "bluez" not in name_lower:
+                 alsa_sinks.append(sink)
 
-        if not alsa_sinks:
-            logger.warning("No ALSA compatible sinks found in the list.")
-            return False, "ALSA uyumlu ses çıkış cihazı bulunamadı."
+    if not alsa_sinks:
+        logger.warning("No suitable ALSA compatible sinks found.")
+        return False, "Uygun ALSA ses çıkış cihazı bulunamadı."
 
-        # Tercihen bağlı olmayan veya varsayılan olmayan ilk ALSA sink'ini seç
-        target_sink = None
-        # 1. Varsayılan olmayan ALSA'yı bul
-        for sink in alsa_sinks:
-            if not sink.get('is_default'):
-                target_sink = sink
-                break
-        # 2. Hepsi varsayılan ise (veya tek ALSA varsa), ilkini seç
-        if not target_sink:
-            target_sink = alsa_sinks[0]
+    # Tercihen varsayılan olmayan ilk ALSA sink'ini seç
+    target_sink = None
+    for sink in alsa_sinks:
+        if not sink.get('is_default'):
+            target_sink = sink
+            break
+    # Hepsi varsayılan ise (veya tek ALSA varsa), ilkini seç
+    if not target_sink:
+        target_sink = alsa_sinks[0]
 
-        if target_sink.get('is_default'):
-            logger.info(f"ALSA sink '{target_sink.get('description')}' is already the default.")
-            return True, f"ALSA ses çıkışı ('{target_sink.get('description')}') zaten varsayılan."
+    target_sink_name = target_sink.get('name')
+    target_sink_desc = target_sink.get('description')
+    target_sink_index = target_sink.get('index') # Index'i de alalım
 
-        logger.info(f"Found ALSA sink to switch to: {target_sink.get('description')} (Node: {target_sink.get('name')})")
+    if target_sink.get('is_default'):
+        logger.info(f"ALSA sink '{target_sink_desc}' is already the default.")
+        return True, f"ALSA ses çıkışı ('{target_sink_desc}') zaten varsayılan."
 
-        # Seçilen ALSA sink'ini varsayılan yap
-        success, message = AudioManager.set_default_pipewire_sink(target_sink.get('name'))
+    logger.info(f"Found ALSA sink to switch to: {target_sink_desc} (Index: {target_sink_index})")
 
-        if success:
-            # Başarılı mesajı set_default_pipewire_sink'ten gelenle birleştir
-             return True, f"ALSA ses çıkışına geçildi: {message}"
-        else:
-             # Hata mesajı set_default_pipewire_sink'ten geldi
-             return False, f"ALSA ses çıkışına geçiş yapılamadı: {message}"
+    # Seçilen ALSA sink'ini varsayılan yap (index ile çağıralım)
+    success, message = audio_manager.switch_to_sink(target_sink_index)
+
+    if success:
+         return True, f"ALSA ses çıkışına geçildi: {message}"
+    else:
+         return False, f"ALSA ses çıkışına geçiş yapılamadı: {message}"
 
 # --- Flask Uygulaması ---
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'varsayilan_guvensiz_anahtar_lutfen_degistirin')
-app.jinja_env.globals['AudioManager'] = AudioManager
-app.jinja_env.globals['BLUETOOTH_SCAN_DURATION'] = BLUETOOTH_SCAN_DURATION # Şablona ekle
+# AudioManager yerine AudioSinkManager'ı Jinja'ya eklemeye gerek yok, API üzerinden yönetilecek.
+# app.jinja_env.globals['AudioManager'] = AudioManager # KALDIRILDI
+app.jinja_env.globals['BLUETOOTH_SCAN_DURATION'] = BLUETOOTH_SCAN_DURATION
 
 # --- Global Değişkenler ---
 spotify_client = None
@@ -642,6 +555,7 @@ user_requests = {}
 time_profiles = { 'sabah': [], 'oglen': [], 'aksam': [], 'gece': [] }
 ALLOWED_GENRES = ['pop', 'rock', 'jazz', 'electronic', 'hip-hop', 'classical', 'r&b', 'indie', 'turkish']
 auto_advance_enabled = True
+audio_sink_manager = AudioSinkManager() # Yeni ses yöneticisini başlat
 
 # --- Yardımcı Fonksiyonlar (Ayarlar, Token, Auth - Değişiklik Yok) ---
 def load_settings():
@@ -797,15 +711,16 @@ def logout():
 @admin_login_required
 def admin_panel():
     """Yönetim panelini gösterir."""
-    global auto_advance_enabled
+    global auto_advance_enabled, audio_sink_manager
     spotify = get_spotify_client()
     spotify_devices = []
     spotify_authenticated = False
     spotify_user = None
     currently_playing_info = None
 
-    # PipeWire sink'lerini ve varsayılanı al (güncellenmiş fonksiyonlar kullanılır)
-    pipewire_sinks, default_pipewire_sink_node_name = AudioManager.get_pipewire_sinks()
+    # PipeWire/PulseAudio sink'lerini ve varsayılanı al (yeni yönetici ile)
+    # list_sinks artık (liste, varsayılan_adı) döndürüyor
+    audio_sinks, default_audio_sink_name = audio_sink_manager.list_sinks()
 
     if spotify:
         try:
@@ -830,6 +745,7 @@ def admin_panel():
                 if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE); spotify_client = None
     else: spotify_authenticated = False; session['spotify_authenticated'] = False; session.pop('spotify_user', None)
 
+    # Şablona gönderilecek verileri güncelle
     return render_template(
         'admin_panel.html',
         settings=settings,
@@ -839,8 +755,9 @@ def admin_panel():
         spotify_authenticated=spotify_authenticated,
         spotify_user=session.get('spotify_user'),
         active_spotify_connect_device_id=settings.get('active_device_id'),
-        pipewire_sinks=pipewire_sinks, # PipeWire listesi (Şablonun kullanması için)
-        default_pipewire_sink=default_pipewire_sink_node_name, # Varsayılan PipeWire sink node adı (Şablonun kullanması için)
+        # PipeWire yerine genel audio sink listesi ve varsayılan adı gönder
+        audio_sinks=audio_sinks, # Yeni anahtar adı
+        default_audio_sink_name=default_audio_sink_name, # Yeni anahtar adı
         currently_playing_info=currently_playing_info,
         auto_advance_enabled=auto_advance_enabled
     )
@@ -859,9 +776,9 @@ def player_pause():
         flash('Müzik duraklatıldı ve otomatik geçiş kapatıldı.', 'success')
     except spotipy.SpotifyException as e:
         logger.error(f"Spotify duraklatma hatası: {e}")
-        if e.http_status == 401 or e.http_status == 403: flash('Spotify yetkilendirme hatası.', 'danger'); 
+        if e.http_status == 401 or e.http_status == 403: flash('Spotify yetkilendirme hatası.', 'danger');
         global spotify_client;
-        spotify_client = None; 
+        spotify_client = None;
         if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
         elif e.http_status == 404: flash(f'Duraklatma hatası: Cihaz bulunamadı ({e.msg})', 'warning')
         elif e.reason == 'NO_ACTIVE_DEVICE': flash('Aktif Spotify cihazı bulunamadı!', 'warning')
@@ -911,9 +828,9 @@ def refresh_devices():
     except Exception as e:
         logger.error(f"Spotify Connect Cihazlarını yenilerken hata: {e}")
         flash('Spotify Connect cihaz listesi yenilenirken bir hata oluştu.', 'danger')
-        if isinstance(e, spotipy.SpotifyException) and (e.http_status == 401 or e.http_status == 403): 
-            global spotify_client; 
-            spotify_client = None; 
+        if isinstance(e, spotipy.SpotifyException) and (e.http_status == 401 or e.http_status == 403):
+            global spotify_client;
+            spotify_client = None;
         if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
     return redirect(url_for('admin_panel'))
 
@@ -925,7 +842,6 @@ def update_settings():
         settings['max_queue_length'] = int(request.form.get('max_queue_length', 20))
         settings['max_user_requests'] = int(request.form.get('max_user_requests', 5))
         settings['active_genres'] = [genre for genre in ALLOWED_GENRES if request.form.get(f'genre_{genre}')]
-        # Spotify Connect cihazı ayarı admin panelinden form ile geliyorsa güncellenir
         if 'active_spotify_connect_device_id' in request.form:
              new_spotify_device_id = request.form.get('active_spotify_connect_device_id')
              settings['active_device_id'] = new_spotify_device_id if new_spotify_device_id else None
@@ -985,7 +901,6 @@ def add_song():
     song_input = request.form.get('song_id', '').strip()
     if not song_input: flash("Şarkı ID/URL girin.", "warning"); return redirect(url_for('admin_panel'))
     song_id = song_input
-    # Check for Spotify URL and extract ID
     if 'https://developer.spotify.com/documentation/web-api/reference/add-to-queue2' in song_input or 'open.spotify.com/track/' in song_input:
         match = re.search(r'/track/([a-zA-Z0-9]+)', song_input)
         if match: song_id = match.group(1)
@@ -1008,11 +923,6 @@ def add_song():
     except Exception as e: logger.error(f"Admin eklerken genel hata (ID={song_id}): {e}", exc_info=True); flash("Şarkı eklenirken hata.", "danger")
     return redirect(url_for('admin_panel'))
 
-# --- Bluetooth API Rotaları (Kaldırıldı - /api/* olanlar kullanılacak) ---
-# @app.route('/pair-bluetooth-device', methods=['POST']) ... kaldırıldı
-# @app.route('/connect-bluetooth-device', methods=['POST']) ... kaldırıldı
-# @app.route('/disconnect-bluetooth-device', methods=['POST']) ... kaldırıldı
-
 # --- Queue Rotaları (Değişiklik Yok) ---
 @app.route('/add-to-queue', methods=['POST'])
 def add_to_queue():
@@ -1026,7 +936,6 @@ def add_to_queue():
     spotify = get_spotify_client()
     if not spotify: logger.error("Ekleme: Spotify istemcisi yok."); return jsonify({'error': 'Spotify bağlantısı yok.'}), 503
     try:
-        # Şarkı bilgilerini alıp profile ekleyelim
         song_info = spotify.track(track_id, market='TR')
         if not song_info:
             logger.warning(f"Kullanıcı ekleme: Şarkı bulunamadı ID={track_id}")
@@ -1035,11 +944,7 @@ def add_to_queue():
         artists = song_info.get('artists', [])
         artist_name = ', '.join([a.get('name') for a in artists]) if artists else '?'
         song_name = song_info.get('name', '?')
-
-        # Profili güncelle
         update_time_profile(track_id, spotify)
-
-        # Kuyruğa ekle
         song_queue.append({'id': track_id, 'name': song_name, 'artist': artist_name, 'added_by': user_ip, 'added_at': time.time()})
         user_requests[user_ip] = user_requests.get(user_ip, 0) + 1
         logger.info(f"Şarkı eklendi (Kullanıcı: {user_ip}): {song_name}. Kuyruk: {len(song_queue)}")
@@ -1052,7 +957,6 @@ def add_to_queue():
     except Exception as e:
         logger.error(f"Kuyruğa ekleme hatası (ID: {track_id}): {e}", exc_info=True)
         return jsonify({'error': 'Şarkı eklenirken bilinmeyen bir sorun oluştu.'}), 500
-
 
 @app.route('/remove-song/<song_id>', methods=['POST'])
 @admin_login_required
@@ -1086,9 +990,9 @@ def view_queue():
                 logger.debug(f"Şu An Çalıyor (Kuyruk): {track_name} - {'Çalıyor' if is_playing else 'Duraklatıldı'}")
         except spotipy.SpotifyException as e:
             logger.warning(f"Çalma durumu hatası (Kuyruk): {e}")
-            if e.http_status == 401 or e.http_status == 403: 
-                spotify_client = None; 
-                if os.path.exists(TOKEN_FILE): 
+            if e.http_status == 401 or e.http_status == 403:
+                spotify_client = None;
+                if os.path.exists(TOKEN_FILE):
                     os.remove(TOKEN_FILE)
         except Exception as e: logger.error(f"Çalma durumu genel hatası (Kuyruk): {e}", exc_info=True)
     return render_template('queue.html', queue=current_q, currently_playing_info=currently_playing_info)
@@ -1097,56 +1001,60 @@ def view_queue():
 def api_get_queue():
     return jsonify({'queue': song_queue, 'queue_length': len(song_queue), 'max_length': settings.get('max_queue_length', 20)})
 
-# --- PipeWire/Bluetooth API Rotaları ---
-@app.route('/api/pipewire-sinks') # URL güncellendi
-@admin_login_required
-def api_pipewire_sinks():
-    """Mevcut PipeWire sink'lerini (Node) ve varsayılanı döndürür."""
-    sinks, default_sink_node_name = AudioManager.get_pipewire_sinks()
-    return jsonify({'sinks': sinks, 'default_sink': default_sink_node_name})
+# --- YENİ API Rotaları (Ses/Bluetooth) ---
 
-@app.route('/api/set-pipewire-sink', methods=['POST']) # URL ve parametre güncellendi
+@app.route('/api/audio-sinks') # URL güncellendi
 @admin_login_required
-def api_set_pipewire_sink():
-    """Seçilen node'u sistemin varsayılan PipeWire sink'i olarak ayarlar."""
+def api_audio_sinks():
+    """Mevcut ses sink'lerini (pulsectl) ve varsayılanı döndürür."""
+    global audio_sink_manager
+    sinks, default_sink_name = audio_sink_manager.list_sinks()
+    # Frontend'in beklemesi muhtemel anahtarları kullanalım
+    return jsonify({'sinks': sinks, 'default_sink_name': default_sink_name})
+
+@app.route('/api/set-audio-sink', methods=['POST']) # URL ve parametre güncellendi
+@admin_login_required
+def api_set_audio_sink():
+    """Seçilen sink'i (index veya isim) varsayılan yapar."""
+    global audio_sink_manager
     if not request.is_json: return jsonify({'success': False, 'error': 'JSON isteği gerekli'}), 400
-    data = request.get_json(); node_name = data.get('node_name') # Parametre adı değişti
-    if not node_name: logger.error("API isteğinde 'node_name' eksik."); return jsonify({'success': False, 'error': 'Node adı gerekli'}), 400
+    data = request.get_json()
+    sink_identifier = data.get('sink_identifier') # Frontend'den gelen index veya isim
+    if sink_identifier is None: # None veya boş string kontrolü
+        logger.error("API isteğinde 'sink_identifier' eksik.")
+        return jsonify({'success': False, 'error': 'Sink tanımlayıcısı (index veya isim) gerekli'}), 400
 
-    logger.info(f"API: Varsayılan PipeWire sink ayarlama isteği: {node_name}")
-    success, message = AudioManager.set_default_pipewire_sink(node_name)
+    logger.info(f"API: Varsayılan ses sink ayarlama isteği: {sink_identifier}")
+    success, message = audio_sink_manager.switch_to_sink(sink_identifier)
 
     # İşlem sonrası güncel listeleri al
-    updated_pipewire_sinks, new_default_sink_node_name = AudioManager.get_pipewire_sinks()
-    # Bluetooth listesini de alalım (bağlantı durumu değişmiş olabilir)
-    updated_bt_devices = AudioManager.get_paired_bluetooth_devices() # Sadece eşleşmişleri alalım
+    updated_sinks, new_default_sink_name = audio_sink_manager.list_sinks()
+    updated_bt_devices = bt_get_paired_bluetooth_devices() # Eşleşmiş BT listesi
     status_code = 200 if success else 500
     response_data = {
         'success': success,
-        'pipewire_sinks': updated_pipewire_sinks, # Anahtar adı değişti
-        'default_sink': new_default_sink_node_name,
+        'sinks': updated_sinks, # Frontend'in beklemesi muhtemel anahtar
+        'default_sink_name': new_default_sink_name, # Frontend'in beklemesi muhtemel anahtar
         'bluetooth_devices': updated_bt_devices
     }
     if success: response_data['message'] = message
     else: response_data['error'] = message
     return jsonify(response_data), status_code
 
-@app.route('/api/scan-bluetooth') # Bu endpoint artık sadece eşleşmişleri listeler
+@app.route('/api/scan-bluetooth') # Eşleşmişleri listeler
 @admin_login_required
 def api_scan_bluetooth():
     """Eşleştirilmiş Bluetooth cihazlarını ve durumlarını listeler."""
     logger.info("API: Eşleştirilmiş Bluetooth cihaz listeleme isteği alındı.")
-    devices = AudioManager.get_paired_bluetooth_devices()
-    # Hata durumunda AudioManager.get_paired_bluetooth_devices zaten loglama yapar ve boş liste döner
-    return jsonify({'success': True, 'devices': devices}) # Başarı durumu her zaman True, liste boş olabilir
+    devices = bt_get_paired_bluetooth_devices()
+    return jsonify({'success': True, 'devices': devices})
 
-@app.route('/api/discover-bluetooth') # Yeni endpoint
+@app.route('/api/discover-bluetooth') # Yeni cihazları tarar
 @admin_login_required
 def api_discover_bluetooth():
     """Kısa süreliğine Bluetooth taraması yapar ve bulunan tüm cihazları listeler."""
     logger.info(f"API: Yeni Bluetooth cihaz keşfi isteği alındı (Süre: {BLUETOOTH_SCAN_DURATION}s).")
-    devices = AudioManager.discover_bluetooth_devices(scan_duration=BLUETOOTH_SCAN_DURATION)
-    # Hata durumu kontrolü eklenebilir, ancak discover_bluetooth_devices boş liste dönebilir
+    devices = bt_discover_bluetooth_devices(scan_duration=BLUETOOTH_SCAN_DURATION)
     return jsonify({'success': True, 'devices': devices})
 
 
@@ -1154,105 +1062,114 @@ def api_discover_bluetooth():
 @admin_login_required
 def api_pair_bluetooth():
     """Belirtilen MAC adresli Bluetooth cihazını eşleştirir/bağlar."""
+    global audio_sink_manager
     if not request.is_json: return jsonify({'success': False, 'error': 'JSON isteği gerekli'}), 400
     data = request.get_json(); mac_address = data.get('mac_address')
     if not mac_address: return jsonify({'success': False, 'error': 'MAC adresi gerekli'}), 400
     logger.info(f"API: Bluetooth cihazı eşleştirme/bağlama isteği: {mac_address}")
-    success = AudioManager.pair_bluetooth_device(mac_address)
+    success, message = bt_pair_bluetooth_device(mac_address)
 
-    # İşlem sonrası güncel listeleri al (eşleşmişleri ve pipewire'ı)
-    # Bu listelerin alınması sırasında hata olursa, loglanır ama işlem devam eder
-    updated_pipewire_sinks, new_default_sink = AudioManager.get_pipewire_sinks()
-    updated_bt_devices = AudioManager.get_paired_bluetooth_devices()
+    # Bağlantı başarılıysa, ilgili sink'i bul ve varsayılan yapmayı dene
+    if success:
+        time.sleep(3) # Sink'in görünmesi için biraz bekle
+        device_info = next((d for d in bt_get_paired_bluetooth_devices() if d['mac_address'] == mac_address), None)
+        if device_info:
+            target_sink = audio_sink_manager.find_sink_by_device_name(device_info['name']) # Cihaz adına göre ara
+            if target_sink and target_sink.get('index') is not None:
+                 logger.info(f"Bluetooth cihazı için sink bulundu: {target_sink.get('description')}. Varsayılan yapılıyor...")
+                 sink_success, sink_msg = audio_sink_manager.switch_to_sink(target_sink['index'])
+                 if sink_success:
+                     message += f" {sink_msg}"
+                 else:
+                      message += f" Ses çıkışı otomatik olarak ayarlanamadı: {sink_msg}"
+            else:
+                  message += " Eşleşen ses çıkışı bulunamadı veya otomatik ayarlanamadı."
+        else:
+             message += " Cihaz bilgisi alınamadı, ses çıkışı ayarlanamadı."
 
-    # Mesajı ve durumu belirle
-    message = f"Bluetooth cihazı '{mac_address}' başarıyla bağlandı/eşleştirildi." if success else f"Bluetooth cihazı '{mac_address}' bağlanamadı/eşleştirilemedi. Lütfen cihazın açık ve eşleşme modunda olduğundan emin olun veya sistem loglarını kontrol edin."
-    status_code = 200 if success else 500 # Başarısızlık durumunda 500 Internal Server Error
+
+    # İşlem sonrası güncel listeleri al
+    updated_sinks, new_default_sink_name = audio_sink_manager.list_sinks()
+    updated_bt_devices = bt_get_paired_bluetooth_devices()
+    status_code = 200 if success else 500
 
     return jsonify({
         'success': success,
         'message': message,
-        'pipewire_sinks': updated_pipewire_sinks, # Anahtar adı değişti
-        'default_sink': new_default_sink,
-        'bluetooth_devices': updated_bt_devices # Sadece eşleşmişleri döndür
+        'sinks': updated_sinks,
+        'default_sink_name': new_default_sink_name,
+        'bluetooth_devices': updated_bt_devices
     }), status_code
 
 @app.route('/api/disconnect-bluetooth', methods=['POST'])
 @admin_login_required
 def api_disconnect_bluetooth():
     """Belirtilen MAC adresli Bluetooth cihazının bağlantısını keser."""
+    global audio_sink_manager
     if not request.is_json: return jsonify({'success': False, 'error': 'JSON isteği gerekli'}), 400
     data = request.get_json(); mac_address = data.get('mac_address')
     if not mac_address: return jsonify({'success': False, 'error': 'MAC adresi gerekli'}), 400
     logger.info(f"API: Bluetooth cihazı bağlantısını kesme isteği: {mac_address}")
-    success = AudioManager.disconnect_bluetooth_device(mac_address)
+    success, message = bt_disconnect_bluetooth_device(mac_address)
 
-    # İşlem sonrası güncel listeleri al (eşleşmişleri ve pipewire'ı)
-    updated_pipewire_sinks, new_default_sink = AudioManager.get_pipewire_sinks()
-    updated_bt_devices = AudioManager.get_paired_bluetooth_devices()
+    # Otomatik ALSA geçişi yok, kullanıcı manuel yapacak.
 
-    message = f"Bluetooth cihazı '{mac_address}' bağlantısı kesildi." if success else f"Bluetooth cihazı '{mac_address}' bağlantısı kesilemedi."
+    # İşlem sonrası güncel listeleri al
+    updated_sinks, new_default_sink_name = audio_sink_manager.list_sinks()
+    updated_bt_devices = bt_get_paired_bluetooth_devices()
     status_code = 200 if success else 500
-
-    # ALSA'ya geçiş yapıp yapmayacağını sorma mantığı kaldırıldı, ALSA'ya geçiş için ayrı buton olacak.
-    # if success:
-    #    # Otomatik ALSA geçişi yerine kullanıcıya bırakalım
-    #    # success_alsa, msg_alsa = AudioManager.switch_to_alsa_sink()
-    #    # if success_alsa: message += f" {msg_alsa}"
-    #    # else: message += f" ALSA'ya geçiş yapılamadı: {msg_alsa}"
-    #    pass
 
     return jsonify({
         'success': success,
         'message': message,
-        'pipewire_sinks': updated_pipewire_sinks, # Anahtar adı değişti
-        'default_sink': new_default_sink,
-        'bluetooth_devices': updated_bt_devices # Sadece eşleşmişleri döndür
+        'sinks': updated_sinks,
+        'default_sink_name': new_default_sink_name,
+        'bluetooth_devices': updated_bt_devices
     }), status_code
 
-# --- Yeni API Endpoints ---
 @app.route('/api/switch-to-alsa', methods=['POST'])
 @admin_login_required
 def api_switch_to_alsa():
     """Varsayılan ses çıkışını uygun bir ALSA cihazına değiştirir."""
+    global audio_sink_manager
     logger.info("API: ALSA ses çıkışına geçiş isteği alındı.")
-    success, message = AudioManager.switch_to_alsa_sink()
+    success, message = switch_to_alsa_sink(audio_sink_manager) # audio_manager örneğini ver
 
     # İşlem sonrası güncel listeleri al
-    updated_pipewire_sinks, new_default_sink = AudioManager.get_pipewire_sinks()
-    updated_bt_devices = AudioManager.get_paired_bluetooth_devices()
+    updated_sinks, new_default_sink_name = audio_sink_manager.list_sinks()
+    updated_bt_devices = bt_get_paired_bluetooth_devices()
     status_code = 200 if success else 500
 
     response_data = {
         'success': success,
-        'pipewire_sinks': updated_pipewire_sinks,
-        'default_sink': new_default_sink,
+        'sinks': updated_sinks,
+        'default_sink_name': new_default_sink_name,
         'bluetooth_devices': updated_bt_devices
     }
     if success: response_data['message'] = message
-    else: response_data['error'] = message # Hata mesajını 'error' anahtarıyla gönderelim
+    else: response_data['error'] = message
     return jsonify(response_data), status_code
 
 @app.route('/api/restart-spotifyd', methods=['POST'])
 @admin_login_required
 def api_restart_spotifyd():
     """Spotifyd servisini yeniden başlatır."""
+    global audio_sink_manager # Listeleri almak için gerekebilir
     logger.info("API: Spotifyd yeniden başlatma isteği alındı.")
-    success, message = AudioManager.restart_spotifyd()
+    success, message = restart_spotifyd()
     status_code = 200 if success else 500
 
-    # Yeniden başlatma sonrası listeleri güncellemek gerekmeyebilir,
+    # Yeniden başlatma sonrası listeleri güncellemek genellikle gerekli olmaz,
     # ancak yine de tutarlılık için gönderilebilir.
-    updated_pipewire_sinks, new_default_sink = AudioManager.get_pipewire_sinks()
-    updated_bt_devices = AudioManager.get_paired_bluetooth_devices()
+    updated_sinks, new_default_sink_name = audio_sink_manager.list_sinks()
+    updated_bt_devices = bt_get_paired_bluetooth_devices()
 
     response_data = {
         'success': success,
-        'pipewire_sinks': updated_pipewire_sinks,
-        'default_sink': new_default_sink,
+        'sinks': updated_sinks,
+        'default_sink_name': new_default_sink_name,
         'bluetooth_devices': updated_bt_devices
     }
-    # Mesajı başarı veya hata durumuna göre ekleyelim
     if success: response_data['message'] = message
     else: response_data['error'] = message
 
@@ -1273,8 +1190,8 @@ def background_queue_player():
             try: current_playback = spotify.current_playback(additional_types='track,episode', market='TR')
             except spotipy.SpotifyException as pb_err:
                 logger.error(f"Arka plan: Playback kontrol hatası: {pb_err}")
-                if pb_err.http_status == 401 or pb_err.http_status == 403: 
-                    spotify_client = None; 
+                if pb_err.http_status == 401 or pb_err.http_status == 403:
+                    spotify_client = None;
                 if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
                 time.sleep(10); continue
             except Exception as pb_err: logger.error(f"Arka plan: Playback kontrol genel hata: {pb_err}", exc_info=True); time.sleep(15); continue
@@ -1297,8 +1214,8 @@ def background_queue_player():
                 except spotipy.SpotifyException as start_err:
                     logger.error(f"Arka plan: Şarkı başlatılamadı ({next_song.get('id')}): {start_err}")
                     song_queue.insert(0, next_song)
-                    if start_err.http_status == 401 or start_err.http_status == 403: 
-                        spotify_client = None; 
+                    if start_err.http_status == 401 or start_err.http_status == 403:
+                        spotify_client = None;
                         if os.path.exists(TOKEN_FILE):
                             os.remove(TOKEN_FILE)
                     elif start_err.http_status == 404 and 'device_id' in str(start_err).lower(): logger.warning(f"Aktif Spotify Connect cihazı ({active_spotify_connect_device_id}) bulunamadı."); settings['active_device_id'] = None; save_settings(settings)
@@ -1342,6 +1259,15 @@ if __name__ == '__main__':
          logger.info(f"Kullanılacak Redirect URI: {SPOTIFY_REDIRECT_URI}")
          logger.info("!!! BU URI'nin Spotify Developer Dashboard'da kayıtlı olduğundan emin olun !!!")
 
+    # PulseAudio/PipeWire bağlantı kontrolü (isteğe bağlı)
+    try:
+        with pulsectl.Pulse('startup-check') as pulse:
+             server_info = pulse.server_info()
+             logger.info(f"PulseAudio/PipeWire sunucusuna bağlanıldı: {server_info.server_name} v{server_info.server_version}")
+    except Exception as pulse_err:
+         logger.warning(f"Başlangıçta PulseAudio/PipeWire sunucusuna bağlanılamadı: {pulse_err}. Ses yönetimi özellikleri çalışmayabilir.")
+
+
     # Başlangıç kontrolleri ve arka plan görevini başlatma
     check_token_on_startup()
     start_queue_player()
@@ -1353,3 +1279,4 @@ if __name__ == '__main__':
     # debug=True otomatik yeniden yüklemeyi sağlar
     # use_reloader=False development sırasında bazen çift thread başlatma sorununu önler
     app.run(host='0.0.0.0', port=port, debug=True, use_reloader=False)
+
