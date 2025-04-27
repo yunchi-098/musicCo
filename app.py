@@ -151,12 +151,12 @@ def save_settings(current_settings):
         logger.error(f"Ayarları kaydederken hata: {e}", exc_info=True)
 
 # --- Global Değişkenler ---
-# Flask uygulaması yukarıda tanımlandı
 spotify_client = None
 song_queue = [] # Global kuyruk listesi
 user_requests = {} # Kullanıcı istek limitleri
 time_profiles = { 'sabah': [], 'oglen': [], 'aksam': [], 'gece': [] } # Zaman profilleri
 settings = load_settings() # Uygulama başlangıcında ayarları yükle
+auto_advance_enabled = True # Otomatik geçiş durumu
 
 # --- Spotify Token Yönetimi ---
 def load_token():
@@ -224,7 +224,6 @@ def get_current_time_profile():
     elif 18 <= hour < 24: return 'aksam'
     else: return 'gece'
 def update_time_profile(track_id, spotify):
-    # global time_profiles # Bu global gerekli
     global time_profiles
     if not spotify or not track_id: logger.warning("update_time_profile: eksik parametre."); return
     profile_name = get_current_time_profile()
@@ -240,7 +239,6 @@ def update_time_profile(track_id, spotify):
         logger.info(f"'{profile_name}' profiline eklendi: '{track_name}'")
     except Exception as e: logger.error(f"'{profile_name}' profiline eklenirken hata (ID: {track_id}): {e}", exc_info=True)
 def suggest_song_for_time(spotify):
-    # global time_profiles, song_queue # Bu globaller gerekli
     global time_profiles, song_queue
     if not spotify: logger.warning("suggest_song_for_time: spotify istemcisi eksik."); return None
     profile_name = get_current_time_profile(); profile_data = time_profiles.get(profile_name, [])
@@ -270,7 +268,7 @@ def suggest_song_for_time(spotify):
 # --- Şarkı Filtreleme Yardımcı Fonksiyonu ---
 def check_song_filters(track_id, spotify_client):
     """Verilen track_id'nin filtrelere uyup uymadığını kontrol eder."""
-    global settings # Settings'i okumak için global
+    global settings
     if not spotify_client:
         return False, "Spotify bağlantısı yok."
     try:
@@ -362,7 +360,7 @@ def logout():
 @admin_login_required
 def admin_panel():
     """Yönetim panelini gösterir. Ayarları ve listeleri şablona gönderir."""
-    global auto_advance_enabled, settings, song_queue # song_queue global eklendi
+    global auto_advance_enabled, settings, song_queue
     spotify = get_spotify_client()
     spotify_devices = []
     spotify_authenticated = False
@@ -416,7 +414,7 @@ def admin_panel():
 @app.route('/player/pause')
 @admin_login_required
 def player_pause():
-    global auto_advance_enabled; spotify = get_spotify_client()
+    global auto_advance_enabled; spotify = get_spotify_client() # auto_advance_enabled global eklendi
     active_spotify_connect_device_id = settings.get('active_device_id')
     if not spotify: flash('Spotify bağlantısı yok!', 'danger'); return redirect(url_for('admin_panel'))
     try:
@@ -438,7 +436,7 @@ def player_pause():
 @app.route('/player/resume')
 @admin_login_required
 def player_resume():
-    global auto_advance_enabled; spotify = get_spotify_client()
+    global auto_advance_enabled; spotify = get_spotify_client() # auto_advance_enabled global eklendi
     active_spotify_connect_device_id = settings.get('active_device_id')
     if not spotify: flash('Spotify bağlantısı yok!', 'danger'); return redirect(url_for('admin_panel'))
     try:
@@ -565,7 +563,7 @@ def search():
 @admin_login_required
 def add_song():
     """Admin tarafından şarkı ekleme (Filtreleri atlar)."""
-    global song_queue # global eklendi
+    global song_queue
     song_input = request.form.get('song_id', '').strip()
     if not song_input: flash("Şarkı ID/URL girin.", "warning"); return redirect(url_for('admin_panel'))
     song_id = song_input
@@ -594,7 +592,7 @@ def add_song():
 @app.route('/add-to-queue', methods=['POST'])
 def add_to_queue():
     """Kullanıcı tarafından şarkı ekleme (Filtreler uygulanır)."""
-    global settings, song_queue, user_requests # Gerekli globaller eklendi
+    global settings, song_queue, user_requests
     if not request.is_json: return jsonify({'error': 'Geçersiz format.'}), 400
     data = request.get_json(); track_id = data.get('track_id')
     logger.info(f"Kuyruğa ekleme isteği: track_id={track_id}")
@@ -646,7 +644,7 @@ def clear_queue():
 
 @app.route('/queue')
 def view_queue():
-    global spotify_client, song_queue # song_queue global eklendi
+    global spotify_client, song_queue
     current_q = list(song_queue); currently_playing_info = None
     spotify = get_spotify_client()
     if spotify:
@@ -680,7 +678,7 @@ def view_queue():
 
 @app.route('/api/queue')
 def api_get_queue():
-    global song_queue # global eklendi
+    global song_queue
     return jsonify({'queue': song_queue, 'queue_length': len(song_queue), 'max_length': settings.get('max_queue_length', 20)})
 
 # --- Ses/Bluetooth API Rotaları (ex.py'yi Çağıran) ---
@@ -938,14 +936,12 @@ def api_remove_from_list():
 
 # --- Arka Plan Şarkı Çalma İş Parçacığı ---
 def background_queue_player():
-    global spotify_client, song_queue, user_requests, settings, auto_advance_enabled
+    global spotify_client, song_queue, user_requests, settings, auto_advance_enabled # auto_advance_enabled global eklendi
     logger.info("Arka plan şarkı çalma/öneri görevi başlatılıyor...")
     last_played_song_id = None; last_suggested_song_id = None
     while True:
         try:
             spotify = get_spotify_client()
-            # Ayarları döngü içinde tekrar okumak yerine global 'settings'i kullanalım
-            # current_settings = load_settings() # Her döngüde okumak yerine global kullan
             active_spotify_connect_device_id = settings.get('active_device_id')
 
             if not spotify or not active_spotify_connect_device_id: time.sleep(10); continue
@@ -963,7 +959,7 @@ def background_queue_player():
                 is_playing_now = current_playback.get('is_playing', False); item = current_playback.get('item')
                 current_track_id_now = item.get('id') if item else None
 
-            if song_queue and not is_playing_now and auto_advance_enabled:
+            if song_queue and not is_playing_now and auto_advance_enabled: # auto_advance_enabled kontrolü eklendi
                 logger.info(f"Arka plan: Çalma durdu, otomatik ilerleme aktif. Kuyruktan çalınıyor...")
                 next_song = song_queue.pop(0)
                 if next_song.get('id') == last_played_song_id: logger.debug(f"Şarkı ({next_song.get('name')}) zaten son çalınandı, atlanıyor."); last_played_song_id = None; time.sleep(1); continue
@@ -982,11 +978,11 @@ def background_queue_player():
                     if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
                     elif start_err.http_status == 404 and 'device_id' in str(start_err).lower():
                          logger.warning(f"Aktif Spotify Connect cihazı ({active_spotify_connect_device_id}) bulunamadı.");
-                         settings['active_device_id'] = None; # Global settings'i güncelle
-                         save_settings(settings) # Değişikliği kaydet
+                         settings['active_device_id'] = None;
+                         save_settings(settings)
                     time.sleep(5); continue
                 except Exception as start_err: logger.error(f"Arka plan: Şarkı başlatılırken genel hata ({next_song.get('id')}): {start_err}", exc_info=True); song_queue.insert(0, next_song); time.sleep(10); continue
-            elif not song_queue and not is_playing_now and auto_advance_enabled: # Otomatik öneri ve ekleme
+            elif not song_queue and not is_playing_now and auto_advance_enabled: # auto_advance_enabled kontrolü eklendi
                 suggested = suggest_song_for_time(spotify)
                 if suggested and suggested.get('id') != last_suggested_song_id:
                     is_allowed, _ = check_song_filters(suggested['id'], spotify)
