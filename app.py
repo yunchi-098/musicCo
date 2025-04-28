@@ -162,7 +162,6 @@ def load_token():
         try:
             with open(TOKEN_FILE, 'r', encoding='utf-8') as f:
                 token_info = json.load(f)
-                # Temel kontroller: access_token ve refresh_token var mı?
                 if 'access_token' in token_info and 'refresh_token' in token_info:
                     logger.info(f"Token dosyadan başarıyla yüklendi: {TOKEN_FILE}")
                     return token_info
@@ -185,12 +184,11 @@ def load_token():
 def save_token(token_info):
     """Token'ı dosyaya kaydeder."""
     try:
-        # Kaydetmeden önce gerekli anahtarların olduğundan emin olalım
         if not token_info or 'access_token' not in token_info or 'refresh_token' not in token_info:
             logger.error("Kaydedilecek token bilgisi eksik veya geçersiz.")
             return False
         with open(TOKEN_FILE, 'w', encoding='utf-8') as f:
-            json.dump(token_info, f, indent=4) # indent ekleyelim
+            json.dump(token_info, f, indent=4)
         logger.info(f"Token başarıyla dosyaya kaydedildi: {TOKEN_FILE}")
         return True
     except Exception as e:
@@ -202,140 +200,72 @@ def get_spotify_auth():
     if not SPOTIFY_CLIENT_ID or SPOTIFY_CLIENT_ID.startswith('SENİN_') or \
        not SPOTIFY_CLIENT_SECRET or SPOTIFY_CLIENT_SECRET.startswith('SENİN_') or \
        not SPOTIFY_REDIRECT_URI or SPOTIFY_REDIRECT_URI.startswith('http://YOUR_'):
-         # Bu kritik bir hata, uygulamanın devam etmemesi lazım
          logger.critical("KRİTİK HATA: Spotify API bilgileri (CLIENT_ID, CLIENT_SECRET, REDIRECT_URI) app.py içinde doğru şekilde ayarlanmamış!")
          raise ValueError("Spotify API bilgileri eksik veya yanlış!")
     logger.debug(f"SpotifyOAuth oluşturuluyor. Redirect URI: {SPOTIFY_REDIRECT_URI}")
-    return SpotifyOAuth(
-        client_id=SPOTIFY_CLIENT_ID,
-        client_secret=SPOTIFY_CLIENT_SECRET,
-        redirect_uri=SPOTIFY_REDIRECT_URI,
-        scope=SPOTIFY_SCOPE,
-        open_browser=False,
-        # cache_path=TOKEN_FILE # Cache path kullanmak yerine manuel load/save yapıyoruz
-        cache_path=None # Önceki versiyon gibi kalsın
-    )
+    return SpotifyOAuth(client_id=SPOTIFY_CLIENT_ID, client_secret=SPOTIFY_CLIENT_SECRET, redirect_uri=SPOTIFY_REDIRECT_URI, scope=SPOTIFY_SCOPE, open_browser=False, cache_path=None)
 
 def get_spotify_client():
     """Mevcut Spotify istemcisini döndürür veya yenisini oluşturur/yeniler."""
     global spotify_client
-    # Eğer zaten geçerli bir istemci varsa onu döndür
     if spotify_client:
         try:
-            # Hızlı bir kontrol: Kullanıcı bilgisi alınabiliyor mu?
             spotify_client.current_user()
             logger.debug("Mevcut Spotify istemcisi geçerli.")
             return spotify_client
         except spotipy.SpotifyException as e:
             logger.warning(f"Mevcut Spotify istemcisi ile hata ({e.http_status}): {e.msg}. Yeniden oluşturulacak.")
-            spotify_client = None # İstemciyi sıfırla
+            spotify_client = None
         except Exception as e:
             logger.error(f"Mevcut Spotify istemcisi ile bilinmeyen hata: {e}. Yeniden oluşturulacak.", exc_info=True)
             spotify_client = None
 
-    # Yeni istemci oluşturma veya token yenileme
     token_info = load_token()
     if not token_info:
         logger.info("Geçerli token bulunamadı. Yetkilendirme gerekli.")
-        return None # Yetkilendirme için None döndür
-
-    try:
-        auth_manager = get_spotify_auth()
-    except ValueError as e: # API bilgileri hatası
-        logger.error(f"Spotify yetkilendirme yöneticisi oluşturulamadı: {e}")
         return None
 
+    try: auth_manager = get_spotify_auth()
+    except ValueError as e: logger.error(f"Spotify yetkilendirme yöneticisi oluşturulamadı: {e}"); return None
+
     try:
-        # Token süresi dolmuş mu kontrol et (spotipy'nin kendi kontrolü)
         if auth_manager.is_token_expired(token_info):
             logger.info("Spotify token süresi dolmuş, yenileniyor...")
             refresh_token_val = token_info.get('refresh_token')
             if not refresh_token_val:
-                logger.error("Refresh token bulunamadı. Token dosyası siliniyor.")
-                try: os.remove(TOKEN_FILE)
-                except OSError as rm_err: logger.error(f"Token dosyası silinemedi: {rm_err}")
-                return None
-
+                logger.error("Refresh token bulunamadı. Token dosyası siliniyor."); os.remove(TOKEN_FILE); return None
             try:
-                # DeprecationWarning'ı dikkate alarak yenileme
-                # new_token_info = auth_manager.refresh_access_token(refresh_token_val, as_dict=True) # Eski yöntem
-                # Spotipy'nin yeni sürümleri doğrudan dict döndürebilir veya sadece access token string'i
-                # En güvenlisi, refresh sonrası cache'den okumak veya manuel yapılandırmak
-                # Şimdilik eski yöntemle devam edelim, uyarıyı görmezden gelelim
-                # VEYA daha modern yaklaşım:
-                auth_manager.token = token_info # Mevcut token'ı yükle
-                new_token_info = auth_manager.refresh_access_token(refresh_token_val) # Yenile
-
+                auth_manager.token = token_info
+                new_token_info = auth_manager.refresh_access_token(refresh_token_val)
                 if not new_token_info:
-                    logger.error("Token yenilenemedi (API'den boş yanıt?). Token dosyası siliniyor.")
-                    try: os.remove(TOKEN_FILE)
-                    except OSError as rm_err: logger.error(f"Token dosyası silinemedi: {rm_err}")
-                    return None
-
-                # new_token_info'nun dict olduğundan emin olalım (yeni spotipy sürümleri için)
-                if isinstance(new_token_info, str): # Eğer sadece access token döndüyse
+                    logger.error("Token yenilenemedi (API'den boş yanıt?). Token dosyası siliniyor."); os.remove(TOKEN_FILE); return None
+                if isinstance(new_token_info, str):
                     logger.warning("refresh_access_token sadece access token döndürdü. Eski token bilgisiyle birleştiriliyor.")
-                    # Eski token'dan refresh token ve diğer bilgileri alıp yeni access token ile birleştir
-                    token_info['access_token'] = new_token_info
-                    token_info['expires_at'] = int(time.time()) + 3600 # Yaklaşık süre ekle
-                    new_token_info = token_info # Eski dict'i kullan
+                    token_info['access_token'] = new_token_info; token_info['expires_at'] = int(time.time()) + 3600; new_token_info = token_info
                 elif not isinstance(new_token_info, dict):
-                     logger.error(f"Token yenileme beklenmedik formatta veri döndürdü: {type(new_token_info)}. Token dosyası siliniyor.")
-                     try: os.remove(TOKEN_FILE)
-                     except OSError as rm_err: logger.error(f"Token dosyası silinemedi: {rm_err}")
-                     return None
-
-
+                     logger.error(f"Token yenileme beklenmedik formatta veri döndürdü: {type(new_token_info)}. Token dosyası siliniyor."); os.remove(TOKEN_FILE); return None
                 logger.info("Token başarıyla yenilendi.")
-                if not save_token(new_token_info): # Yenilenen token'ı kaydet
-                     logger.error("Yenilenen token kaydedilemedi!")
-                     # Kaydedemezsek bile devam etmeyi deneyebiliriz ama sorun olabilir
-                token_info = new_token_info # Yeni token'ı kullan
+                if not save_token(new_token_info): logger.error("Yenilenen token kaydedilemedi!")
+                token_info = new_token_info
             except spotipy.SpotifyOauthError as oauth_err:
-                 logger.error(f"Token yenileme sırasında OAuth hatası: {oauth_err}. Refresh token geçersiz olabilir. Token dosyası siliniyor.")
-                 try: os.remove(TOKEN_FILE)
-                 except OSError as rm_err: logger.error(f"Token dosyası silinemedi: {rm_err}")
-                 return None
-            except Exception as refresh_err:
-                 logger.error(f"Token yenileme sırasında beklenmedik hata: {refresh_err}", exc_info=True)
-                 return None # Yenileme başarısızsa devam etme
+                 logger.error(f"Token yenileme sırasında OAuth hatası: {oauth_err}. Refresh token geçersiz olabilir. Token dosyası siliniyor."); os.remove(TOKEN_FILE); return None
+            except Exception as refresh_err: logger.error(f"Token yenileme sırasında beklenmedik hata: {refresh_err}", exc_info=True); return None
 
-        # Geçerli veya yenilenmiş token ile Spotify istemcisini oluştur
         access_token = token_info.get('access_token')
-        if not access_token:
-             logger.error("Token bilgisinde access_token bulunamadı.")
-             return None
-
+        if not access_token: logger.error("Token bilgisinde access_token bulunamadı."); return None
         new_spotify_client = spotipy.Spotify(auth=access_token)
-
-        # Son bir doğrulama: API'ye basit bir istek gönder
         try:
             user_info = new_spotify_client.current_user()
             logger.info(f"Spotify istemcisi başarıyla oluşturuldu/doğrulandı. Kullanıcı: {user_info.get('display_name', '?')}")
-            spotify_client = new_spotify_client # Global istemciyi güncelle
+            spotify_client = new_spotify_client
             return spotify_client
         except spotipy.SpotifyException as e:
             logger.error(f"Yeni Spotify istemcisi ile doğrulama hatası ({e.http_status}): {e.msg}. Token geçersiz olabilir.")
-            # Eğer yetkilendirme hatasıysa token'ı sil
-            if e.http_status == 401 or e.http_status == 403:
-                logger.warning("Yetkilendirme hatası alındı. Token dosyası siliniyor.")
-                try: os.remove(TOKEN_FILE)
-                except OSError as rm_err: logger.error(f"Token dosyası silinemedi: {rm_err}")
+            if e.http_status == 401 or e.http_status == 403: logger.warning("Yetkilendirme hatası alındı. Token dosyası siliniyor."); os.remove(TOKEN_FILE)
             return None
-        except Exception as e:
-            logger.error(f"Yeni Spotify istemcisi ile doğrulama sırasında bilinmeyen hata: {e}", exc_info=True)
-            return None
-
-    except spotipy.SpotifyOauthError as e: # get_spotify_auth veya refresh'ten gelebilir
-        logger.error(f"Spotify OAuth hatası: {e}. API anahtarları veya URI yanlış olabilir.")
-        # Bu durumda token dosyasını silmek genellikle çözüm olmaz, konfigürasyon sorunudur.
-        return None
-    except Exception as e:
-        logger.error(f"Spotify istemcisi alınırken genel hata: {e}", exc_info=True)
-        # Genel hatalarda da token'ı silmeyi deneyebiliriz ama kök neden farklı olabilir
-        # try: os.remove(TOKEN_FILE)
-        # except OSError as rm_err: logger.error(f"Token dosyası silinemedi: {rm_err}")
-        return None
+        except Exception as e: logger.error(f"Yeni Spotify istemcisi ile doğrulama sırasında bilinmeyen hata: {e}", exc_info=True); return None
+    except spotipy.SpotifyOauthError as e: logger.error(f"Spotify OAuth hatası: {e}. API anahtarları veya URI yanlış olabilir."); return None
+    except Exception as e: logger.error(f"Spotify istemcisi alınırken genel hata: {e}", exc_info=True); return None
 
 # --- Admin Giriş Decorator'ı ---
 def admin_login_required(f):
@@ -517,7 +447,7 @@ def admin_panel():
         flash(f"Ses cihazları listelenemedi: {audio_sinks_result.get('error', 'Bilinmeyen hata')}", "danger")
 
     if spotify:
-        spotify_authenticated = True # Başlangıçta bağlı varsayalım
+        spotify_authenticated = True
         session['spotify_authenticated'] = True
         try:
             result = spotify.devices(); spotify_devices = result.get('devices', [])
@@ -537,29 +467,21 @@ def admin_panel():
                     }
                     logger.debug(f"Şu An Çalıyor: {track_name} - {'Çalıyor' if is_playing else 'Duraklatıldı'}")
             except Exception as pb_err: logger.warning(f"Çalma durumu alınamadı: {pb_err}")
-        except spotipy.SpotifyException as e: # Spotify hatalarını yakala
+        except spotipy.SpotifyException as e:
             logger.error(f"Spotify API hatası (Admin Panel): {e.http_status} - {e.msg}")
             spotify_authenticated = False; session['spotify_authenticated'] = False; session.pop('spotify_user', None)
-            if e.http_status == 401 or e.http_status == 403: # Yetkilendirme hatasıysa
+            if e.http_status == 401 or e.http_status == 403:
                 flash("Spotify yetkilendirmesi geçersiz veya süresi dolmuş. Lütfen tekrar yetkilendirin.", "warning")
-                if os.path.exists(TOKEN_FILE):
-                    logger.warning("Geçersiz token dosyası siliniyor.")
-                    try: os.remove(TOKEN_FILE)
-                    except OSError as rm_err: logger.error(f"Token dosyası silinemedi: {rm_err}")
-                spotify_client = None # Global istemciyi sıfırla
-            else:
-                 flash(f"Spotify API hatası: {e.msg}", "danger")
-        except Exception as e: # Diğer genel hatalar
+                if os.path.exists(TOKEN_FILE): logger.warning("Geçersiz token dosyası siliniyor."); os.remove(TOKEN_FILE)
+                spotify_client = None
+            else: flash(f"Spotify API hatası: {e.msg}", "danger")
+        except Exception as e:
             logger.error(f"Admin panelinde beklenmedik hata: {e}", exc_info=True)
             spotify_authenticated = False; session['spotify_authenticated'] = False; session.pop('spotify_user', None)
             flash("Beklenmedik bir hata oluştu.", "danger")
-    else: # get_spotify_client() None döndürdüyse
+    else:
         spotify_authenticated = False; session['spotify_authenticated'] = False; session.pop('spotify_user', None)
-        # Token dosyası yoksa veya yüklenemediyse zaten loglanmış olmalı
-        # Kullanıcıya yetkilendirme gerektiğini belirtelim
-        if not os.path.exists(TOKEN_FILE):
-             flash("Spotify hesabınızı bağlamak için lütfen yetkilendirme yapın.", "info")
-
+        if not os.path.exists(TOKEN_FILE): flash("Spotify hesabınızı bağlamak için lütfen yetkilendirme yapın.", "info")
 
     return render_template(
         'admin_panel.html',
@@ -682,33 +604,18 @@ def callback():
     if 'code' not in request.args: logger.error("Callback'te 'code' yok."); return "Geçersiz callback isteği.", 400
     code = request.args.get('code')
     try:
-        # DeprecationWarning'ı dikkate alarak token al
-        # token_info = auth_manager.get_access_token(code, check_cache=False, as_dict=True) # Eski yöntem
-        token_info = auth_manager.get_access_token(code, check_cache=False) # Yeni spotipy sürümleri dict dönebilir
+        token_info = auth_manager.get_access_token(code, check_cache=False)
         if not token_info: logger.error("Spotify'dan token alınamadı."); return "Token alınamadı.", 500
-
-        # Dönen verinin dict olduğundan emin olalım
-        if isinstance(token_info, str): # Sadece access token döndüyse
-             logger.error("get_access_token sadece string döndürdü, refresh token alınamadı.")
-             return "Token bilgisi eksik alındı.", 500
-        elif not isinstance(token_info, dict):
-             logger.error(f"get_access_token beklenmedik formatta veri döndürdü: {type(token_info)}")
-             return "Token bilgisi alınırken hata oluştu.", 500
-
-        if save_token(token_info): # Token'ı kaydetmeyi dene
-            global spotify_client; spotify_client = None # Eski istemciyi temizle
+        if isinstance(token_info, str): logger.error("get_access_token sadece string döndürdü, refresh token alınamadı."); return "Token bilgisi eksik alındı.", 500
+        elif not isinstance(token_info, dict): logger.error(f"get_access_token beklenmedik formatta veri döndürdü: {type(token_info)}"); return "Token bilgisi alınırken hata oluştu.", 500
+        if save_token(token_info):
+            global spotify_client; spotify_client = None
             logger.info("Spotify yetkilendirme başarılı, token kaydedildi.")
             if session.get('admin_logged_in'): flash("Spotify yetkilendirmesi başarıyla tamamlandı!", "success"); return redirect(url_for('admin_panel'))
             else: return redirect(url_for('index'))
-        else:
-             logger.error("Alınan token dosyaya kaydedilemedi.")
-             return "Token kaydedilirken bir hata oluştu.", 500
-    except spotipy.SpotifyOauthError as e:
-         logger.error(f"Spotify token alırken OAuth hatası: {e}", exc_info=True)
-         return f"Token alınırken yetkilendirme hatası: {e}", 500
-    except Exception as e:
-        logger.error(f"Spotify token alırken/kaydederken hata: {e}", exc_info=True)
-        return "Token işlenirken bir hata oluştu.", 500
+        else: logger.error("Alınan token dosyaya kaydedilemedi."); return "Token kaydedilirken bir hata oluştu.", 500
+    except spotipy.SpotifyOauthError as e: logger.error(f"Spotify token alırken OAuth hatası: {e}", exc_info=True); return f"Token alınırken yetkilendirme hatası: {e}", 500
+    except Exception as e: logger.error(f"Spotify token alırken/kaydederken hata: {e}", exc_info=True); return "Token işlenirken bir hata oluştu.", 500
 
 @app.route('/search', methods=['POST'])
 def search():
@@ -1171,8 +1078,8 @@ def api_spotify_details():
                     items = results.get('tracks', []) if results else []
             except spotipy.SpotifyException as e:
                 logger.error(f"Spotify API error during batch fetch (type: {id_type}, batch: {batch_ids}): {e}")
-                if e.http_status == 400: logger.error("Likely caused by invalid IDs in the batch."); continue # Hatalı batch'i atla
-                else: raise e # Diğer hataları yükselt
+                if e.http_status == 400: logger.error("Likely caused by invalid IDs in the batch."); continue
+                else: raise e
 
             if items:
                 for item in items:
@@ -1223,25 +1130,39 @@ def background_queue_player():
             if song_queue and not is_playing_now and auto_advance_enabled:
                 logger.info(f"Arka plan: Çalma durdu, otomatik ilerleme aktif. Kuyruktan çalınıyor...")
                 next_song = song_queue.pop(0)
-                if next_song.get('id') == last_played_song_id: logger.debug(f"Şarkı ({next_song.get('name')}) zaten son çalınandı, atlanıyor."); last_played_song_id = None; time.sleep(1); continue
-                logger.info(f"Arka plan: Çalınacak: {next_song.get('name')} ({next_song.get('id')})")
+                next_song_id = next_song.get('id') # ID'yi al
+                if not next_song_id: continue # ID yoksa atla
+
+                # DÜZELTME: ID'nin URI formatında olduğundan emin ol
+                if not next_song_id.startswith('spotify:track:'):
+                    if ":" not in next_song_id: next_song_id = f"spotify:track:{next_song_id}"
+                    else: logger.warning(f"Arka plan: Kuyrukta geçersiz ID formatı: {next_song_id}"); continue
+
+                if next_song_id == last_played_song_id: logger.debug(f"Şarkı ({next_song.get('name')}) zaten son çalınandı, atlanıyor."); last_played_song_id = None; time.sleep(1); continue
+                logger.info(f"Arka plan: Çalınacak: {next_song.get('name')} ({next_song_id})")
                 try:
-                    spotify.start_playback(device_id=active_spotify_connect_device_id, uris=[next_song['id']])
+                    spotify.start_playback(device_id=active_spotify_connect_device_id, uris=[next_song_id]) # URI ile başlat
                     logger.info(f"===> Şarkı çalmaya başlandı: {next_song.get('name')}")
-                    last_played_song_id = next_song['id']; last_suggested_song_id = None
+                    last_played_song_id = next_song_id; last_suggested_song_id = None
                     user_ip = next_song.get('added_by')
                     if user_ip and user_ip != 'admin' and user_ip != 'auto-time': user_requests[user_ip] = max(0, user_requests.get(user_ip, 0) - 1); logger.debug(f"Kullanıcı {user_ip} limiti azaltıldı: {user_requests.get(user_ip)}")
                     time.sleep(1); continue
                 except spotipy.SpotifyException as start_err:
-                    logger.error(f"Arka plan: Şarkı başlatılamadı ({next_song.get('id')}): {start_err}")
-                    song_queue.insert(0, next_song)
+                    logger.error(f"Arka plan: Şarkı başlatılamadı ({next_song_id}): {start_err}")
+                    song_queue.insert(0, next_song) # Şarkıyı başa ekle
                     if start_err.http_status == 401 or start_err.http_status == 403: spotify_client = None;
                     if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
                     elif start_err.http_status == 404 and 'device_id' in str(start_err).lower():
                          logger.warning(f"Aktif Spotify Connect cihazı ({active_spotify_connect_device_id}) bulunamadı.");
                          settings['active_device_id'] = None; save_settings(settings)
+                    # 400 hatası geçersiz URI demek, şarkıyı tekrar eklemeyelim belki?
+                    # Şimdilik ekli kalsın ama loglayalım.
+                    elif start_err.http_status == 400:
+                         logger.error(f"Arka plan: Geçersiz URI nedeniyle şarkı başlatılamadı: {next_song_id}")
+                         # Hatalı şarkıyı kuyruktan çıkarabiliriz:
+                         # song_queue.pop(0) # Eğer insert sonrası tekrar pop yapmak istiyorsak
                     time.sleep(5); continue
-                except Exception as start_err: logger.error(f"Arka plan: Şarkı başlatılırken genel hata ({next_song.get('id')}): {start_err}", exc_info=True); song_queue.insert(0, next_song); time.sleep(10); continue
+                except Exception as start_err: logger.error(f"Arka plan: Şarkı başlatılırken genel hata ({next_song_id}): {start_err}", exc_info=True); song_queue.insert(0, next_song); time.sleep(10); continue
             elif not song_queue and not is_playing_now and auto_advance_enabled:
                 suggested = suggest_song_for_time(spotify)
                 if suggested and suggested.get('id') != last_suggested_song_id:
