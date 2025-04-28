@@ -557,6 +557,7 @@ def search():
         else: return jsonify({'error': 'Geçersiz arama tipi.'}), 400
         search_results = []
         for item in items:
+            if not item: continue # Güvenlik kontrolü
             if search_type == 'artist':
                  genres = item.get('genres', []); images = item.get('images', [])
                  search_results.append({'id': item.get('id'), 'name': item.get('name'), 'genres': genres, 'image': images[-1].get('url') if images else None})
@@ -943,8 +944,7 @@ def api_remove_from_list():
 def api_spotify_genres():
     """Spotify'dan mevcut öneri türlerini (genre seeds) alır."""
     spotify = get_spotify_client()
-    if not spotify:
-        return jsonify({'success': False, 'error': 'Spotify bağlantısı yok.'}), 503
+    if not spotify: return jsonify({'success': False, 'error': 'Spotify bağlantısı yok.'}), 503
     try:
         genres = spotify.recommendation_genre_seeds()
         return jsonify({'success': True, 'genres': genres.get('genres', [])})
@@ -960,7 +960,10 @@ def api_spotify_details():
     if not request.is_json: return jsonify({'success': False, 'error': 'JSON isteği gerekli'}), 400
     data = request.get_json()
     ids = data.get('ids', [])
-    id_type = data.get('type') # 'artist' veya 'track'
+    id_type = data.get('type')
+
+    logger.debug(f"Received /api/spotify/details request: type={id_type}, ids_count={len(ids)}")
+    if ids: logger.debug(f"First few IDs: {ids[:5]}") # İlk birkaç ID'yi logla
 
     if not ids or not isinstance(ids, list): return jsonify({'success': False, 'error': 'Geçerli ID listesi gerekli.'}), 400
     if id_type not in ['artist', 'track']: return jsonify({'success': False, 'error': 'Geçersiz tip (artist veya track).'}), 400
@@ -969,42 +972,70 @@ def api_spotify_details():
     if not spotify: return jsonify({'success': False, 'error': 'Spotify bağlantısı yok.'}), 503
 
     details_map = {}
-    # Spotify API'leri genellikle 50 ID limitiyle çalışır, bu yüzden batch yapalım
     batch_size = 50
-    valid_ids = [_ensure_spotify_uri(id_str, id_type) for id_str in ids] # URI formatına çevir
+    valid_ids = [_ensure_spotify_uri(id_str, id_type) for id_str in ids]
     valid_ids = [uri for uri in valid_ids if uri] # None olanları çıkar
+
+    if not valid_ids:
+        logger.warning("No valid Spotify URIs found in the request.")
+        return jsonify({'success': True, 'details': {}}) # Boş ID listesi için boş sonuç döndür
+
+    logger.debug(f"Fetching details for {len(valid_ids)} valid URIs (type: {id_type})...")
 
     try:
         for i in range(0, len(valid_ids), batch_size):
             batch_ids = valid_ids[i:i + batch_size]
             if not batch_ids: continue
+            logger.debug(f"Processing batch {i//batch_size + 1} with IDs: {batch_ids}")
 
-            if id_type == 'artist':
-                results = spotify.artists(batch_ids)
-                items = results.get('artists', [])
-            elif id_type == 'track':
-                results = spotify.tracks(batch_ids, market='TR')
-                items = results.get('tracks', [])
-            else: continue # Geçersiz tip (zaten kontrol edildi ama yine de)
+            results = None
+            items = []
+            try:
+                if id_type == 'artist':
+                    results = spotify.artists(batch_ids)
+                    items = results.get('artists', []) if results else []
+                elif id_type == 'track':
+                    results = spotify.tracks(batch_ids, market='TR')
+                    items = results.get('tracks', []) if results else []
+            except spotipy.SpotifyException as e:
+                # Özellikle 400 hatasını yakala ve logla
+                logger.error(f"Spotify API error during batch fetch (type: {id_type}, batch: {batch_ids}): {e}")
+                # Hatalı ID'leri belirlemek zor olabilir, bu yüzden batch'i atlayabiliriz
+                # veya kısmi sonuç döndürebiliriz. Şimdilik devam edelim.
+                if e.http_status == 400:
+                     logger.error("Likely caused by invalid IDs in the batch.")
+                     # Hata durumunda bu batch'i atlayıp devam et
+                     continue
+                else:
+                     # Diğer Spotify hataları için genel hata döndür
+                     raise e # Tekrar yükseltip dış try/except'e bırak
 
             if items:
                 for item in items:
-                    if item: # API bazen null dönebilir
-                        item_id = item.get('id') # API'den gelen URI
+                    if item:
+                        item_id = item.get('uri') # URI'yi alalım (id yerine)
                         item_name = item.get('name')
                         if item_id and item_name:
                             if id_type == 'track':
-                                # Şarkı için sanatçı ismini de ekleyelim
                                 artists = item.get('artists', [])
                                 artist_name = ', '.join([a.get('name') for a in artists]) if artists else ''
                                 details_map[item_id] = f"{item_name} - {artist_name}"
-                            else: # Sanatçı
+                            else:
                                 details_map[item_id] = item_name
+                        else:
+                             logger.warning(f"Missing ID or Name in item: {item}")
+                    else:
+                         logger.warning("Received a null item in the batch response.")
+        logger.debug(f"Successfully fetched details for {len(details_map)} items.")
         return jsonify({'success': True, 'details': details_map})
 
+    except spotipy.SpotifyException as e:
+         # Dış try/except'te diğer Spotify hatalarını yakala
+         logger.error(f"Spotify API error processing details (type: {id_type}): {e}", exc_info=True)
+         return jsonify({'success': False, 'error': f'Spotify API hatası: {e.msg}'}), e.http_status or 500
     except Exception as e:
-        logger.error(f"Spotify detayları alınırken hata (type: {id_type}): {e}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Spotify detayları alınamadı.'}), 500
+        logger.error(f"Error fetching Spotify details (type: {id_type}): {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Spotify detayları alınırken bilinmeyen bir hata oluştu.'}), 500
 
 
 # --- Arka Plan Şarkı Çalma İş Parçacığı ---
@@ -1112,3 +1143,4 @@ if __name__ == '__main__':
     logger.info(f"Admin paneline http://<SUNUCU_IP>:{port}/admin adresinden erişilebilir.")
 
     app.run(host='0.0.0.0', port=port, debug=True, use_reloader=False)
+
