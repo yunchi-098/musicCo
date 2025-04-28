@@ -52,6 +52,8 @@
         .search-results-filter .list-group-item { cursor: pointer; }
         .search-results-filter .list-group-item:hover { background-color: #f0f0f0; }
         .quick-block-btn { font-size: 0.75em; padding: 0.1rem 0.3rem; margin-left: 5px; }
+        .filter-list .item-name { font-weight: 500; } /* İsimleri biraz belirgin yap */
+        .filter-list .item-id { font-size: 0.8em; color: #6c757d; display: block; } /* ID'yi küçük göster */
     </style>
 </head>
 <body class="bg-light">
@@ -222,8 +224,8 @@
                                         {% endif %}
                                     </div>
                                 </div>
-                                <form method="POST" action="{{ url_for('remove_song', song_id_str=song.id) }}" class="ml-2"> <button type="submit" class="btn btn-sm btn-outline-danger" title="Kuyruktan Kaldır">×</button>
-                                </form>
+                                 <form method="POST" action="{{ url_for('remove_song', song_id_str=song.id) }}" class="ml-2"> <button type="submit" class="btn btn-sm btn-outline-danger" title="Kuyruktan Kaldır"></button>
+                                 </form>
                             </li>
                             {% endfor %}
                         </ul>
@@ -374,6 +376,15 @@
                                     <button class="btn btn-outline-success" type="button" onclick="addFilterItem('genre')">Ekle</button>
                                 </div>
                             </div>
+                            <hr>
+                            <label>Mevcut Türlerden Ekle:</label>
+                            <div class="input-group input-group-sm">
+                                <input type="text" class="form-control" id="genre-search-input" placeholder="Tür Ara...">
+                                <div class="input-group-append">
+                                    <button class="btn btn-outline-primary" type="button" onclick="searchGenres()">Ara</button>
+                                </div>
+                            </div>
+                            <div class="search-results-filter list-group list-group-flush mt-2" id="genre-search-results"></div>
                         </div>
                     </div>
                 </div>
@@ -436,7 +447,8 @@
 
     <script>
         // --- Global Değişkenler ---
-        let currentSettings = {{ settings | tojson }};
+        let currentSettings = JSON.parse('{{ settings | tojson | safe }}');
+        let spotifyNameCache = {}; // ID -> Name eşleşmesi için cache
 
         // --- Yardımcı Fonksiyonlar ---
         function showFlashMessage(message, category = 'info') {
@@ -455,8 +467,8 @@
                 buttonElement.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> İşleniyor...';
             } else {
                 buttonElement.disabled = false; buttonElement.classList.remove('btn-loading');
-                if (buttonElement.dataset.originalHtml) { buttonElement.innerHTML = buttonElement.dataset.originalHtml; }
-                else { buttonElement.textContent = "İşlem"; }
+                if (buttonElement.dataset.originalHtml) { buttonElement.innerHTML = buttonElement.dataset.originalHtml; delete buttonElement.dataset.originalHtml; } // originalHtml'i temizle
+                else { buttonElement.textContent = "İşlem"; } // Fallback text
             }
         }
 
@@ -511,13 +523,13 @@
         function refreshBluetoothList(duration = 0) {
             const isLoadingKnown = duration === 0; const loadingMessage = isLoadingKnown ? 'Bilinen Bluetooth cihazları listeleniyor...' : 'Yeni Bluetooth cihazları taranıyor...';
             showListLoading('bluetooth-list', loadingMessage); const discoverBtn = document.getElementById('discover-btn');
-            if (!isLoadingKnown) setButtonLoading(discoverBtn, true);
+            if (!isLoadingKnown && discoverBtn) setButtonLoading(discoverBtn, true); // Sadece tarama yaparken butonu kitle
             $.get(`/api/discover-bluetooth?duration=${duration}`)
              .done(function(data) { if(data && data.success && data.devices !== undefined) { renderBluetoothList(data.devices); if (!isLoadingKnown) showFlashMessage('Bluetooth taraması tamamlandı.', 'info'); } else { $('#bluetooth-list').html(`<p class="text-danger">Bluetooth cihazları listelenemedi: ${data.error || '(Veri eksik)'}</p>`); if (!isLoadingKnown) showFlashMessage('Bluetooth taraması sırasında hata oluştu.', 'warning'); } })
              .fail(function(xhr) { console.error("Error fetching/discovering Bluetooth devices:", xhr); $('#bluetooth-list').html('<p class="text-danger">Bluetooth API\'sine ulaşılamadı.</p>'); if (!isLoadingKnown) showFlashMessage('Bluetooth taraması başarısız oldu.', 'danger'); })
-             .always(function() { if (!isLoadingKnown) setButtonLoading(discoverBtn, false); });
+             .always(function() { if (!isLoadingKnown && discoverBtn) setButtonLoading(discoverBtn, false); }); // Butonu tekrar aktif et
         }
-        function discoverBluetoothDevices() { const el = document.getElementById('scan-duration-text'); const duration = el ? parseInt(el.textContent || '{{ BLUETOOTH_SCAN_DURATION | default(12) }}', 10) : {{ BLUETOOTH_SCAN_DURATION | default(12) }}; refreshBluetoothList(duration); }
+        function discoverBluetoothDevices() { const el = document.getElementById('scan-duration-text'); const duration = el ? parseInt(el.textContent || '{{ BLUETOOTH_SCAN_DURATION | default(12) }}', 10) : '{{ BLUETOOTH_SCAN_DURATION | default(12) }}'; refreshBluetoothList(duration); }
         function updateRelevantDeviceLists(data) {
              if (data.sinks !== undefined && data.default_sink_name !== undefined) { renderAudioSinkList(data.sinks, data.default_sink_name); } else { refreshAudioSinkList(); }
              if (data.bluetooth_devices !== undefined) { renderBluetoothList(data.bluetooth_devices); } else { refreshBluetoothList(0); }
@@ -529,6 +541,7 @@
             $.ajax({ url: '/api/set-audio-sink', type: 'POST', contentType: 'application/json', data: JSON.stringify({ sink_identifier: sinkIdentifier }),
                 success: function(data) { if (data.success) { showFlashMessage(data.message || 'Varsayılan ses çıkışı başarıyla değiştirildi!', 'success'); updateRelevantDeviceLists(data); } else { showFlashMessage('Hata: ' + (data.error || 'Bilinmeyen bir hata oluştu.'), 'danger'); refreshAudioSinkList(); } },
                 error: function(xhr) { let errorMsg = 'Bilinmeyen bir sunucu hatası oluştu.'; try { if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; } } catch(e){} console.error("Error setting default audio sink:", xhr); showFlashMessage(`Hata: ${errorMsg}`, 'danger'); refreshAudioSinkList(); }
+                // complete: function() { // Buton durumu render içinde güncellenir }
             });
         }
         function pairDevice(buttonElement, devicePath) {
@@ -538,6 +551,7 @@
             $.ajax({ url: '/api/pair-bluetooth', type: 'POST', contentType: 'application/json', data: JSON.stringify({ device_path: devicePath }),
                 success: function(data) { if(data.success) { showFlashMessage(data.message || 'Bluetooth cihazı başarıyla bağlandı/eşleştirildi!', 'success'); updateRelevantDeviceLists(data); } else { showFlashMessage('Hata: ' + (data.error || data.message || 'İşlem başarısız.'), 'danger'); refreshBluetoothList(0); refreshAudioSinkList(); } },
                 error: function(xhr) { let errorMsg = 'Bilinmeyen bir sunucu hatası oluştu.'; try { if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; } } catch(e){} showFlashMessage(`Hata: ${errorMsg}`, 'danger'); refreshBluetoothList(0); refreshAudioSinkList(); }
+                // complete: function() { // Buton durumu render içinde güncellenir }
             });
         }
         function disconnectDevice(buttonElement, devicePath) {
@@ -546,6 +560,7 @@
              $.ajax({ url: '/api/disconnect-bluetooth', type: 'POST', contentType: 'application/json', data: JSON.stringify({ device_path: devicePath }),
                 success: function(data) { if(data.success) { showFlashMessage(data.message || 'Bluetooth bağlantısı kesildi.', 'success'); updateRelevantDeviceLists(data); } else { showFlashMessage('Hata: ' + (data.error || data.message || 'Bağlantı kesilemedi.'), 'danger'); refreshBluetoothList(0); refreshAudioSinkList(); } },
                 error: function(xhr) { let errorMsg = 'Bilinmeyen bir sunucu hatası oluştu.'; try { if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; } } catch(e){} showFlashMessage(`Hata: ${errorMsg}`, 'danger'); refreshBluetoothList(0); refreshAudioSinkList(); }
+                // complete: function() { // Buton durumu render içinde güncellenir }
             });
         }
         function switchToAlsa(buttonElement) {
@@ -572,16 +587,28 @@
             const mode = currentSettings[filterType + '_filter_mode']; const listKey = filterType + '_' + mode;
             const list = currentSettings[listKey] || []; const listElement = $(`#${filterType}-filter-list`);
             const modeDisplayElement = $(`#${filterType}-mode-display`); modeDisplayElement.text(mode === 'blacklist' ? 'Kara Liste' : 'Beyaz Liste');
-            let html = '';
-            if (list.length > 0) {
+            listElement.html('');
+            if (list.length === 0) { listElement.html('<li class="text-muted text-center">Liste boş.</li>'); return; }
+            const idsToFetch = [];
+            if (filterType === 'artist' || filterType === 'song') { list.forEach(item => { if (!spotifyNameCache[item] && item.startsWith(`spotify:${filterType}:`)) { idsToFetch.push(item); } }); }
+            const fetchNamesAndRender = () => {
+                let html = '';
                 list.forEach(item => {
-                    let displayName = item;
-                    if (item.startsWith('spotify:artist:')) displayName = `Sanatçı: ${item.split(':').pop()}`;
-                    else if (item.startsWith('spotify:track:')) displayName = `Şarkı: ${item.split(':').pop()}`;
-                    html += `<li><span title="${item}">${displayName}</span><button class="btn btn-xs btn-outline-danger" onclick="removeFilterItem('${filterType}', '${mode}', '${item}')"><i class="fas fa-times"></i></button></li>`;
+                    let displayName = item; let displayId = '';
+                    if (filterType === 'artist' || filterType === 'song') { displayName = spotifyNameCache[item] || item; if(spotifyNameCache[item]) { displayId = `<span class="item-id">${item}</span>`; } }
+                    else { displayName = item; }
+                    html += `<li><span><span class="item-name">${displayName}</span>${displayId}</span><button class="btn btn-xs btn-outline-danger" onclick="removeFilterItem('${filterType}', '${mode}', '${item}')"><i class="fas fa-times"></i></button></li>`;
                 });
-            } else { html = '<li class="text-muted text-center">Liste boş.</li>'; }
-            listElement.html(html);
+                listElement.html(html);
+            };
+            if (idsToFetch.length > 0) {
+                console.log(`Fetching details for ${filterType} IDs:`, idsToFetch);
+                $.ajax({ url: '/api/spotify/details', type: 'POST', contentType: 'application/json', data: JSON.stringify({ ids: idsToFetch, type: filterType }),
+                    success: function(data) { if (data.success && data.details) { $.extend(spotifyNameCache, data.details); console.log("Updated spotifyNameCache:", spotifyNameCache); } else { console.warn("Could not fetch some details:", data.error); } },
+                    error: function(xhr) { console.error("Error fetching Spotify details:", xhr); },
+                    complete: function() { fetchNamesAndRender(); }
+                });
+            } else { fetchNamesAndRender(); }
         }
         function renderAllFilterLists() { renderFilterList('genre'); renderFilterList('artist'); renderFilterList('song'); }
         $('input[name$="_filter_mode"]').on('change', function() {
@@ -596,28 +623,31 @@
             if (!item) { showFlashMessage('Lütfen eklenecek bir değer girin.', 'warning'); inputElement.focus(); return; }
             console.log(`Adding '${item}' to ${filterType} ${listType} list...`);
             const buttonElement = inputElement.next('.input-group-append').find('button');
-            setButtonLoading(buttonElement[0], true); // DOM elementini gönder
+            setButtonLoading(buttonElement[0], true);
             $.ajax({ url: '/api/add-to-list', type: 'POST', contentType: 'application/json', data: JSON.stringify({ filter_type: filterType, list_type: listType, item: item }),
                 success: function(data) {
                     if (data.success) {
                         showFlashMessage(data.message || 'Öğe listeye eklendi.', 'success');
                         currentSettings[filterType + '_' + listType] = data.updated_list || currentSettings[filterType + '_' + listType];
-                        renderFilterList(filterType); inputElement.val('');
+                        // İsim cache'ini güncellemek için detayları tekrar çekebiliriz veya manuel ekleyebiliriz
+                        // Şimdilik sadece listeyi yeniden çizelim
+                        renderFilterList(filterType);
+                        inputElement.val('');
                     } else { showFlashMessage('Hata: ' + (data.error || 'Ekleme başarısız.'), 'danger'); }
                 },
                 error: function(xhr) { let errorMsg = 'Listeye eklenirken sunucu hatası.'; try { if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; } } catch(e){} showFlashMessage(`Hata: ${errorMsg}`, 'danger'); },
-                complete: function() { setButtonLoading(buttonElement[0], false); } // DOM elementini gönder
+                complete: function() { setButtonLoading(buttonElement[0], false); }
             });
         }
         function removeFilterItem(filterType, listType, item) {
-            if (!confirm(`'${item}' öğesini ${filterType} ${listType} listesinden çıkarmak istediğinizden emin misiniz?`)) { return; }
+            if (!confirm(`'${spotifyNameCache[item] || item}' öğesini ${filterType} ${listType} listesinden çıkarmak istediğinizden emin misiniz?`)) { return; }
             console.log(`Removing '${item}' from ${filterType} ${listType} list...`);
             $.ajax({ url: '/api/remove-from-list', type: 'POST', contentType: 'application/json', data: JSON.stringify({ filter_type: filterType, list_type: listType, item: item }),
                 success: function(data) {
                     if (data.success) {
                         showFlashMessage(data.message || 'Öğe listeden çıkarıldı.', 'success');
                         currentSettings[filterType + '_' + listType] = data.updated_list || currentSettings[filterType + '_' + listType];
-                        renderFilterList(filterType);
+                        delete spotifyNameCache[item]; renderFilterList(filterType);
                     } else { showFlashMessage('Hata: ' + (data.error || 'Çıkarma başarısız.'), 'danger'); }
                 },
                 error: function(xhr) { let errorMsg = 'Listeden çıkarılırken sunucu hatası.'; try { if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; } } catch(e){} showFlashMessage(`Hata: ${errorMsg}`, 'danger'); }
@@ -643,7 +673,9 @@
                                 if (searchType === 'track') { itemDetails = item.artist || 'Bilinmeyen Sanatçı'; }
                                 else if (searchType === 'artist') { itemDetails = (Array.isArray(item.genres) && item.genres.length > 0) ? item.genres.join(', ') : 'Tür bilgisi yok'; }
                                 const filterItemType = (searchType === 'track') ? 'song' : 'artist';
-                                html += `<a href="#" class="list-group-item list-group-item-action list-group-item-light py-1 px-2" onclick="addFilterItemFromSearch(event, '${filterItemType}', '${itemId}', '${itemName.replace(/'/g, "\\'")}')"><small><strong>${itemName}</strong><br>${itemDetails || ''}</small></a>`;
+                                // ID'nin URI formatında olduğundan emin ol (backend zaten yapıyor ama frontend'de de yapalım)
+                                const itemUri = itemId.startsWith(`spotify:${filterItemType}:`) ? itemId : `spotify:${filterItemType}:${itemId}`;
+                                html += `<a href="#" class="list-group-item list-group-item-action list-group-item-light py-1 px-2" onclick="addFilterItemFromSearch(event, '${filterItemType}', '${itemUri}', '${itemName.replace(/'/g, "\\'")}')"><small><strong>${itemName}</strong><br>${itemDetails || ''}</small></a>`;
                             } catch (renderError) { console.error("Arama sonucu render hatası:", renderError, item); html += `<p class="text-warning p-2 text-center">Bir sonuç işlenirken hata oluştu.</p>`; }
                         });
                     } else { html = '<p class="text-muted p-2 text-center">Sonuç bulunamadı.</p>'; }
@@ -653,15 +685,16 @@
                 complete: function() { setButtonLoading(rawButtonElement, false); }
             });
         }
-        function addFilterItemFromSearch(event, filterType, itemId, itemName) {
+        function addFilterItemFromSearch(event, filterType, itemUri, itemName) { // itemUri olarak al
             event.preventDefault(); const mode = currentSettings[filterType + '_filter_mode']; const listType = mode;
             if (!confirm(`'${itemName}' öğesini ${filterType} ${listType} listesine eklemek istiyor musunuz?`)) { return; }
-            console.log(`Adding '${itemId}' to ${filterType} ${listType} list from search...`);
-            $.ajax({ url: '/api/add-to-list', type: 'POST', contentType: 'application/json', data: JSON.stringify({ filter_type: filterType, list_type: listType, item: itemId }),
+            console.log(`Adding '${itemUri}' to ${filterType} ${listType} list from search...`);
+            $.ajax({ url: '/api/add-to-list', type: 'POST', contentType: 'application/json', data: JSON.stringify({ filter_type: filterType, list_type: listType, item: itemUri }), // itemUri gönderiliyor
                 success: function(data) {
                     if (data.success) {
                         showFlashMessage(data.message || `'${itemName}' listeye eklendi.`, 'success');
                         currentSettings[filterType + '_' + listType] = data.updated_list || currentSettings[filterType + '_' + listType];
+                        spotifyNameCache[itemUri] = itemName; // Cache'i güncelle
                         renderFilterList(filterType);
                         $(`#${filterType}-search-results`).html(''); $(`#${filterType}-search-input`).val('');
                     } else { showFlashMessage('Hata: ' + (data.error || 'Ekleme başarısız.'), 'danger'); }
@@ -669,19 +702,40 @@
                 error: function(xhr) { let errorMsg = 'Listeye eklenirken sunucu hatası.'; try { if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; } } catch(e){} showFlashMessage(`Hata: ${errorMsg}`, 'danger'); }
             });
         }
+        function searchGenres() {
+            const inputElement = $('#genre-search-input'); const query = inputElement.val().trim().toLowerCase();
+            const resultsContainer = $('#genre-search-results'); const buttonElement = inputElement.next('.input-group-append').find('button');
+            resultsContainer.html('<p class="text-muted p-2 text-center">Türler getiriliyor...</p>');
+            setButtonLoading(buttonElement[0], true);
+            $.get('/api/spotify/genres')
+             .done(function(data) {
+                 let html = '';
+                 if (data.success && data.genres) {
+                     const filteredGenres = data.genres.filter(genre => genre.includes(query));
+                     if (filteredGenres.length > 0) {
+                         filteredGenres.forEach(genre => { html += `<a href="#" class="list-group-item list-group-item-action list-group-item-light py-1 px-2" onclick="addFilterItemFromSearch(event, 'genre', '${genre}', '${genre}')"><small><strong>${genre}</strong></small></a>`; });
+                     } else { html = '<p class="text-muted p-2 text-center">Eşleşen tür bulunamadı.</p>'; }
+                 } else { html = `<p class="text-danger p-2 text-center">${data.error || 'Türler alınamadı.'}</p>`; }
+                 resultsContainer.html(html);
+             })
+             .fail(function(xhr) { console.error("Error fetching genres:", xhr); resultsContainer.html('<p class="text-danger p-2 text-center">Türler alınırken hata oluştu.</p>'); })
+             .always(function() { setButtonLoading(buttonElement[0], false); });
+        }
         function quickBlockItem(buttonElement, itemType, identifier) {
             const typeText = itemType === 'song' ? 'Şarkıyı' : 'Sanatçıyı';
-            if (!confirm(`${typeText} (${identifier}) kara listeye eklemek istediğinizden emin misiniz?`)) { return; }
-            console.log(`Quick blocking ${itemType}: ${identifier}`);
+            // ID'nin URI formatında olduğundan emin ol
+            const itemUri = identifier.startsWith(`spotify:${itemType}:`) ? identifier : `spotify:${itemType}:${identifier}`;
+            if (!confirm(`${typeText} (${spotifyNameCache[itemUri] || itemUri}) kara listeye eklemek istediğinizden emin misiniz?`)) { return; } // İsim göster
+            console.log(`Quick blocking ${itemType}: ${itemUri}`);
             setButtonLoading(buttonElement, true);
-            $.ajax({ url: '/api/block', type: 'POST', contentType: 'application/json', data: JSON.stringify({ type: itemType, identifier: identifier }),
+            $.ajax({ url: '/api/block', type: 'POST', contentType: 'application/json', data: JSON.stringify({ type: itemType, identifier: itemUri }), // itemUri gönderiliyor
                 success: function(data) {
                     if (data.success) {
                         showFlashMessage(data.message || 'Öğe başarıyla kara listeye eklendi.', 'success');
                         const listKey = itemType + '_blacklist';
                         if (!currentSettings[listKey]) currentSettings[listKey] = [];
-                        if (!currentSettings[listKey].includes(identifier)) {
-                            currentSettings[listKey].push(identifier); currentSettings[listKey].sort();
+                        if (!currentSettings[listKey].includes(itemUri)) {
+                            currentSettings[listKey].push(itemUri); currentSettings[listKey].sort();
                             if (currentSettings[itemType + '_filter_mode'] === 'blacklist') { renderFilterList(itemType); }
                         }
                     } else { showFlashMessage('Hata: ' + (data.error || 'Engelleme başarısız.'), 'danger'); }
@@ -693,7 +747,19 @@
 
         // --- Sayfa Yüklendiğinde Çalışacak Kod ---
         $(document).ready(function() {
-            refreshAudioSinkList(); refreshBluetoothList(0); renderAllFilterLists();
+            refreshAudioSinkList(); refreshBluetoothList(0);
+            const initialArtistIds = [...(currentSettings.artist_blacklist || []), ...(currentSettings.artist_whitelist || [])];
+            const initialSongIds = [...(currentSettings.song_blacklist || []), ...(currentSettings.song_whitelist || [])];
+            const allIdsToFetch = { artist: [...new Set(initialArtistIds)], track: [...new Set(initialSongIds)] };
+            const fetchPromises = [];
+            for (const type in allIdsToFetch) {
+                const ids = allIdsToFetch[type];
+                if (ids.length > 0) {
+                    console.log(`Pre-fetching details for ${type} IDs:`, ids);
+                    fetchPromises.push( $.ajax({ url: '/api/spotify/details', type: 'POST', contentType: 'application/json', data: JSON.stringify({ ids: ids, type: type }) }).done(function(data) { if (data.success && data.details) { $.extend(spotifyNameCache, data.details); } }).fail(function(xhr) { console.error(`Error pre-fetching ${type} details:`, xhr); }) );
+                }
+            }
+            $.when.apply($, fetchPromises).always(function() { console.log("Initial name cache loaded:", spotifyNameCache); renderAllFilterLists(); });
             const scanDurationTextElement = document.getElementById('scan-duration-text');
             if (scanDurationTextElement) { scanDurationTextElement.textContent = '{{ BLUETOOTH_SCAN_DURATION | default(12) }}'; }
         });
