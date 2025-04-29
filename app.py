@@ -353,7 +353,7 @@ def check_song_filters(track_id, spotify_client):
         if not song_info: return False, f"Şarkı bulunamadı (ID: {track_id})."
         song_spotify_id = song_info.get('id'); song_name = song_info.get('name', '?')
         # URI değil, sadece ID'yi alalım (veya _ensure_spotify_uri ile URI'ye çevirelim)
-        song_uri_to_check = _ensure_spotify_uri(song_spotify_id, 'track')
+        song_uri_to_check = _ensure_spotify_uri(song_info.get('id'), 'track')
         if not song_uri_to_check:
              return False, f"Geçersiz şarkı ID formatı işlenemedi: {song_spotify_id}"
 
