@@ -1394,17 +1394,21 @@ def api_remove_from_list():
 
 # Spotify Türlerini Getirme API'si
 @app.route('/api/spotify/genres')
-@admin_login_required
-def api_spotify_genres():
-    """Spotify'dan mevcut öneri türlerini (genre seeds) alır."""
+def get_spotify_genres():
     spotify = get_spotify_client()
-    if not spotify: return jsonify({'success': False, 'error': 'Spotify bağlantısı yok.'}), 503
+    artist_id = request.args.get('id')
+    if not spotify or not artist_id:
+        return jsonify({'error': 'Spotify bağlantısı yok veya ID eksik'}), 400
     try:
-        genres = spotify.recommendation_genre_seeds()
-        return jsonify({'success': True, 'genres': genres.get('genres', [])})
+        artist_info = spotify.artist(artist_id)
+        genres_raw = artist_info.get('genres')
+        if not isinstance(genres_raw, list):
+            genres_raw = []
+        genres = [g.lower() for g in genres_raw if isinstance(g, str)]
+        return jsonify({'genres': genres})
     except Exception as e:
-        logger.error(f"Spotify türleri alınırken hata: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Spotify türleri alınamadı.'}), 500
+        logger.error(f"/api/spotify/genres endpointinde hata: {e}", exc_info=True)
+        return jsonify({'error': 'Türler alınırken hata oluştu'}), 500
 
 # Spotify ID'lerinden Detayları Getirme API'si (URI Kullanır)
 @app.route('/api/spotify/details', methods=['POST'])
