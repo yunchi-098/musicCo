@@ -361,14 +361,30 @@ def check_song_filters(track_id, spotify_client):
         genre_whitelist = [g.lower() for g in settings.get('genre_whitelist', [])]
 
         # 1. Şarkı Filtresi
-        song_filter_mode = settings.get('song_filter_mode', 'blacklist')
-        logger.debug(f"Şarkı filtresi modu: {song_filter_mode}")
-        if song_filter_mode == 'blacklist':
-            if song_spotify_id in song_blacklist: logger.debug("Filtre takıldı: Şarkı kara listede."); return False, 'Bu şarkı kara listede.'
-        elif song_filter_mode == 'whitelist':
-            if not song_whitelist: logger.debug("Filtre takıldı: Şarkı beyaz listesi boş."); return False, 'Şarkı beyaz listesi aktif ama boş.'
-            if song_spotify_id not in song_whitelist: logger.debug("Filtre takıldı: Şarkı beyaz listede değil."); return False, 'Bu şarkı beyaz listede değil.'
-        logger.debug("Şarkı filtresinden geçti.")
+        if song_filter_mode == 'whitelist':
+            song_whitelist = settings.get('song_whitelist', [])
+            # URI formatına çevrilmiş ID'leri içeren listeyi kullanın
+            song_whitelist_uris = [_ensure_spotify_uri(sid, 'track') for sid in song_whitelist]
+            song_uri_to_check = _ensure_spotify_uri(song_spotify_id, 'track')
+
+            if not song_whitelist: # Beyaz liste boşsa hiçbir şeye izin verme
+                logger.debug("Filtre takıldı: Şarkı beyaz listesi boş.")
+                return False, 'Şarkı beyaz listesi aktif ama boş.'
+            if song_uri_to_check not in song_whitelist_uris:
+                logger.debug("Filtre takıldı: Şarkı beyaz listede değil.")
+                return False, 'Bu şarkı beyaz listede değil.'
+        elif song_filter_mode == 'blacklist':
+            song_blacklist = settings.get('song_blacklist', [])
+            # URI formatına çevrilmiş ID'leri içeren listeyi kullanın
+            song_blacklist_uris = [_ensure_spotify_uri(sid, 'track') for sid in song_blacklist]
+            song_uri_to_check = _ensure_spotify_uri(song_spotify_id, 'track')
+
+            if song_uri_to_check in song_blacklist_uris:
+                logger.debug("Filtre takıldı: Şarkı kara listede.")
+                return False, 'Bu şarkı kara listede.'
+
+
+
 
         # 2. Sanatçı Filtresi
         artist_filter_mode = settings.get('artist_filter_mode', 'blacklist')
