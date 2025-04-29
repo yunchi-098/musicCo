@@ -27,8 +27,11 @@ ALLOWED_GENRES = ['pop', 'rock', 'jazz', 'electronic', 'hip-hop', 'classical', '
 # ---------------------------------
 
 # Logging ayarları
-logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(threadName)s - %(message)s', level=logging.INFO)
+# Log seviyesini DEBUG yapalım daha fazla bilgi için
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(threadName)s - %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+# Spotipy loglarını da açalım (isteğe bağlı, çok fazla log üretebilir)
+# logging.getLogger('spotipy').setLevel(logging.DEBUG)
 
 # --- Flask Uygulamasını Başlat ---
 app = Flask(__name__)
@@ -100,22 +103,30 @@ def load_settings():
         'genre_blacklist': [], 'genre_whitelist': [], 'artist_blacklist': [],
         'artist_whitelist': [], 'song_blacklist': [], 'song_whitelist': [],
     }
+    settings_to_use = default_settings.copy() # Önce varsayılanı al
     if os.path.exists(SETTINGS_FILE):
         try:
             with open(SETTINGS_FILE, 'r', encoding='utf-8') as f: loaded = json.load(f)
+            # Yüklenen ayarları varsayılanların üzerine yaz
+            settings_to_use.update(loaded)
+            # Eksik anahtarları tekrar kontrol et (update sonrası)
+            updated = False
             for key, default_value in default_settings.items():
-                if key not in loaded:
-                    logger.info(f"'{key}' ayarı dosyada bulunamadı, varsayılan değer ({default_value}) ekleniyor.")
-                    loaded[key] = default_value
-            if 'active_genres' in loaded: del loaded['active_genres']; logger.info("Eski 'active_genres' ayarı kaldırıldı.")
-            settings_to_use = loaded
+                if key not in settings_to_use:
+                    logger.info(f"'{key}' ayarı dosyada bulunamadı (update sonrası), varsayılan değer ({default_value}) ekleniyor.")
+                    settings_to_use[key] = default_value
+                    updated = True
+            if 'active_genres' in settings_to_use:
+                del settings_to_use['active_genres']; logger.info("Eski 'active_genres' ayarı kaldırıldı."); updated = True
+            if updated:
+                save_settings(settings_to_use) # Eksik anahtar eklendiyse kaydet
             logger.info(f"Ayarlar yüklendi: {SETTINGS_FILE}")
         except json.JSONDecodeError as e:
             logger.error(f"Ayar dosyası ({SETTINGS_FILE}) bozuk JSON içeriyor: {e}. Varsayılanlar kullanılacak.")
-            settings_to_use = default_settings.copy()
+            settings_to_use = default_settings.copy() # Hata durumunda varsayılana dön
         except Exception as e:
             logger.error(f"Ayar dosyası ({SETTINGS_FILE}) okunamadı: {e}. Varsayılanlar kullanılacak.")
-            settings_to_use = default_settings.copy()
+            settings_to_use = default_settings.copy() # Hata durumunda varsayılana dön
     else:
         logger.info(f"Ayar dosyası bulunamadı, varsayılanlar oluşturuluyor: {SETTINGS_FILE}")
         settings_to_use = default_settings.copy()
@@ -125,24 +136,26 @@ def load_settings():
 def save_settings(current_settings):
     """Ayarları dosyaya kaydeder. Listeleri temizler ve sıralar."""
     try:
-        if 'genre_blacklist' in current_settings:
-            current_settings['genre_blacklist'] = sorted(list(set([g.lower() for g in current_settings['genre_blacklist'] if isinstance(g, str) and g.strip()])))
-        if 'genre_whitelist' in current_settings:
-            current_settings['genre_whitelist'] = sorted(list(set([g.lower() for g in current_settings['genre_whitelist'] if isinstance(g, str) and g.strip()])))
+        # Ayarları kopyala ki orijinal dict değişmesin (fonksiyon dışından geldiyse)
+        settings_to_save = current_settings.copy()
+        if 'genre_blacklist' in settings_to_save:
+            settings_to_save['genre_blacklist'] = sorted(list(set([g.lower() for g in settings_to_save['genre_blacklist'] if isinstance(g, str) and g.strip()])))
+        if 'genre_whitelist' in settings_to_save:
+            settings_to_save['genre_whitelist'] = sorted(list(set([g.lower() for g in settings_to_save['genre_whitelist'] if isinstance(g, str) and g.strip()])))
         for key in ['artist_blacklist', 'artist_whitelist', 'song_blacklist', 'song_whitelist']:
-             if key in current_settings:
+             if key in settings_to_save:
                   cleaned_list = set()
                   item_type = key.split('_')[0]
                   prefix = f"spotify:{item_type}:"
-                  for item in current_settings[key]:
+                  for item in settings_to_save[key]:
                       if isinstance(item, str) and item.strip():
                           item = item.strip()
                           if item.startswith(prefix): cleaned_list.add(item)
                           elif ":" not in item: cleaned_list.add(f"{prefix}{item}")
-                  current_settings[key] = sorted(list(cleaned_list))
+                  settings_to_save[key] = sorted(list(cleaned_list))
 
         with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(current_settings, f, indent=4, ensure_ascii=False)
+            json.dump(settings_to_save, f, indent=4, ensure_ascii=False)
         logger.info(f"Ayarlar kaydedildi: {SETTINGS_FILE}")
     except Exception as e:
         logger.error(f"Ayarları kaydederken hata: {e}", exc_info=True)
@@ -167,7 +180,9 @@ def load_token():
                     return token_info
                 else:
                     logger.warning(f"Token dosyasında ({TOKEN_FILE}) eksik anahtarlar var. Dosya siliniyor.")
-                    os.remove(TOKEN_FILE); return None
+                    try: os.remove(TOKEN_FILE)
+                    except OSError as rm_err: logger.error(f"Token dosyası silinemedi: {rm_err}")
+                    return None
         except json.JSONDecodeError as e:
             logger.error(f"Token dosyası ({TOKEN_FILE}) bozuk JSON içeriyor: {e}. Dosya siliniyor.")
             try: os.remove(TOKEN_FILE)
@@ -327,13 +342,17 @@ def check_song_filters(track_id, spotify_client):
     if not track_id.startswith('spotify:track:'):
         if ":" not in track_id: track_id = f"spotify:track:{track_id}"
         else: return False, f"Geçersiz şarkı ID formatı: {track_id}"
+
+    logger.debug(f"Filtre kontrolü başlatılıyor: {track_id}")
     try:
         song_info = spotify_client.track(track_id, market='TR')
         if not song_info: return False, f"Şarkı bulunamadı (ID: {track_id})."
         song_spotify_id = song_info.get('id'); song_name = song_info.get('name', '?')
         artists = song_info.get('artists', []); artist_ids = [a.get('id') for a in artists if a.get('id')]
         artist_names = [a.get('name') for a in artists]; primary_artist_id = artist_ids[0] if artist_ids else None
+        logger.debug(f"Şarkı bilgileri: {song_name}, Sanatçılar: {artist_names} ({artist_ids})")
 
+        # Ayarlardaki listeleri yükle (URI formatında olmalılar)
         song_blacklist = settings.get('song_blacklist', [])
         song_whitelist = settings.get('song_whitelist', [])
         artist_blacklist = settings.get('artist_blacklist', [])
@@ -341,39 +360,56 @@ def check_song_filters(track_id, spotify_client):
         genre_blacklist = [g.lower() for g in settings.get('genre_blacklist', [])]
         genre_whitelist = [g.lower() for g in settings.get('genre_whitelist', [])]
 
+        # 1. Şarkı Filtresi
         song_filter_mode = settings.get('song_filter_mode', 'blacklist')
+        logger.debug(f"Şarkı filtresi modu: {song_filter_mode}")
         if song_filter_mode == 'blacklist':
-            if song_spotify_id in song_blacklist: return False, 'Bu şarkı kara listede.'
+            if song_spotify_id in song_blacklist: logger.debug("Filtre takıldı: Şarkı kara listede."); return False, 'Bu şarkı kara listede.'
         elif song_filter_mode == 'whitelist':
-            if not song_whitelist: return False, 'Şarkı beyaz listesi aktif ama boş.'
-            if song_spotify_id not in song_whitelist: return False, 'Bu şarkı beyaz listede değil.'
+            if not song_whitelist: logger.debug("Filtre takıldı: Şarkı beyaz listesi boş."); return False, 'Şarkı beyaz listesi aktif ama boş.'
+            if song_spotify_id not in song_whitelist: logger.debug("Filtre takıldı: Şarkı beyaz listede değil."); return False, 'Bu şarkı beyaz listede değil.'
+        logger.debug("Şarkı filtresinden geçti.")
 
+        # 2. Sanatçı Filtresi
         artist_filter_mode = settings.get('artist_filter_mode', 'blacklist')
+        logger.debug(f"Sanatçı filtresi modu: {artist_filter_mode}")
         if artist_filter_mode == 'blacklist':
             if any(a_id in artist_blacklist for a_id in artist_ids):
                 blocked_artist = next((a_name for a_id, a_name in zip(artist_ids, artist_names) if a_id in artist_blacklist), "?")
+                logger.debug(f"Filtre takıldı: Sanatçı ({blocked_artist}) kara listede.")
                 return False, f"'{blocked_artist}' sanatçısı kara listede."
         elif artist_filter_mode == 'whitelist':
-            if not artist_whitelist: return False, 'Sanatçı beyaz listesi aktif ama boş.'
-            if not any(a_id in artist_whitelist for a_id in artist_ids): return False, 'Bu sanatçı beyaz listede değil.'
+            if not artist_whitelist: logger.debug("Filtre takıldı: Sanatçı beyaz listesi boş."); return False, 'Sanatçı beyaz listesi aktif ama boş.'
+            if not any(a_id in artist_whitelist for a_id in artist_ids): logger.debug("Filtre takıldı: Sanatçı beyaz listede değil."); return False, 'Bu sanatçı beyaz listede değil.'
+        logger.debug("Sanatçı filtresinden geçti.")
 
+        # 3. Tür Filtresi
         genre_filter_mode = settings.get('genre_filter_mode', 'blacklist')
+        logger.debug(f"Tür filtresi modu: {genre_filter_mode}")
         if (genre_filter_mode == 'blacklist' and genre_blacklist) or (genre_filter_mode == 'whitelist' and genre_whitelist):
             artist_genres = []
             if primary_artist_id:
                 try:
                     artist_info = spotify_client.artist(primary_artist_id)
                     artist_genres = [g.lower() for g in artist_info.get('genres', [])]
+                    logger.debug(f"Sanatçı türleri ({primary_artist_id}): {artist_genres}")
                 except Exception as e: logger.warning(f"Tür filtresi: Sanatçı türleri alınamadı ({primary_artist_id}): {e}")
+
             if not artist_genres: logger.warning(f"Tür filtresi uygulanamıyor (türler yok): {song_name}. İzin veriliyor.")
             else:
                 if genre_filter_mode == 'blacklist':
                     if any(genre in genre_blacklist for genre in artist_genres):
                         blocked_genre = next((genre for genre in artist_genres if genre in genre_blacklist), "?")
+                        logger.debug(f"Filtre takıldı: Tür ({blocked_genre}) kara listede.")
                         return False, f"'{blocked_genre}' türü kara listede."
                 elif genre_filter_mode == 'whitelist':
-                    if not genre_whitelist: return False, 'Tür beyaz listesi aktif ama boş.'
-                    if not any(genre in genre_whitelist for genre in artist_genres): return False, 'Bu tür beyaz listede değil.'
+                    if not genre_whitelist: logger.debug("Filtre takıldı: Tür beyaz listesi boş."); return False, 'Tür beyaz listesi aktif ama boş.'
+                    if not any(genre in genre_whitelist for genre in artist_genres): logger.debug("Filtre takıldı: Tür beyaz listede değil."); return False, 'Bu tür beyaz listede değil.'
+            logger.debug("Tür filtresinden geçti.")
+        else:
+             logger.debug("Tür filtresi uygulanmadı (mod blacklist/whitelist değil veya liste boş).")
+
+        logger.debug(f"Filtre kontrolü tamamlandı: İzin verildi - {track_id}")
         return True, "Filtrelerden geçti."
     except spotipy.SpotifyException as e:
         logger.error(f"Filtre kontrolü sırasında Spotify hatası (ID={track_id}): {e}")
@@ -607,9 +643,9 @@ def callback():
 @app.route('/search', methods=['POST'])
 def search():
     """Spotify'da arama yapar ve sonuçları aktif filtrelere göre süzer."""
-    global settings # Ayarları okumak için
+    global settings
     search_query = request.form.get('search_query')
-    search_type = request.form.get('type', 'track') # 'track' veya 'artist'
+    search_type = request.form.get('type', 'track')
     logger.info(f"Arama isteği: '{search_query}' (Tip: {search_type})")
     if not search_query: return jsonify({'error': 'Arama terimi girin.'}), 400
 
@@ -617,72 +653,56 @@ def search():
     if not spotify: logger.error("Arama: Spotify istemcisi yok."); return jsonify({'error': 'Spotify bağlantısı yok.'}), 503
 
     try:
-        # Spotify'dan ilk sonuçları al
         if search_type == 'artist':
-             results = spotify.search(q=search_query, type='artist', limit=20, market='TR') # Biraz daha fazla alalım
+             results = spotify.search(q=search_query, type='artist', limit=20, market='TR')
              items = results.get('artists', {}).get('items', [])
              logger.info(f"Spotify'dan {len(items)} sanatçı bulundu.")
         elif search_type == 'track':
-             results = spotify.search(q=search_query, type='track', limit=20, market='TR') # Biraz daha fazla alalım
+             results = spotify.search(q=search_query, type='track', limit=20, market='TR')
              items = results.get('tracks', {}).get('items', [])
              logger.info(f"Spotify'dan {len(items)} şarkı bulundu.")
         else:
              return jsonify({'error': 'Geçersiz arama tipi.'}), 400
 
-        # --- Sonuçları Filtrele ---
         filtered_items = []
         for item in items:
             if not item: continue
             item_id = item.get('id')
             if not item_id: continue
+            # ID'nin URI formatında olduğundan emin ol
+            item_uri = f"spotify:{search_type}:{item_id}" if not item_id.startswith('spotify:') else item_id
 
-            # check_song_filters sadece track ID alır, bu yüzden artist için ayrı kontrol lazım
-            is_allowed = True
-            reason = ""
-
+            is_allowed = True; reason = ""
             if search_type == 'track':
-                is_allowed, reason = check_song_filters(item_id, spotify)
+                is_allowed, reason = check_song_filters(item_uri, spotify)
             elif search_type == 'artist':
-                # Sanatçı filtresini manuel uygula
-                artist_id = item.get('id') # URI formatında olmalı
                 artist_name = item.get('name')
                 artist_filter_mode = settings.get('artist_filter_mode', 'blacklist')
                 if artist_filter_mode == 'blacklist':
-                    if artist_id in settings.get('artist_blacklist', []):
-                        is_allowed = False; reason = f"'{artist_name}' kara listede."
+                    if item_uri in settings.get('artist_blacklist', []): is_allowed = False; reason = f"'{artist_name}' kara listede."
                 elif artist_filter_mode == 'whitelist':
                     artist_whitelist = settings.get('artist_whitelist', [])
                     if not artist_whitelist: is_allowed = False; reason = "Sanatçı beyaz listesi boş."
-                    elif artist_id not in artist_whitelist: is_allowed = False; reason = f"'{artist_name}' beyaz listede değil."
-
-                # Tür filtresini manuel uygula (sanatçı türlerine göre)
-                if is_allowed: # Sadece sanatçı filtresinden geçtiyse türü kontrol et
+                    elif item_uri not in artist_whitelist: is_allowed = False; reason = f"'{artist_name}' beyaz listede değil."
+                if is_allowed:
                     genre_filter_mode = settings.get('genre_filter_mode', 'blacklist')
                     genre_blacklist = [g.lower() for g in settings.get('genre_blacklist', [])]
                     genre_whitelist = [g.lower() for g in settings.get('genre_whitelist', [])]
-                    if (genre_filter_mode == 'blacklist' and genre_blacklist) or \
-                       (genre_filter_mode == 'whitelist' and genre_whitelist):
+                    if (genre_filter_mode == 'blacklist' and genre_blacklist) or (genre_filter_mode == 'whitelist' and genre_whitelist):
                         artist_genres = [g.lower() for g in item.get('genres', [])]
                         if not artist_genres: logger.warning(f"Tür filtresi uygulanamıyor (türler yok): {artist_name}")
                         else:
                             if genre_filter_mode == 'blacklist':
                                 if any(genre in genre_blacklist for genre in artist_genres):
-                                    blocked_genre = next((genre for genre in artist_genres if genre in genre_blacklist), "?")
-                                    is_allowed = False; reason = f"'{blocked_genre}' türü kara listede."
+                                    blocked_genre = next((genre for genre in artist_genres if genre in genre_blacklist), "?"); is_allowed = False; reason = f"'{blocked_genre}' türü kara listede."
                             elif genre_filter_mode == 'whitelist':
                                 if not genre_whitelist: is_allowed = False; reason = "Tür beyaz listesi boş."
                                 elif not any(genre in genre_whitelist for genre in artist_genres): is_allowed = False; reason = "Bu tür beyaz listede değil."
 
-            # Filtreden geçtiyse listeye ekle
-            if is_allowed:
-                filtered_items.append(item)
-            else:
-                 logger.debug(f"Arama sonucu filtrelendi ({reason}): {item.get('name')}")
+            if is_allowed: filtered_items.append(item)
+            else: logger.debug(f"Arama sonucu filtrelendi ({reason}): {item.get('name')}")
 
-
-        # --- Filtrelenmiş Sonuçları Formatla ---
         search_results = []
-        # Limiti tekrar uygula (örn. 10)
         limit = 10
         for item in filtered_items[:limit]:
             if search_type == 'artist':
