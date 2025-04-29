@@ -42,33 +42,33 @@ app.jinja_env.globals['ALLOWED_GENRES'] = ALLOWED_GENRES
 # --- Yardımcı Fonksiyon: Spotify URI İşleme ---
 def _ensure_spotify_uri(item_id, item_type):
     """
-    Verilen ID'yi (veya URL'yi) doğru Spotify URI formatına çevirir veya None döner.
-    Şarkılar için her zaman 'spotify:track:' kullanır.
+    Converts the given ID (or URL) into the correct Spotify URI format or returns None.
+    Always uses 'spotify:track:' for songs.
     """
     if not item_id or not isinstance(item_id, str): return None
     item_id = item_id.strip()
 
-    # Şarkı tipi 'song' veya 'track' olabilir, prefix hep 'track' olmalı
+    # Normalize item_type: treat 'song' as 'track'
     actual_item_type = 'track' if item_type in ['song', 'track'] else item_type
     prefix = f"spotify:{actual_item_type}:"
 
-    # Zaten doğru URI formatındaysa direkt döndür
+    # If already in the correct URI format, return it
     if item_id.startswith(prefix): return item_id
 
-    # Sadece ID ise (':' içermiyorsa) prefix ekle
+    # If it's just an ID (no ':'), add the prefix
     if ":" not in item_id: return f"{prefix}{item_id}"
 
-    # URL ise ID'yi çıkarmayı dene
+    # If it's a URL, extract the ID
     if actual_item_type == 'track' and '/track/' in item_id:
         match = re.search(r'/track/([a-zA-Z0-9]+)', item_id)
         if match:
-            return f"spotify:track:{match.group(1)}" # Hep track kullan
+            return f"spotify:track:{match.group(1)}"
     elif actual_item_type == 'artist' and '/artist/' in item_id:
         match = re.search(r'/artist/([a-zA-Z0-9]+)', item_id)
         if match:
             return f"spotify:artist:{match.group(1)}"
 
-    # Diğer durumlar geçersiz kabul edilir
+    # Unrecognized or invalid format
     logger.warning(f"Tanınmayan veya geçersiz Spotify {actual_item_type} ID/URI formatı: {item_id}")
     return None
 
@@ -1394,21 +1394,17 @@ def api_remove_from_list():
 
 # Spotify Türlerini Getirme API'si
 @app.route('/api/spotify/genres')
-def get_spotify_genres():
+@admin_login_required
+def api_spotify_genres():
+    """Spotify'dan mevcut öneri türlerini (genre seeds) alır."""
     spotify = get_spotify_client()
-    artist_id = request.args.get('id')
-    if not spotify or not artist_id:
-        return jsonify({'error': 'Spotify bağlantısı yok veya ID eksik'}), 400
+    if not spotify: return jsonify({'success': False, 'error': 'Spotify bağlantısı yok.'}), 503
     try:
-        artist_info = spotify.artist(artist_id)
-        genres_raw = artist_info.get('genres')
-        if not isinstance(genres_raw, list):
-            genres_raw = []
-        genres = [g.lower() for g in genres_raw if isinstance(g, str)]
-        return jsonify({'genres': genres})
+        genres = spotify.recommendation_genre_seeds()
+        return jsonify({'success': True, 'genres': genres.get('genres', [])})
     except Exception as e:
-        logger.error(f"/api/spotify/genres endpointinde hata: {e}", exc_info=True)
-        return jsonify({'error': 'Türler alınırken hata oluştu'}), 500
+        logger.error(f"Spotify türleri alınırken hata: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Spotify türleri alınamadı.'}), 500
 
 # Spotify ID'lerinden Detayları Getirme API'si (URI Kullanır)
 @app.route('/api/spotify/details', methods=['POST'])
