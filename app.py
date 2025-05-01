@@ -1612,6 +1612,67 @@ def remove_from_queue(track_id):
         logger.error(f"Kuyruktan şarkı kaldırılırken hata: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/spotify-devices')
+@admin_login_required
+def api_spotify_devices():
+    """
+    Kullanılabilir Spotify Connect cihazlarını listeler.
+    """
+    try:
+        spotify = get_spotify_client()
+        if not spotify:
+            return jsonify({'success': False, 'error': 'Spotify bağlantısı kurulamadı'}), 500
+
+        devices = spotify.devices()
+        if not devices or 'devices' not in devices:
+            return jsonify({'success': False, 'error': 'Cihaz listesi alınamadı'}), 500
+
+        # Aktif cihaz ID'sini al
+        active_device_id = None
+        for device in devices['devices']:
+            if device.get('is_active'):
+                active_device_id = device['id']
+                break
+
+        return jsonify({
+            'success': True,
+            'devices': devices['devices'],
+            'active_device_id': active_device_id
+        })
+
+    except Exception as e:
+        logger.error(f"Spotify cihazları alınırken hata: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/transfer-playback', methods=['POST'])
+@admin_login_required
+def api_transfer_playback():
+    """
+    Çalma işlemini belirtilen cihaza aktarır.
+    """
+    try:
+        data = request.get_json()
+        if not data or 'device_id' not in data:
+            return jsonify({'success': False, 'error': 'Cihaz ID\'si gerekli'}), 400
+
+        device_id = data['device_id']
+        spotify = get_spotify_client()
+        if not spotify:
+            return jsonify({'success': False, 'error': 'Spotify bağlantısı kurulamadı'}), 500
+
+        # Çalma işlemini aktar
+        spotify.transfer_playback(device_id=device_id)
+        logger.info(f"Çalma işlemi cihaza aktarıldı: {device_id}")
+
+        return jsonify({
+            'success': True,
+            'message': 'Çalma işlemi başarıyla aktarıldı'
+        })
+
+    except Exception as e:
+        logger.error(f"Çalma işlemi aktarılırken hata: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 if __name__ == '__main__':
     logger.info("=================================================")
     logger.info("       Mekan Müzik Uygulaması Başlatılıyor       ")

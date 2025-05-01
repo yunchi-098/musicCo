@@ -431,6 +431,27 @@
                 </div>
             </div>
 
+            <!-- Spotify Connect Cihazları -->
+            <div class="col-lg-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+                            <h5 class="card-title mb-0">Spotify Connect Cihazları</h5>
+                            <button onclick="refreshSpotifyDevices()" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
+                        <div id="spotify-devices-list" class="device-list">
+                            <div class="text-center py-3">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Yükleniyor...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Filtre Yönetimi -->
             <div class="col-lg-4">
                 <div class="card h-100">
@@ -860,6 +881,86 @@
             .catch(error => {
                 console.error('Şarkı kaldırılırken hata:', error);
                 showNotification('Şarkı kaldırılırken bir hata oluştu', 'error');
+            });
+        }
+
+        function refreshSpotifyDevices() {
+            showListLoading('spotify-devices-list', 'Spotify cihazları yenileniyor...');
+            $.get('/api/spotify-devices')
+                .done(function(data) {
+                    if (data.success && data.devices) {
+                        renderSpotifyDevicesList(data.devices, data.active_device_id);
+                    } else {
+                        $('#spotify-devices-list').html(`<p class="text-danger">Cihaz listesi alınamadı: ${data.error || '(Veri eksik)'}</p>`);
+                    }
+                })
+                .fail(function(xhr) {
+                    console.error("Error fetching Spotify devices:", xhr);
+                    $('#spotify-devices-list').html('<p class="text-danger">Cihaz listesi alınamadı (API Hatası).</p>');
+                });
+        }
+
+        function renderSpotifyDevicesList(devices, activeDeviceId) {
+            const listElement = $('#spotify-devices-list');
+            let html = '';
+            
+            if (devices && devices.length > 0) {
+                devices.forEach(device => {
+                    const isActive = device.id === activeDeviceId;
+                    const stateClass = isActive ? 'active-spotify-device' : '';
+                    const stateBadge = isActive ? '<span class="badge bg-primary ml-1">Aktif</span>' : '';
+                    
+                    html += `
+                        <div class="device-card mb-2 p-2 border rounded ${stateClass}">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div style="min-width: 0;">
+                                    <strong class="d-block text-truncate" title="${device.name}">${device.name}</strong>
+                                    <small class="text-muted d-block text-truncate">${device.type} ${stateBadge}</small>
+                                </div>
+                                ${!isActive ? `<button onclick="transferPlayback(this, '${device.id}')" class="btn btn-sm btn-outline-primary ml-2">Bu Cihaza Aktar</button>` : ''}
+                            </div>
+                        </div>
+                    `;
+                });
+            } else {
+                html = '<p class="text-muted text-center">Spotify Connect cihazı bulunamadı.</p>';
+            }
+            
+            listElement.html(html);
+        }
+
+        function transferPlayback(buttonElement, deviceId) {
+            if (!confirm('Çalma işlemini bu cihaza aktarmak istediğinizden emin misiniz?')) {
+                return;
+            }
+            
+            setButtonLoading(buttonElement, true);
+            
+            $.ajax({
+                url: '/api/transfer-playback',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ device_id: deviceId }),
+                success: function(data) {
+                    if (data.success) {
+                        showFlashMessage('Çalma işlemi başarıyla aktarıldı.', 'success');
+                        refreshSpotifyDevices();
+                    } else {
+                        showFlashMessage('Hata: ' + (data.error || 'Aktarım başarısız.'), 'danger');
+                    }
+                },
+                error: function(xhr) {
+                    let errorMsg = 'Çalma işlemi aktarılırken sunucu hatası.';
+                    try {
+                        if (xhr.responseJSON && xhr.responseJSON.error) {
+                            errorMsg = xhr.responseJSON.error;
+                        }
+                    } catch (e) {}
+                    showFlashMessage(`Hata: ${errorMsg}`, 'danger');
+                },
+                complete: function() {
+                    setButtonLoading(buttonElement, false);
+                }
             });
         }
     </script>
