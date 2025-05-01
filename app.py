@@ -971,6 +971,7 @@ def add_to_queue():
                         'id': track_uri,
                         'name': track_info['name'],
                         'artist': track_info['artists'][0]['name'] if track_info['artists'] else 'Bilinmeyen Sanatçı',
+                        'artist_id': track_info['artists'][0]['id'] if track_info['artists'] else None,
                         'image_url': track_info['album']['images'][0]['url'] if track_info['album']['images'] else None
                     }
                     

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mekan Müzik Yönetim Paneli</title>
+    <title>Plays'In Yönetim Paneli</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -263,7 +263,7 @@
     <div class="container-fluid py-4">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <div>
-                <h1 class="h3 mb-0">Mekan Müzik Yönetim Paneli</h1>
+                <h1 class="h3 mb-0">Plays'In Yönetim Paneli</h1>
                 <p class="text-muted mb-0">Müzik ve cihaz kontrolü</p>
             </div>
             <div class="d-flex align-items-center gap-3">
@@ -368,9 +368,17 @@
                                     <h6 class="mb-1 text-truncate">{{ track.name }}</h6>
                                     <p class="text-muted mb-0 text-truncate">{{ track.artist }}</p>
                                 </div>
-                                <button onclick="removeFromQueue('{{ track.id }}')" class="btn btn-sm btn-outline-danger">
-                                    <i class="fas fa-times"></i>
-                                </button>
+                                <div class="d-flex gap-2">
+                                    <button onclick="quickBlockItem(this, 'artist', '${track.artist_id}')" class="btn btn-sm btn-outline-danger" title="Sanatçıyı Engelle">
+                                        <i class="fas fa-user-slash"></i>
+                                    </button>
+                                    <button onclick="quickBlockItem(this, 'song', '${track.id}')" class="btn btn-sm btn-outline-danger" title="Şarkıyı Engelle">
+                                        <i class="fas fa-ban"></i>
+                                    </button>
+                                    <button onclick="removeFromQueue('${track.id}')" class="btn btn-sm btn-outline-danger">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
                             </div>
                             {% endfor %}
                         </div>
@@ -1021,9 +1029,17 @@
                                             <h6 class="mb-1 text-truncate">${track.name}</h6>
                                             <p class="text-muted mb-0 text-truncate">${track.artist}</p>
                                         </div>
-                                        <button onclick="removeFromQueue('${track.id}')" class="btn btn-sm btn-outline-danger">
-                                            <i class="fas fa-times"></i>
-                                        </button>
+                                        <div class="d-flex gap-2">
+                                            <button onclick="quickBlockItem(this, 'artist', '${track.artist_id}')" class="btn btn-sm btn-outline-danger" title="Sanatçıyı Engelle">
+                                                <i class="fas fa-user-slash"></i>
+                                            </button>
+                                            <button onclick="quickBlockItem(this, 'song', '${track.id}')" class="btn btn-sm btn-outline-danger" title="Şarkıyı Engelle">
+                                                <i class="fas fa-ban"></i>
+                                            </button>
+                                            <button onclick="removeFromQueue('${track.id}')" class="btn btn-sm btn-outline-danger">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </div>
                                     </div>
                                 `;
                             });
