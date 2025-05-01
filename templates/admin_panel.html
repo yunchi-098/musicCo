@@ -4,446 +4,473 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mekan Müzik Yönetim Paneli</title>
-    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body {
-            background-color: #f8f9fa;
+        :root {
+            --primary-color: #7B2CBF;
+            --secondary-color: #2D2D2D;
+            --background-start: #F5F5F7;
+            --background-end: #F8F0FF;
+            --card-bg: rgba(255, 255, 255, 0.9);
+            --text-primary: #2D2D2D;
+            --text-secondary: #6B6B6B;
+            --border-radius: 16px;
+            --transition: all 0.3s ease;
         }
+
+        body {
+            background: linear-gradient(135deg, var(--background-start) 0%, var(--background-end) 100%);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            min-height: 100vh;
+            color: var(--text-primary);
+        }
+
+        .container-fluid {
+            max-width: 1600px;
+            padding: 2rem;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: none;
+            border-radius: var(--border-radius);
+            box-shadow: 0 4px 24px rgba(123, 44, 191, 0.1);
+            backdrop-filter: blur(10px);
+            transition: var(--transition);
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 32px rgba(123, 44, 191, 0.15);
+        }
+
         .card-header {
+            background: transparent;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            padding: 1.5rem;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .card-body {
+            padding: 1.5rem;
+        }
+
+        .btn {
+            border-radius: 12px;
+            padding: 0.75rem 1.5rem;
+            font-weight: 500;
+            transition: var(--transition);
+        }
+
+        .btn-primary {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: #9D4EDD;
+            border-color: #9D4EDD;
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        .btn-outline-primary {
+            border-color: var(--primary-color);
+            color: var(--primary-color);
+        }
+
+        .btn-outline-primary:hover {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        .form-control {
+            border-radius: 12px;
+            padding: 0.75rem 1rem;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            background: rgba(255, 255, 255, 0.9);
+        }
+
+        .form-control:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 0.25rem rgba(123, 44, 191, 0.25);
+        }
+
+        .device-card {
+            background: var(--card-bg);
+            border-radius: var(--border-radius);
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+            transition: var(--transition);
+        }
+
+        .device-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+        }
+
+        .active-spotify-device {
+            border-left: 4px solid var(--primary-color);
+            background: linear-gradient(to right, rgba(123, 44, 191, 0.1), var(--card-bg));
+        }
+
+        .filter-list {
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: var(--border-radius);
+            padding: 1rem;
+            max-height: 250px;
+            overflow-y: auto;
+        }
+
+        .filter-list::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .filter-list::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.05);
+            border-radius: 4px;
+        }
+
+        .filter-list::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+        }
+
+        .filter-list li {
+            padding: 0.75rem;
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            background: white;
+            transition: var(--transition);
+        }
+
+        .filter-list li:hover {
+            background: rgba(123, 44, 191, 0.05);
+        }
+
+        .stats-number {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            line-height: 1;
+            margin-bottom: 0.5rem;
+        }
+
+        .stats-label {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        /* Toggle Switch Stilleri */
+        .form-check.form-switch {
+            padding-left: 3rem;
+        }
+
+        .form-check-input {
+            width: 3.5em;
+            height: 1.75em;
+            margin-left: -3rem;
+            background-color: rgba(0, 0, 0, 0.1);
+            border: none;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .form-check-input:checked {
+            background-color: var(--primary-color);
+            border: none;
+        }
+
+        .form-check-input:focus {
+            box-shadow: 0 0 0 0.25rem rgba(123, 44, 191, 0.25);
+        }
+
+        .alert {
+            border: none;
+            border-radius: var(--border-radius);
+            padding: 1rem 1.5rem;
+            background: var(--card-bg);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        }
+
+        .nav-link {
+            color: var(--text-secondary);
+            font-weight: 500;
+            padding: 0.75rem 1.25rem;
+            border-radius: var(--border-radius);
+            transition: var(--transition);
+        }
+
+        .nav-link:hover, .nav-link.active {
+            color: var(--primary-color);
+            background: rgba(123, 44, 191, 0.1);
+        }
+
+        .badge {
+            padding: 0.5em 1em;
+            border-radius: 8px;
+            font-weight: 500;
+        }
+
+        .badge.bg-primary {
+            background-color: var(--primary-color) !important;
+        }
+
+        .badge.bg-success {
+            background-color: #4CAF50 !important;
+        }
+
+        .currently-playing-img {
+            width: 80px;
+            height: 80px;
+            object-fit: cover;
+            border-radius: var(--border-radius);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            color: var(--text-primary);
             font-weight: 600;
         }
-        .device-card { transition: all 0.2s ease-in-out; }
-        .device-card:hover { transform: translateY(-3px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
 
-        /* Vurgu stilleri */
-        .active-spotify-device { border-left: 4px solid #1DB954 !important; background-color: #e6f7f0; }
-        .active-spotify-device strong, .active-spotify-device small { color: #0d6a39; }
-        .connected-bluetooth-device { border-left: 4px solid #007bff !important; background-color: #e7f3ff; }
-        .connected-bluetooth-device strong, .connected-bluetooth-device small { color: #004085; }
-        .unpaired-bluetooth-device { border-left: 4px solid #6c757d !important; background-color: #f8f9fa; }
-        .unpaired-bluetooth-device strong, .unpaired-bluetooth-device small { color: #343a40; }
-        .default-audio-sink { border-left: 4px solid #6f42c1 !important; background-color: #f3eefe; }
-        .default-audio-sink strong, .default-audio-sink small { color: #3d236a; }
-        .running-audio-sink:not(.default-audio-sink) { border-left: 4px solid #ffc107 !important; background-color: #fff9e6; }
-        .running-audio-sink:not(.default-audio-sink) strong, .running-audio-sink:not(.default-audio-sink) small { color: #856404; }
+        .text-muted {
+            color: var(--text-secondary) !important;
+        }
 
-        .audio-management-section { background-color: #ffffff; padding: 25px; border-radius: 8px; border: 1px solid #dee2e6; margin-top: 1rem; }
-        .currently-playing-img { width: 64px; height: 64px; object-fit: cover; border: 1px solid #dee2e6; border-radius: .25rem; }
-        .currently-playing-placeholder { width: 64px; height: 64px; background-color: #e9ecef; display: flex; align-items: center; justify-content: center; border-radius: .25rem; color: #6c757d; font-size: 1.5rem; font-weight: bold; }
-        .alert { margin-top: 15px; }
-        .btn svg, .btn i { vertical-align: -0.125em; margin-right: 0.25em; }
-        .row > [class*='col-'] { margin-bottom: 1.5rem; }
-        .list-group-item { border: none; border-bottom: 1px solid rgba(0,0,0,.05); padding-top: 0.5rem; padding-bottom: 0.5rem; }
-        .list-group-item:last-child { border-bottom: none; }
-        .card-body-scrollable { max-height: 300px; overflow-y: auto; }
-        .btn-loading .spinner-border { width: 1em; height: 1em; border-width: .15em; vertical-align: -0.125em; }
-        .other-actions-section { background-color: #ffffff; padding: 20px; border-radius: 8px; border: 1px solid #dee2e6; margin-top: 1rem; }
+        .queue-item:hover {
+            background-color: rgba(123, 44, 191, 0.05);
+        }
 
-        /* Filtre Yönetimi Stilleri */
-        .filter-management-section { background-color: #ffffff; padding: 25px; border-radius: 8px; border: 1px solid #dee2e6; margin-top: 1rem; }
-        .filter-mode-switch .custom-control-label::before,
-        .filter-mode-switch .custom-control-label::after { cursor: pointer; }
-        .filter-list { max-height: 200px; overflow-y: auto; border: 1px solid #eee; padding: 10px; border-radius: 5px; margin-bottom: 10px; background-color: #fdfdfd;}
-        .filter-list li { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px dashed #eee; }
-        .filter-list li:last-child { border-bottom: none; }
-        .filter-list span { flex-grow: 1; margin-right: 10px; word-break: break-all; }
-        .search-results-filter { max-height: 150px; overflow-y: auto; border: 1px solid #eee; margin-top: 10px; }
-        .search-results-filter .list-group-item { cursor: pointer; }
-        .search-results-filter .list-group-item:hover { background-color: #f0f0f0; }
-        .quick-block-btn { font-size: 0.75em; padding: 0.1rem 0.3rem; margin-left: 5px; }
-        .filter-list .item-name { font-weight: 500; } /* İsimleri biraz belirgin yap */
-        .filter-list .item-id { font-size: 0.8em; color: #6c757d; display: block; } /* ID'yi küçük göster */
+        .btn-outline-danger {
+            color: #dc3545;
+            border-color: #dc3545;
+        }
+
+        .btn-outline-danger:hover {
+            background-color: #dc3545;
+            color: white;
+        }
     </style>
 </head>
 <body class="bg-light">
     <div class="container-fluid py-4">
-        <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom">
-            <h1 class="h2 text-primary font-weight-bold">Mekan Müzik Yönetim Paneli</h1>
+        <div class="d-flex justify-content-between align-items-center mb-4">
             <div>
-                <a href="{{ url_for('logout') }}" class="btn btn-outline-danger">
-                    <i class="fas fa-sign-out-alt"></i> Çıkış Yap
+                <h1 class="h3 mb-0">Mekan Müzik Yönetim Paneli</h1>
+                <p class="text-muted mb-0">Müzik ve cihaz kontrolü</p>
+            </div>
+            <div class="d-flex align-items-center gap-3">
+                {% if not spotify_authenticated %}
+                <a href="{{ url_for('spotify_auth') }}" class="btn btn-primary">
+                    <i class="fab fa-spotify me-2"></i>Spotify'ı Bağla
+                </a>
+                {% endif %}
+                <a href="{{ url_for('logout') }}" class="btn btn-outline-secondary">
+                    <i class="fas fa-sign-out-alt"></i>
                 </a>
             </div>
         </div>
+
         <div id="flash-messages">
             {% with messages = get_flashed_messages(with_categories=true) %}
               {% if messages %}
                 {% for category, message in messages %}
                   <div class="alert alert-{{ category or 'info' }} alert-dismissible fade show" role="alert">
                     {{ message }}
-                    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                      <span aria-hidden="true">×</span>
-                    </button>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                   </div>
                 {% endfor %}
               {% endif %}
             {% endwith %}
         </div>
-        {% if not spotify_authenticated %}
-        <div class="alert alert-warning alert-dismissible fade show" role="alert">
-            Spotify bağlantısı yok! Lütfen Spotify hesabınızı bağlayın.
-            <a href="{{ url_for('spotify_auth') }}" class="btn btn-sm btn-primary ml-2">Şimdi Yetkilendir</a>
-             <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-               <span aria-hidden="true">×</span>
-             </button>
-        </div>
-        {% else %}
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-            Spotify bağlı: <strong>{{ spotify_user or 'Bilinmeyen Kullanıcı' }}</strong>
-             <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-               <span aria-hidden="true">×</span>
-             </button>
+
+        {% if spotify_authenticated %}
+        <div class="row g-4">
+            <!-- Şu An Çalıyor -->
+            <div class="col-lg-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+                            <h5 class="card-title mb-0">Şu An Çalıyor</h5>
+                            <div class="badge bg-success">Aktif</div>
+                        </div>
+                        {% if currently_playing_info %}
+                        <div class="d-flex align-items-center gap-3 mb-3">
+                            {% if currently_playing_info.image_url %}
+                            <img src="{{ currently_playing_info.image_url }}" alt="Albüm Kapağı" class="currently-playing-img">
+                            {% else %}
+                            <div class="currently-playing-img d-flex align-items-center justify-content-center bg-light">
+                                <i class="fas fa-music fa-2x text-muted"></i>
+                            </div>
+                            {% endif %}
+                            <div class="flex-grow-1 min-width-0">
+                                <h6 class="mb-1 text-truncate">{{ currently_playing_info.name }}</h6>
+                                <p class="text-muted mb-0 text-truncate">{{ currently_playing_info.artist }}</p>
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2">
+                            {% if currently_playing_info.is_playing %}
+                            <form action="{{ url_for('player_pause') }}" method="GET" class="flex-grow-1">
+                                <button type="submit" class="btn btn-outline-primary w-100">
+                                    <i class="fas fa-pause me-2"></i>Durdur
+                                </button>
+                            </form>
+                            {% else %}
+                            <form action="{{ url_for('player_resume') }}" method="GET" class="flex-grow-1">
+                                <button type="submit" class="btn btn-primary w-100">
+                                    <i class="fas fa-play me-2"></i>Devam Et
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
+                        {% else %}
+                        <div class="text-center py-4">
+                            <i class="fas fa-music fa-3x text-muted mb-3"></i>
+                            <p class="text-muted mb-0">Şu anda müzik çalmıyor</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Çalma Kuyruğu -->
+            <div class="col-lg-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+                            <h5 class="card-title mb-0">Çalma Kuyruğu</h5>
+                            <div class="badge bg-primary">{{ queue|length if queue else 0 }} Şarkı</div>
+                        </div>
+                        {% if queue and queue|length > 0 %}
+                        <div class="queue-list" style="max-height: 300px; overflow-y: auto;">
+                            {% for track in queue %}
+                            <div class="queue-item d-flex align-items-center gap-3 p-2 mb-2 rounded hover-bg">
+                                {% if track.image_url %}
+                                <img src="{{ track.image_url }}" alt="Albüm Kapağı" class="queue-item-img" style="width: 40px; height: 40px; object-fit: cover; border-radius: 8px;">
+                                {% else %}
+                                <div class="queue-item-img d-flex align-items-center justify-content-center bg-light" style="width: 40px; height: 40px; border-radius: 8px;">
+                                    <i class="fas fa-music text-muted"></i>
+                                </div>
+                                {% endif %}
+                                <div class="flex-grow-1 min-width-0">
+                                    <h6 class="mb-1 text-truncate">{{ track.name }}</h6>
+                                    <p class="text-muted mb-0 text-truncate">{{ track.artist }}</p>
+                                </div>
+                                <form action="{{ url_for('remove_from_queue', track_id=track.id) }}" method="POST" class="ms-2">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </form>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <div class="text-center py-4">
+                            <i class="fas fa-list fa-3x text-muted mb-3"></i>
+                            <p class="text-muted mb-0">Kuyrukta şarkı yok</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cihaz Yönetimi -->
+            <div class="col-lg-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+                            <h5 class="card-title mb-0">Cihaz Yönetimi</h5>
+                            <button onclick="refreshAudioSinkList()" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
+                        <div id="audio-sinks-list" class="device-list">
+                            <div class="text-center py-3">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Yükleniyor...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filtre Yönetimi -->
+            <div class="col-lg-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title mb-4">Filtre Yönetimi</h5>
+                        <form method="POST" action="{{ url_for('update_settings') }}">
+                            <div class="mb-4">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <label class="form-label mb-0">Tür Filtresi</label>
+                                    <div class="form-check form-switch">
+                                        <input type="checkbox" class="form-check-input" id="genre_mode_switch" 
+                                               {% if settings.genre_filter_mode == 'whitelist' %}checked{% endif %}
+                                               onchange="updateFilterMode(this, 'genre_filter_mode')">
+                                        <label class="form-check-label" for="genre_mode_switch">
+                                            <span class="text-muted" id="genre_mode_text">
+                                                {% if settings.genre_filter_mode == 'whitelist' %}Beyaz Liste{% else %}Kara Liste{% endif %}
+                                            </span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="filter-list" id="genre-filter-list"></div>
+                                <div class="input-group mt-2">
+                                    <input type="text" class="form-control" id="genre-add-input" placeholder="Yeni tür ekle...">
+                                    <button class="btn btn-outline-primary" type="button" onclick="addFilterItem('genre')">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="mb-4">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <label class="form-label mb-0">Sanatçı Filtresi</label>
+                                    <div class="form-check form-switch">
+                                        <input type="checkbox" class="form-check-input" id="artist_mode_switch"
+                                               {% if settings.artist_filter_mode == 'whitelist' %}checked{% endif %}
+                                               onchange="updateFilterMode(this, 'artist_filter_mode')">
+                                        <label class="form-check-label" for="artist_mode_switch">
+                                            <span class="text-muted" id="artist_mode_text">
+                                                {% if settings.artist_filter_mode == 'whitelist' %}Beyaz Liste{% else %}Kara Liste{% endif %}
+                                            </span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="filter-list" id="artist-filter-list"></div>
+                                <div class="input-group mt-2">
+                                    <input type="text" class="form-control" id="artist-search-input" placeholder="Sanatçı ara...">
+                                    <button class="btn btn-outline-primary" type="button" onclick="searchSpotify('artist')">
+                                        <i class="fas fa-search"></i>
+                                    </button>
+                                </div>
+                                <div class="search-results-filter list-group list-group-flush mt-2" id="artist-search-results"></div>
+                            </div>
+
+                            <input type="hidden" name="genre_filter_mode" id="genre_filter_mode" value="{{ settings.genre_filter_mode }}">
+                            <input type="hidden" name="artist_filter_mode" id="artist_filter_mode" value="{{ settings.artist_filter_mode }}">
+                            
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-save me-2"></i>Ayarları Kaydet
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
         </div>
         {% endif %}
+    </div>
 
-        <div class="row">
-            <div class="col-lg-4 col-md-6">
-                <div class="card shadow-sm h-100">
-                    <div class="card-header bg-success text-white">
-                        <h5 class="mb-0">Şu An Çalıyor</h5>
-                    </div>
-                    <div class="card-body d-flex flex-column justify-content-between" id="currently-playing-admin">
-                        {% if currently_playing_info %}
-                            <div>
-                                <div class="d-flex align-items-center mb-3">
-                                    {% if currently_playing_info.image_url %}
-                                    <img src="{{ currently_playing_info.image_url }}" alt="Albüm Kapağı" class="mr-3 shadow-sm currently-playing-img">
-                                    {% else %}
-                                    <div class="mr-3 currently-playing-placeholder">?</div>
-                                    {% endif %}
-                                    <div style="min-width: 0;">
-                                        <strong class="d-block text-truncate">{{ currently_playing_info.name }}</strong>
-                                        <small class="text-muted d-block text-truncate">{{ currently_playing_info.artist }}</small>
-                                        <div class="mt-1">
-                                            {% if currently_playing_info.id %}
-                                            <button class="btn btn-danger btn-sm quick-block-btn" title="Bu Şarkıyı Kara Listeye Ekle"
-                                                    onclick="quickBlockItem(this, 'song', '{{ currently_playing_info.id }}')">
-                                                <i class="fas fa-ban"></i> Şarkı
-                                            </button>
-                                            {% endif %}
-                                            {% if currently_playing_info.artist_ids %}
-                                                {% for artist_id in currently_playing_info.artist_ids %}
-                                                    {% if loop.first %}
-                                                    <button class="btn btn-danger btn-sm quick-block-btn" title="Sanatçıyı Kara Listeye Ekle"
-                                                            onclick="quickBlockItem(this, 'artist', '{{ artist_id }}')">
-                                                        <i class="fas fa-user-slash"></i> Sanatçı
-                                                    </button>
-                                                    {% endif %}
-                                                {% endfor %}
-                                            {% endif %}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="text-center mt-auto">
-                                {% if currently_playing_info.is_playing %}
-                                    <form action="{{ url_for('player_pause') }}" method="GET" style="display: inline;">
-                                         <button type="submit" class="btn btn-warning btn-block"><i class="fas fa-pause"></i> Durdur & Otomatik Geçişi Kapat</button>
-                                     </form>
-                                {% else %}
-                                    <form action="{{ url_for('player_resume') }}" method="GET" style="display: inline;">
-                                         <button type="submit" class="btn btn-success btn-block"><i class="fas fa-play"></i> Devam Et & Otomatik Geçişi Aç</button>
-                                     </form>
-                                {% endif %}
-                            </div>
-                        {% else %}
-                            <p class="text-muted mb-0 text-center">Şu anda aktif bir şarkı çalınmıyor veya bilgi alınamadı.</p>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-lg-4 col-md-6">
-                <div class="card shadow-sm h-100">
-                    <div class="card-header bg-primary text-white">
-                        <h5 class="mb-0">Spotify Connect Cihazları</h5>
-                    </div>
-                    <div class="card-body card-body-scrollable">
-                        {% if spotify_devices %}
-                            <div class="list-group list-group-flush">
-                                {% for device in spotify_devices %}
-                                <div class="list-group-item px-0 py-2 {% if device.id == active_spotify_connect_device_id %}active-spotify-device{% endif %}">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div style="min-width: 0;">
-                                            <strong class="d-block text-truncate">{{ device.name }}</strong>
-                                            <small class="text-muted">{{ device.type|upper }} {% if device.is_restricted %}(Kısıtlı){% endif %} {% if device.volume_percent is not none %}- Ses: {{device.volume_percent}}%{% endif %}</small>
-                                        </div>
-                                        <form method="POST" action="{{ url_for('update_settings') }}" class="ml-2">
-                                            <input type="hidden" name="active_spotify_connect_device_id" value="{{ device.id }}">
-                                            <button type="submit" class="btn btn-sm {% if device.id == active_spotify_connect_device_id %}btn-success disabled{% else %}btn-outline-primary{% endif %}"
-                                                    {% if device.id == active_spotify_connect_device_id %}aria-disabled="true"{% endif %} style="white-space: nowrap;">
-                                                {% if device.id == active_spotify_connect_device_id %}Aktif Hedef{% else %}Hedef Seç{% endif %}
-                                            </button>
-                                        </form>
-                                    </div>
-                                </div>
-                                {% endfor %}
-                            </div>
-                        {% else %}
-                            <p class="text-muted text-center">Aktif Spotify Connect cihazı bulunamadı.</p>
-                        {% endif %}
-                    </div>
-                    <div class="card-footer text-center">
-                        <a href="{{ url_for('refresh_devices') }}" class="btn btn-sm btn-primary">
-                            <i class="fas fa-sync-alt"></i> Connect Cihazlarını Yenile
-                        </a>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-lg-4 col-md-6">
-                <div class="card shadow-sm h-100">
-                    <div class="card-header bg-info text-white">
-                        <h5 class="mb-0">Şarkı Kuyruğu ({{ queue|length }}/{{ settings.max_queue_length }})</h5>
-                    </div>
-                    <div class="card-body card-body-scrollable">
-                        {% if queue %}
-                        <ul class="list-group list-group-flush">
-                            {% for song in queue %}
-                            <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
-                                <div style="min-width: 0;">
-                                    <strong class="d-block text-truncate">{{ song.name }}</strong>
-                                    <small class="text-muted d-block text-truncate">{{ song.artist }}</small>
-                                    <div class="mt-1">
-                                        {% if song.id %}
-                                        <button class="btn btn-danger btn-sm quick-block-btn" title="Bu Şarkıyı Kara Listeye Ekle"
-                                                onclick="quickBlockItem(this, 'song', '{{ song.id }}')">
-                                            <i class="fas fa-ban"></i> Şarkı
-                                        </button>
-                                        {% endif %}
-                                        {% if song.artist_ids %}
-                                            {% for artist_id in song.artist_ids %}
-                                                {% if loop.first %}
-                                                <button class="btn btn-danger btn-sm quick-block-btn" title="Sanatçıyı Kara Listeye Ekle"
-                                                        onclick="quickBlockItem(this, 'artist', '{{ artist_id }}')">
-                                                    <i class="fas fa-user-slash"></i> Sanatçı
-                                                </button>
-                                                {% endif %}
-                                            {% endfor %}
-                                        {% endif %}
-                                    </div>
-                                </div>
-                                 <form method="POST" action="{{ url_for('remove_song', song_id_str=song.id) }}" class="ml-2"> <button type="submit" class="btn btn-sm btn-outline-danger" title="Kuyruktan Kaldır"></button>
-                                 </form>
-                            </li>
-                            {% endfor %}
-                        </ul>
-                        {% else %}
-                        <p class="text-muted text-center">Kuyruk boş.</p>
-                        {% endif %}
-                    </div>
-                    <div class="card-footer">
-                        <form method="POST" action="{{ url_for('add_song') }}" class="input-group mb-2">
-                            <input type="text" name="song_id" class="form-control form-control-sm"
-                                   placeholder="Spotify Şarkı ID veya URL" required>
-                            <div class="input-group-append">
-                                <button type="submit" class="btn btn-sm btn-success">Ekle</button>
-                            </div>
-                        </form>
-                        <a href="{{ url_for('clear_queue') }}" class="btn btn-sm btn-danger btn-block">
-                            Kuyruğu Temizle
-                        </a>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-lg-4 col-md-6">
-                 <div class="card shadow-sm h-100">
-                     <div class="card-header bg-warning">
-                         <h5 class="mb-0">Genel Ayarlar & Filtre Modları</h5>
-                     </div>
-                     <div class="card-body">
-                         <form method="POST" action="{{ url_for('update_settings') }}">
-                             <div class="form-group">
-                                 <label for="max_queue_length">Maks. Kuyruk Uzunluğu</label>
-                                 <input type="number" id="max_queue_length" name="max_queue_length" value="{{ settings.max_queue_length }}" class="form-control form-control-sm" min="1" required>
-                             </div>
-                             <div class="form-group">
-                                 <label for="max_user_requests">Kullanıcı Başına Maks. İstek</label>
-                                 <input type="number" id="max_user_requests" name="max_user_requests" value="{{ settings.max_user_requests }}" class="form-control form-control-sm" min="1" required>
-                             </div>
-                             <hr>
-                             <h6 class="text-muted">Filtre Modları</h6>
-                             <div class="form-group">
-                                 <label class="mb-0">Tür Filtresi:</label>
-                                 <div class="custom-control custom-radio custom-control-inline filter-mode-switch">
-                                     <input type="radio" id="genre_mode_blacklist" name="genre_filter_mode" value="blacklist" class="custom-control-input" {% if settings.genre_filter_mode == 'blacklist' %}checked{% endif %}>
-                                     <label class="custom-control-label" for="genre_mode_blacklist">Kara Liste</label>
-                                 </div>
-                                 <div class="custom-control custom-radio custom-control-inline filter-mode-switch">
-                                     <input type="radio" id="genre_mode_whitelist" name="genre_filter_mode" value="whitelist" class="custom-control-input" {% if settings.genre_filter_mode == 'whitelist' %}checked{% endif %}>
-                                     <label class="custom-control-label" for="genre_mode_whitelist">Beyaz Liste</label>
-                                 </div>
-                             </div>
-                             <div class="form-group">
-                                 <label class="mb-0">Sanatçı Filtresi:</label>
-                                 <div class="custom-control custom-radio custom-control-inline filter-mode-switch">
-                                     <input type="radio" id="artist_mode_blacklist" name="artist_filter_mode" value="blacklist" class="custom-control-input" {% if settings.artist_filter_mode == 'blacklist' %}checked{% endif %}>
-                                     <label class="custom-control-label" for="artist_mode_blacklist">Kara Liste</label>
-                                 </div>
-                                 <div class="custom-control custom-radio custom-control-inline filter-mode-switch">
-                                     <input type="radio" id="artist_mode_whitelist" name="artist_filter_mode" value="whitelist" class="custom-control-input" {% if settings.artist_filter_mode == 'whitelist' %}checked{% endif %}>
-                                     <label class="custom-control-label" for="artist_mode_whitelist">Beyaz Liste</label>
-                                 </div>
-                             </div>
-                             <div class="form-group">
-                                 <label class="mb-0">Şarkı Filtresi:</label>
-                                 <div class="custom-control custom-radio custom-control-inline filter-mode-switch">
-                                     <input type="radio" id="song_mode_blacklist" name="song_filter_mode" value="blacklist" class="custom-control-input" {% if settings.song_filter_mode == 'blacklist' %}checked{% endif %}>
-                                     <label class="custom-control-label" for="song_mode_blacklist">Kara Liste</label>
-                                 </div>
-                                 <div class="custom-control custom-radio custom-control-inline filter-mode-switch">
-                                     <input type="radio" id="song_mode_whitelist" name="song_filter_mode" value="whitelist" class="custom-control-input" {% if settings.song_filter_mode == 'whitelist' %}checked{% endif %}>
-                                     <label class="custom-control-label" for="song_mode_whitelist">Beyaz Liste</label>
-                                 </div>
-                             </div>
-                             <button type="submit" class="btn btn-primary btn-block mt-3">
-                                 Ayarları Kaydet
-                             </button>
-                         </form>
-                     </div>
-                 </div>
-             </div>
-
-             <div class="col-lg-4 col-md-6">
-                <div class="card shadow-sm h-100">
-                    <div class="card-header bg-secondary text-white">
-                        <h5 class="mb-0">Diğer İşlemler</h5>
-                    </div>
-                    <div class="card-body d-flex flex-column justify-content-around">
-                         <button onclick="switchToAlsa(this)" id="alsa-switch-btn" class="btn btn-outline-dark btn-block mb-3">
-                             <i class="fas fa-desktop"></i> ALSA Cihazına Geçiş Yap
-                         </button>
-                         <button onclick="restartSpotifyd(this)" id="spotifyd-restart-btn" class="btn btn-outline-danger btn-block">
-                             <i class="fas fa-redo"></i> Spotifyd'yi Yeniden Başlat
-                         </button>
-                         <small class="text-muted text-center mt-3">Not: Ses cihazı değişikliklerinden sonra Spotify'ın yeni cihazı görmesi için yeniden başlatma gerekebilir.</small>
-                    </div>
-                </div>
-            </div>
-        </div> <div class="audio-management-section shadow-sm mt-4">
-             <h4 class="mb-4 text-secondary">Ses Çıkış Yönetimi</h4>
-             <div class="row">
-                 <div class="col-md-6 mb-3 mb-md-0">
-                     <div class="card h-100">
-                         <div class="card-header bg-dark text-white">
-                             <h5 class="mb-0">Ses Çıkışları (Hedef Seçimi)</h5>
-                         </div>
-                         <div class="card-body card-body-scrollable" id="audio-sinks-list">
-                             <p class="text-muted">Yükleniyor...</p>
-                         </div>
-                         <div class="card-footer text-center">
-                              <button onclick="refreshAudioSinkList()" class="btn btn-sm btn-dark">
-                                  <i class="fas fa-sync-alt"></i> Ses Çıkış Listesini Yenile
-                              </button>
-                              <small class="text-muted mt-2 d-block">Not: Seçilen cihaz sistemin varsayılan ses çıkışı olur.</small>
-                         </div>
-                     </div>
-                 </div>
-                 <div class="col-md-6">
-                     <div class="card h-100">
-                         <div class="card-header bg-info text-white">
-                             <h5 class="mb-0">Bluetooth Cihazları</h5>
-                         </div>
-                         <div class="card-body card-body-scrollable" id="bluetooth-list">
-                             <p class="text-muted">Yükleniyor...</p>
-                         </div>
-                         <div class="card-footer text-center">
-                             <button onclick="discoverBluetoothDevices()" id="discover-btn" class="btn btn-sm btn-warning mb-2">
-                                 <i class="fas fa-broadcast-tower"></i> Yeni Cihazları Tara (<span id="scan-duration-text">{{ BLUETOOTH_SCAN_DURATION | default(12) }}</span>sn)
-                              </button>
-                              <small class="text-muted mt-2 d-block">Not: Yeni cihazları görmek için önce tarayın, sonra eşleştirin.</small>
-                         </div>
-                     </div>
-                 </div>
-             </div>
-        </div>
-
-        <div class="filter-management-section shadow-sm mt-4">
-            <h4 class="mb-4 text-secondary">Filtre Yönetimi</h4>
-            <div class="row">
-                <div class="col-md-4">
-                    <div class="card h-100">
-                        <div class="card-header">
-                            Tür Filtresi (<span id="genre-mode-display">{{ settings.genre_filter_mode|replace('blacklist', 'Kara Liste')|replace('whitelist', 'Beyaz Liste') }}</span>)
-                        </div>
-                        <div class="card-body">
-                            <ul class="filter-list" id="genre-filter-list"></ul>
-                            <div class="input-group input-group-sm mt-2">
-                                <input type="text" class="form-control" id="genre-add-input" placeholder="Yeni Tür Ekle...">
-                                <div class="input-group-append">
-                                    <button class="btn btn-outline-success" type="button" onclick="addFilterItem('genre')">Ekle</button>
-                                </div>
-                            </div>
-                            <hr>
-                            <label>Mevcut Türlerden Ekle:</label>
-                            <div class="input-group input-group-sm">
-                                <input type="text" class="form-control" id="genre-search-input" placeholder="Tür Ara...">
-                                <div class="input-group-append">
-                                    <button class="btn btn-outline-primary" type="button" onclick="searchGenres()">Ara</button>
-                                </div>
-                            </div>
-                            <div class="search-results-filter list-group list-group-flush mt-2" id="genre-search-results"></div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card h-100">
-                        <div class="card-header">
-                            Sanatçı Filtresi (<span id="artist-mode-display">{{ settings.artist_filter_mode|replace('blacklist', 'Kara Liste')|replace('whitelist', 'Beyaz Liste') }}</span>)
-                        </div>
-                        <div class="card-body">
-                            <ul class="filter-list" id="artist-filter-list"></ul>
-                            <div class="input-group input-group-sm mt-2">
-                                <input type="text" class="form-control" id="artist-add-input" placeholder="Spotify Sanatçı ID Ekle...">
-                                <div class="input-group-append">
-                                    <button class="btn btn-outline-success" type="button" onclick="addFilterItem('artist')">Ekle</button>
-                                </div>
-                            </div>
-                            <hr>
-                            <label>Arama ile Ekle:</label>
-                            <div class="input-group input-group-sm">
-                                <input type="text" class="form-control" id="artist-search-input" placeholder="Sanatçı Ara...">
-                                <div class="input-group-append">
-                                    <button class="btn btn-outline-primary" type="button" onclick="searchSpotify('artist')">Ara</button>
-                                </div>
-                            </div>
-                            <div class="search-results-filter list-group list-group-flush mt-2" id="artist-search-results"></div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card h-100">
-                        <div class="card-header">
-                            Şarkı Filtresi (<span id="song-mode-display">{{ settings.song_filter_mode|replace('blacklist', 'Kara Liste')|replace('whitelist', 'Beyaz Liste') }}</span>)
-                        </div>
-                        <div class="card-body">
-                            <ul class="filter-list" id="song-filter-list"></ul>
-                            <div class="input-group input-group-sm mt-2">
-                                <input type="text" class="form-control" id="song-add-input" placeholder="Spotify Şarkı ID Ekle...">
-                                <div class="input-group-append">
-                                    <button class="btn btn-outline-success" type="button" onclick="addFilterItem('song')">Ekle</button>
-                                </div>
-                            </div>
-                             <hr>
-                            <label>Arama ile Ekle:</label>
-                            <div class="input-group input-group-sm">
-                                <input type="text" class="form-control" id="song-search-input" placeholder="Şarkı Ara...">
-                                <div class="input-group-append">
-                                    <button class="btn btn-outline-primary" type="button" onclick="searchSpotify('track')">Ara</button>
-                                </div>
-                            </div>
-                            <div class="search-results-filter list-group list-group-flush mt-2" id="song-search-results"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-    </div> <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>
         // --- Global Değişkenler ---
@@ -451,6 +478,23 @@
         let spotifyNameCache = {}; // ID -> Name eşleşmesi için cache
 
         // --- Yardımcı Fonksiyonlar ---
+        function updateFilterMode(switchElement, inputName) {
+            const mode = switchElement.checked ? 'whitelist' : 'blacklist';
+            const textElement = document.getElementById(inputName.replace('_filter_mode', '_mode_text'));
+            const hiddenInput = document.getElementById(inputName);
+            
+            if (textElement) {
+                textElement.textContent = switchElement.checked ? 'Beyaz Liste' : 'Kara Liste';
+            }
+            if (hiddenInput) {
+                hiddenInput.value = mode;
+            }
+
+            currentSettings[inputName] = mode;
+            const filterType = inputName.replace('_filter_mode', '');
+            renderFilterList(filterType);
+        }
+
         function showFlashMessage(message, category = 'info') {
             const flashDiv = document.getElementById('flash-messages');
             if (!flashDiv) return;
@@ -610,7 +654,7 @@
                 });
             } else { fetchNamesAndRender(); }
         }
-        function renderAllFilterLists() { renderFilterList('genre'); renderFilterList('artist'); renderFilterList('song'); }
+        function renderAllFilterLists() { renderFilterList('genre'); renderFilterList('artist'); }
         $('input[name$="_filter_mode"]').on('change', function() {
             const filterType = this.name.replace('_filter_mode', ''); const newMode = this.value;
             console.log(`Filter mode changed for ${filterType} to ${newMode}`);
