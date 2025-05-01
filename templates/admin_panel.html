@@ -836,6 +836,32 @@
             const scanDurationTextElement = document.getElementById('scan-duration-text');
             if (scanDurationTextElement) { scanDurationTextElement.textContent = '{{ BLUETOOTH_SCAN_DURATION | default(12) }}'; }
         });
+
+        function removeFromQueue(trackId) {
+            fetch(`/remove-from-queue/${trackId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Şarkıyı listeden kaldır
+                    const trackElement = document.querySelector(`[data-track-id="${trackId}"]`);
+                    if (trackElement) {
+                        trackElement.remove();
+                    }
+                    showNotification(data.message, 'success');
+                } else {
+                    showNotification(data.error, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Şarkı kaldırılırken hata:', error);
+                showNotification('Şarkı kaldırılırken bir hata oluştu', 'error');
+            });
+        }
     </script>
 
 </body>

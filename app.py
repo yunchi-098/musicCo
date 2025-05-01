@@ -1587,6 +1587,31 @@ def start_queue_player():
     thread.start()
     logger.info("Arka plan şarkı çalma/öneri görevi başlatıldı.")
 
+@app.route('/remove-from-queue/<path:track_id>', methods=['POST'])
+@admin_login_required
+def remove_from_queue(track_id):
+    """
+    Kuyruktan belirtilen şarkıyı kaldırır.
+    """
+    try:
+        # Şarkı ID'sini Spotify URI formatına dönüştür
+        track_uri = _ensure_spotify_uri(track_id, 'track')
+        if not track_uri:
+            return jsonify({'success': False, 'error': 'Geçersiz şarkı ID\'si'}), 400
+
+        # Kuyruktan şarkıyı kaldır
+        with queue_lock:
+            if track_uri in queue:
+                queue.remove(track_uri)
+                logger.info(f"Şarkı kuyruktan kaldırıldı: {track_uri}")
+                return jsonify({'success': True, 'message': 'Şarkı kuyruktan kaldırıldı'})
+            else:
+                return jsonify({'success': False, 'error': 'Şarkı kuyrukta bulunamadı'}), 404
+
+    except Exception as e:
+        logger.error(f"Kuyruktan şarkı kaldırılırken hata: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 if __name__ == '__main__':
     logger.info("=================================================")
     logger.info("       Mekan Müzik Uygulaması Başlatılıyor       ")
