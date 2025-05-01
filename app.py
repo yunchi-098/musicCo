@@ -614,99 +614,47 @@ def logout():
 @app.route('/admin-panel')
 @admin_login_required
 def admin_panel():
-    """Yönetim panelini gösterir. Ayarları ve listeleri şablona gönderir."""
-    global auto_advance_enabled, settings, song_queue
-    spotify = get_spotify_client()
-    spotify_devices = []
-    spotify_authenticated = False
-    spotify_user = None
-    currently_playing_info = None
-    filtered_queue = []
-
-    # Ses cihazı bilgilerini al
-    audio_sinks_result = _run_command(['list_sinks'])
-    audio_sinks = audio_sinks_result.get('sinks', []) if audio_sinks_result.get('success') else []
-    default_audio_sink_name = audio_sinks_result.get('default_sink_name') if audio_sinks_result.get('success') else None
-    if not audio_sinks_result.get('success'):
-        flash(f"Ses cihazları listelenemedi: {audio_sinks_result.get('error', 'Bilinmeyen hata')}", "danger")
-
-    if spotify:
-        spotify_authenticated = True
-        session['spotify_authenticated'] = True
-        try:
-            # Spotify cihazlarını al
-            result = spotify.devices(); spotify_devices = result.get('devices', [])
-            # Kullanıcı bilgisini al
-            try: user = spotify.current_user(); spotify_user = user.get('display_name', '?'); session['spotify_user'] = spotify_user
-            except Exception as user_err: logger.warning(f"Spotify kullanıcı bilgisi alınamadı: {user_err}"); session.pop('spotify_user', None)
-            # Şu an çalan şarkı bilgisini al
+    """
+    Admin panelini gösterir.
+    """
+    try:
+        # Spotify bağlantısını kontrol et
+        spotify = get_spotify_client()
+        spotify_authenticated = bool(spotify)
+        
+        # Şu an çalan şarkı bilgilerini al
+        currently_playing_info = None
+        if spotify_authenticated:
             try:
-                playback = spotify.current_playback(additional_types='track,episode', market='TR')
-                if playback and playback.get('item'):
-                    item = playback['item']; is_playing = playback.get('is_playing', False)
-                    track_uri = item.get('uri') # URI'yi al
-                    if track_uri and track_uri.startswith('spotify:track:'):
-                         # Çalan şarkının filtrelerini (Sanatçı/Tür) kontrol et
-                         is_allowed, _ = check_filters(track_uri, spotify) # <<-- check_filters kullan
-                         track_name = item.get('name', '?'); artists = item.get('artists', [])
-                         artist_name = ', '.join([a.get('name') for a in artists]) if artists else '?'
-                         artist_uris = [_ensure_spotify_uri(a.get('id'), 'artist') for a in artists if a.get('id')]
-                         images = item.get('album', {}).get('images', []); image_url = images[0].get('url') if images else None
-                         currently_playing_info = {
-                             'id': track_uri, # URI olarak sakla
-                             'name': track_name, 'artist': artist_name,
-                             'artist_ids': artist_uris, # URI listesi
-                             'image_url': image_url, 'is_playing': is_playing,
-                             'is_allowed': is_allowed # Filtre durumunu ekle
-                         }
-                         logger.debug(f"Şu An Çalıyor (Admin): {track_name} - {'Çalıyor' if is_playing else 'Duraklatıldı'} - Filtre İzin: {is_allowed}")
-            except Exception as pb_err: logger.warning(f"Çalma durumu alınamadı: {pb_err}")
+                current = spotify.current_playback()
+                if current and current.get('item'):
+                    track = current['item']
+                    currently_playing_info = {
+                        'name': track['name'],
+                        'artist': track['artists'][0]['name'] if track['artists'] else 'Bilinmeyen Sanatçı',
+                        'image_url': track['album']['images'][0]['url'] if track['album']['images'] else None,
+                        'is_playing': current.get('is_playing', False)
+                    }
+            except Exception as e:
+                logger.error(f"Şu an çalan şarkı bilgileri alınırken hata: {str(e)}")
 
-            # Kuyruğu filtrele (Admin panelinde sadece izin verilenler görünsün)
-            for song in song_queue:
-                song_uri = song.get('id')
-                if song_uri and song_uri.startswith('spotify:track:'):
-                    is_allowed, _ = check_filters(song_uri, spotify) # <<-- check_filters kullan
-                    if is_allowed:
-                        # Sanatçı ID'lerinin URI formatında olduğundan emin ol (eski veriler için)
-                        if 'artist_ids' in song and isinstance(song['artist_ids'], list):
-                             song['artist_ids'] = [_ensure_spotify_uri(aid, 'artist') for aid in song['artist_ids']]
-                        filtered_queue.append(song)
-                    else:
-                        logger.debug(f"Admin Paneli: Kuyruktaki şarkı filtrelendi: {song.get('name')} ({song_uri})")
-                else:
-                     logger.warning(f"Admin Paneli: Kuyrukta geçersiz şarkı formatı: {song}")
+        # Kuyruğu güvenli bir şekilde al
+        with queue_lock:
+            queue_copy = queue.copy()  # Kuyruğun bir kopyasını al
+            logger.debug(f"Admin panel için kuyruk yüklendi: {queue_copy}")
 
-
-        except spotipy.SpotifyException as e:
-            logger.error(f"Spotify API hatası (Admin Panel): {e.http_status} - {e.msg}")
-            spotify_authenticated = False; session['spotify_authenticated'] = False; session.pop('spotify_user', None)
-            if e.http_status == 401 or e.http_status == 403:
-                flash("Spotify yetkilendirmesi geçersiz veya süresi dolmuş. Lütfen tekrar yetkilendirin.", "warning")
-                if os.path.exists(TOKEN_FILE): logger.warning("Geçersiz token dosyası siliniyor."); os.remove(TOKEN_FILE)
-                spotify_client = None
-            else: flash(f"Spotify API hatası: {e.msg}", "danger")
-        except Exception as e:
-            logger.error(f"Admin panelinde beklenmedik hata: {e}", exc_info=True)
-            spotify_authenticated = False; session['spotify_authenticated'] = False; session.pop('spotify_user', None)
-            flash("Beklenmedik bir hata oluştu.", "danger")
-    else:
-        spotify_authenticated = False; session['spotify_authenticated'] = False; session.pop('spotify_user', None)
-        if not os.path.exists(TOKEN_FILE): flash("Spotify hesabınızı bağlamak için lütfen yetkilendirme yapın.", "info")
-
-    return render_template(
-        'admin_panel.html',
-        settings=settings, # Tüm ayarları gönder
-        spotify_devices=spotify_devices,
-        queue=filtered_queue, # Filtrelenmiş kuyruğu gönder
-        all_genres=ALLOWED_GENRES, # Filtre yönetimi için
-        spotify_authenticated=spotify_authenticated,
-        spotify_user=session.get('spotify_user'),
-        active_spotify_connect_device_id=settings.get('active_device_id'),
-        audio_sinks=audio_sinks, default_audio_sink_name=default_audio_sink_name,
-        currently_playing_info=currently_playing_info, # Filtre durumu dahil
-        auto_advance_enabled=auto_advance_enabled
-    )
+        # Ayarları yükle
+        settings = load_settings()
+        
+        return render_template('admin_panel.html',
+                             spotify_authenticated=spotify_authenticated,
+                             currently_playing_info=currently_playing_info,
+                             queue=queue_copy,
+                             settings=settings)
+    except Exception as e:
+        logger.error(f"Admin panel yüklenirken hata: {str(e)}")
+        flash('Panel yüklenirken bir hata oluştu.', 'danger')
+        return redirect(url_for('admin'))
 
 # --- Çalma Kontrol Rotaları ---
 @app.route('/player/pause')
@@ -1691,15 +1639,26 @@ def api_play_next():
 
         # Kuyruktan ilk şarkıyı al
         with queue_lock:
+            logger.debug(f"Mevcut kuyruk: {queue}")  # Debug için kuyruk içeriğini logla
             if not queue:
+                logger.warning("Kuyruk boş olduğu için şarkı çalınamadı")
                 return jsonify({'success': False, 'error': 'Kuyrukta şarkı yok'}), 404
             
             track_uri = queue[0]
+            logger.info(f"Çalınacak şarkı URI'si: {track_uri}")
             queue.pop(0)  # Şarkıyı kuyruktan kaldır
+            logger.debug(f"Kuyruktan çıkarıldıktan sonra kalan şarkılar: {queue}")
 
         # Şarkıyı çal
-        spotify.start_playback(uris=[track_uri])
-        logger.info(f"Sıradaki şarkı çalmaya başladı: {track_uri}")
+        try:
+            spotify.start_playback(uris=[track_uri])
+            logger.info(f"Sıradaki şarkı çalmaya başladı: {track_uri}")
+        except Exception as playback_error:
+            logger.error(f"Şarkı çalınırken hata: {str(playback_error)}")
+            # Şarkıyı tekrar kuyruğa ekle
+            with queue_lock:
+                queue.insert(0, track_uri)
+            return jsonify({'success': False, 'error': f'Şarkı çalınamadı: {str(playback_error)}'}), 500
 
         return jsonify({
             'success': True,
