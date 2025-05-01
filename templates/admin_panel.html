@@ -887,6 +887,7 @@
                         }
                     } catch (e) {}
                     showFlashMessage(`Hata: ${errorMsg}`, 'danger');
+                    console.error('Block request failed:', xhr);
                 },
                 complete: function() {
                     setButtonLoading(buttonElement, false);
