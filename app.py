@@ -1673,6 +1673,38 @@ def api_transfer_playback():
         logger.error(f"Çalma işlemi aktarılırken hata: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/play-next', methods=['POST'])
+@admin_login_required
+def api_play_next():
+    """
+    Sıradaki şarkıyı çalar.
+    """
+    try:
+        spotify = get_spotify_client()
+        if not spotify:
+            return jsonify({'success': False, 'error': 'Spotify bağlantısı kurulamadı'}), 500
+
+        # Kuyruktan ilk şarkıyı al
+        with queue_lock:
+            if not queue:
+                return jsonify({'success': False, 'error': 'Kuyrukta şarkı yok'}), 404
+            
+            track_uri = queue[0]
+            queue.pop(0)  # Şarkıyı kuyruktan kaldır
+
+        # Şarkıyı çal
+        spotify.start_playback(uris=[track_uri])
+        logger.info(f"Sıradaki şarkı çalmaya başladı: {track_uri}")
+
+        return jsonify({
+            'success': True,
+            'message': 'Sıradaki şarkı çalmaya başladı'
+        })
+
+    except Exception as e:
+        logger.error(f"Sıradaki şarkı çalınırken hata: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 if __name__ == '__main__':
     logger.info("=================================================")
     logger.info("       Mekan Müzik Uygulaması Başlatılıyor       ")

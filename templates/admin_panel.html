@@ -346,7 +346,12 @@
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-center mb-4">
                             <h5 class="card-title mb-0">Çalma Kuyruğu</h5>
-                            <div class="badge bg-primary">{{ queue|length if queue else 0 }} Şarkı</div>
+                            <div class="d-flex gap-2">
+                                <button onclick="playNextTrack()" class="btn btn-sm btn-primary">
+                                    <i class="fas fa-step-forward"></i>
+                                </button>
+                                <div class="badge bg-primary">{{ queue|length if queue else 0 }} Şarkı</div>
+                            </div>
                         </div>
                         {% if queue and queue|length > 0 %}
                         <div class="queue-list" style="max-height: 300px; overflow-y: auto;">
@@ -962,6 +967,88 @@
                     setButtonLoading(buttonElement, false);
                 }
             });
+        }
+
+        function playNextTrack() {
+            const button = document.querySelector('button[onclick="playNextTrack()"]');
+            setButtonLoading(button, true);
+            
+            $.ajax({
+                url: '/api/play-next',
+                type: 'POST',
+                contentType: 'application/json',
+                success: function(data) {
+                    if (data.success) {
+                        showFlashMessage('Sıradaki şarkı çalmaya başladı.', 'success');
+                        // Kuyruğu yenile
+                        refreshQueue();
+                    } else {
+                        showFlashMessage('Hata: ' + (data.error || 'Şarkı çalınamadı.'), 'danger');
+                    }
+                },
+                error: function(xhr) {
+                    let errorMsg = 'Şarkı çalınırken sunucu hatası.';
+                    try {
+                        if (xhr.responseJSON && xhr.responseJSON.error) {
+                            errorMsg = xhr.responseJSON.error;
+                        }
+                    } catch (e) {}
+                    showFlashMessage(`Hata: ${errorMsg}`, 'danger');
+                },
+                complete: function() {
+                    setButtonLoading(button, false);
+                }
+            });
+        }
+
+        function refreshQueue() {
+            $.get('/api/queue')
+                .done(function(data) {
+                    if (data.success && data.queue) {
+                        // Kuyruk listesini güncelle
+                        const queueList = $('.queue-list');
+                        let html = '';
+                        
+                        if (data.queue.length > 0) {
+                            data.queue.forEach(track => {
+                                html += `
+                                    <div class="queue-item d-flex align-items-center gap-3 p-2 mb-2 rounded hover-bg">
+                                        ${track.image_url ? 
+                                            `<img src="${track.image_url}" alt="Albüm Kapağı" class="queue-item-img" style="width: 40px; height: 40px; object-fit: cover; border-radius: 8px;">` :
+                                            `<div class="queue-item-img d-flex align-items-center justify-content-center bg-light" style="width: 40px; height: 40px; border-radius: 8px;">
+                                                <i class="fas fa-music text-muted"></i>
+                                            </div>`
+                                        }
+                                        <div class="flex-grow-1 min-width-0">
+                                            <h6 class="mb-1 text-truncate">${track.name}</h6>
+                                            <p class="text-muted mb-0 text-truncate">${track.artist}</p>
+                                        </div>
+                                        <form action="/remove-from-queue/${track.id}" method="POST" class="ms-2">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </form>
+                                    </div>
+                                `;
+                            });
+                        } else {
+                            html = `
+                                <div class="text-center py-4">
+                                    <i class="fas fa-list fa-3x text-muted mb-3"></i>
+                                    <p class="text-muted mb-0">Kuyrukta şarkı yok</p>
+                                </div>
+                            `;
+                        }
+                        
+                        queueList.html(html);
+                        // Şarkı sayısını güncelle
+                        $('.badge.bg-primary').text(`${data.queue.length} Şarkı`);
+                    }
+                })
+                .fail(function(xhr) {
+                    console.error("Error fetching queue:", xhr);
+                    showFlashMessage('Kuyruk yenilenirken hata oluştu.', 'danger');
+                });
         }
     </script>
 
