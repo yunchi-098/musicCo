@@ -13,6 +13,7 @@ from flask import Flask, request, render_template, redirect, url_for, session, j
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import traceback # Hata ayıklama için eklendi
+from threading import Lock
 
 # --- Yapılandırılabilir Ayarlar ---
 # !!! BU BİLGİLERİ KENDİ SPOTIFY DEVELOPER BİLGİLERİNİZLE DEĞİŞTİRİN !!!
@@ -33,6 +34,10 @@ ALLOWED_GENRES = ['pop', 'rock', 'jazz', 'electronic', 'hip-hop', 'classical', '
 # Logging ayarları
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(threadName)s - %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+# --- Global Değişkenler ---
+queue = []  # Çalma kuyruğu
+queue_lock = Lock()  # Kuyruk için thread-safe kilit
 
 # --- Flask Uygulamasını Başlat ---
 app = Flask(__name__)
