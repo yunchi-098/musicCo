@@ -1224,16 +1224,22 @@ def api_restart_spotifyd():
 @admin_login_required
 def api_block_item():
     try:
+        app.logger.info("Engelleme isteği alındı")
         data = request.get_json()
+        app.logger.info(f"Gelen veri: {data}")
+        
         if not data or 'type' not in data or 'identifier' not in data:
+            app.logger.error("Eksik parametreler")
             return jsonify({'success': False, 'error': 'Eksik parametreler'}), 400
 
         item_type = data['type']
         identifier = data['identifier']
+        app.logger.info(f"İşlenecek veri - Tip: {item_type}, ID: {identifier}")
         
         # Spotify bağlantısını kontrol et
         spotify = get_spotify_client()
         if not spotify:
+            app.logger.error("Spotify bağlantısı yok")
             return jsonify({'success': False, 'error': 'Spotify bağlantısı yok'}), 401
 
         # Sanatçı türünü engelleme
