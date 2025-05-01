@@ -368,11 +368,9 @@
                                     <h6 class="mb-1 text-truncate">{{ track.name }}</h6>
                                     <p class="text-muted mb-0 text-truncate">{{ track.artist }}</p>
                                 </div>
-                                <form action="{{ url_for('remove_from_queue', track_id=track.id) }}" method="POST" class="ms-2">
-                                    <button type="submit" class="btn btn-sm btn-outline-danger">
-                                        <i class="fas fa-times"></i>
-                                    </button>
-                                </form>
+                                <button onclick="removeFromQueue('{{ track.id }}')" class="btn btn-sm btn-outline-danger">
+                                    <i class="fas fa-times"></i>
+                                </button>
                             </div>
                             {% endfor %}
                         </div>
@@ -1023,11 +1021,9 @@
                                             <h6 class="mb-1 text-truncate">${track.name}</h6>
                                             <p class="text-muted mb-0 text-truncate">${track.artist}</p>
                                         </div>
-                                        <form action="/remove-from-queue/${track.id}" method="POST" class="ms-2">
-                                            <button type="submit" class="btn btn-sm btn-outline-danger">
-                                                <i class="fas fa-times"></i>
-                                            </button>
-                                        </form>
+                                        <button onclick="removeFromQueue('${track.id}')" class="btn btn-sm btn-outline-danger">
+                                            <i class="fas fa-times"></i>
+                                        </button>
                                     </div>
                                 `;
                             });

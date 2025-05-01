@@ -936,69 +936,62 @@ def add_song():
 # --- Queue Rotaları ---
 @app.route('/add-to-queue', methods=['POST'])
 def add_to_queue():
-    """Kullanıcı tarafından şarkı ekleme (Sanatçı/Tür Filtreleri uygulanır)."""
-    global settings, song_queue, user_requests
-    if not request.is_json: return jsonify({'error': 'Geçersiz format.'}), 400
-    data = request.get_json();
-    # Frontend'den gelen ID'yi al (sadece ID veya URI olabilir)
-    track_identifier = data.get('track_id')
-    logger.info(f"Kuyruğa ekleme isteği: identifier={track_identifier}")
-    if not track_identifier: return jsonify({'error': 'Eksik ID.'}), 400
-
-    # Gelen ID'yi URI formatına çevir
-    track_uri = _ensure_spotify_uri(track_identifier, 'track')
-    if not track_uri:
-        logger.error(f"Kullanıcı ekleme: Geçersiz ID formatı: {track_identifier}")
-        return jsonify({'error': 'Geçersiz şarkı ID formatı.'}), 400
-
-    # Kuyruk limiti kontrolü
-    if len(song_queue) >= settings.get('max_queue_length', 20): logger.warning("Kuyruk dolu."); return jsonify({'error': 'Kuyruk dolu.'}), 429
-
-    # Kullanıcı istek limiti kontrolü
-    user_ip = request.remote_addr; max_requests = settings.get('max_user_requests', 5)
-    if user_requests.get(user_ip, 0) >= max_requests: logger.warning(f"Limit aşıldı: {user_ip}"); return jsonify({'error': f'İstek limitiniz ({max_requests}) doldu.'}), 429
-
-    spotify = get_spotify_client()
-    if not spotify: logger.error("Ekleme: Spotify istemcisi yok."); return jsonify({'error': 'Spotify bağlantısı yok.'}), 503
-
-    # Sanatçı/Tür Filtrelerini URI ile kontrol et
-    is_allowed, reason = check_filters(track_uri, spotify) # <<-- check_filters kullan
-    if not is_allowed:
-        logger.info(f"Reddedildi ({reason}): {track_uri}")
-        return jsonify({'error': reason}), 403 # 403 Forbidden
-
-    # Filtrelerden geçtiyse şarkı bilgilerini tekrar al (güvenlik için) ve kuyruğa ekle
+    """
+    Kuyruğa yeni şarkı ekler.
+    """
     try:
-        song_info = spotify.track(track_uri, market='TR')
-        if not song_info: return jsonify({'error': 'Şarkı bilgisi alınamadı (tekrar kontrol).'}), 500
-        song_name = song_info.get('name', '?')
-        artists = song_info.get('artists', []);
-        artist_uris = [_ensure_spotify_uri(a.get('id'), 'artist') for a in artists if a.get('id')]
-        artist_names = [a.get('name') for a in artists]
+        data = request.get_json()
+        if not data or 'track_id' not in data:
+            return jsonify({'success': False, 'error': 'Şarkı ID\'si gerekli'}), 400
 
-        logger.info(f"Filtrelerden geçti: {song_name} ({track_uri})")
-        update_time_profile(track_uri, spotify) # Zaman profiline ekle
+        track_id = data['track_id']
+        spotify = get_spotify_client()
+        if not spotify:
+            return jsonify({'success': False, 'error': 'Spotify bağlantısı kurulamadı'}), 500
 
-        song_queue.append({
-            'id': track_uri, # URI olarak ekle
-            'name': song_name,
-            'artist': ', '.join(artist_names),
-            'artist_ids': artist_uris, # URI listesi
-            'added_by': user_ip,
-            'added_at': time.time()
-        })
-        user_requests[user_ip] = user_requests.get(user_ip, 0) + 1 # Kullanıcı limitini artır
-        logger.info(f"Şarkı eklendi (Kullanıcı: {user_ip}): {song_name}. Kuyruk: {len(song_queue)}")
-        return jsonify({'success': True, 'message': f"'{song_name}' kuyruğa eklendi!"})
+        # Şarkı ID'sini Spotify URI formatına dönüştür
+        track_uri = _ensure_spotify_uri(track_id, 'track')
+        if not track_uri:
+            return jsonify({'success': False, 'error': 'Geçersiz şarkı ID\'si'}), 400
 
-    except spotipy.SpotifyException as e:
-        logger.error(f"Kullanıcı eklerken Spotify hatası (URI={track_uri}): {e}")
-        if e.http_status == 401 or e.http_status == 403: return jsonify({'error': 'Spotify yetkilendirme sorunu.'}), 503
-        elif e.http_status == 400: return jsonify({'error': f"Geçersiz Spotify URI: {track_uri}"}), 400
-        else: return jsonify({'error': f"Spotify hatası: {e.msg}"}), 500
+        # Şarkı detaylarını al
+        try:
+            track_info = spotify.track(track_uri)
+            if not track_info:
+                return jsonify({'success': False, 'error': 'Şarkı bulunamadı'}), 404
+
+            # Şarkıyı kuyruğa ekle
+            with queue_lock:
+                if track_uri not in queue:  # Tekrar eklemeyi önle
+                    queue.append(track_uri)
+                    logger.info(f"Şarkı kuyruğa eklendi: {track_uri}")
+                    
+                    # Şarkı bilgilerini hazırla
+                    track_data = {
+                        'id': track_uri,
+                        'name': track_info['name'],
+                        'artist': track_info['artists'][0]['name'] if track_info['artists'] else 'Bilinmeyen Sanatçı',
+                        'image_url': track_info['album']['images'][0]['url'] if track_info['album']['images'] else None
+                    }
+                    
+                    return jsonify({
+                        'success': True,
+                        'message': 'Şarkı kuyruğa eklendi',
+                        'track': track_data
+                    })
+                else:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Bu şarkı zaten kuyrukta'
+                    }), 400
+
+        except Exception as e:
+            logger.error(f"Şarkı detayları alınırken hata: {str(e)}")
+            return jsonify({'success': False, 'error': f'Şarkı detayları alınamadı: {str(e)}'}), 500
+
     except Exception as e:
-        logger.error(f"Kuyruğa ekleme hatası (URI: {track_uri}): {e}", exc_info=True)
-        return jsonify({'error': 'Şarkı eklenirken bilinmeyen bir sorun oluştu.'}), 500
+        logger.error(f"Kuyruğa şarkı eklenirken hata: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/remove-song/<path:song_id_str>', methods=['POST'])
 @admin_login_required
