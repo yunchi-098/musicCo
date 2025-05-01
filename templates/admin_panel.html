@@ -314,6 +314,14 @@
                                 <h6 class="mb-1 text-truncate">{{ currently_playing_info.name }}</h6>
                                 <p class="text-muted mb-0 text-truncate">{{ currently_playing_info.artist }}</p>
                             </div>
+                            <div class="d-flex gap-2">
+                                <button onclick="quickBlockItem(this, 'artist', '{{ currently_playing_info.artist_id }}')" class="btn btn-sm btn-outline-danger" title="Sanatçıyı Engelle">
+                                    <i class="fas fa-user-slash"></i>
+                                </button>
+                                <button onclick="quickBlockItem(this, 'genre', '{{ currently_playing_info.artist_id }}')" class="btn btn-sm btn-outline-danger" title="Sanatçının Türünü Engelle">
+                                    <i class="fas fa-music-slash"></i>
+                                </button>
+                            </div>
                         </div>
                         <div class="d-flex gap-2">
                             {% if currently_playing_info.is_playing %}
@@ -329,6 +337,9 @@
                                 </button>
                             </form>
                             {% endif %}
+                            <button onclick="playNextTrack()" class="btn btn-primary">
+                                <i class="fas fa-step-forward"></i>
+                            </button>
                         </div>
                         {% else %}
                         <div class="text-center py-4">
@@ -372,8 +383,8 @@
                                     <button onclick="quickBlockItem(this, 'artist', '{{ track.artist_id }}')" class="btn btn-sm btn-outline-danger" title="Sanatçıyı Engelle">
                                         <i class="fas fa-user-slash"></i>
                                     </button>
-                                    <button onclick="quickBlockItem(this, 'song', '{{ track.id }}')" class="btn btn-sm btn-outline-danger" title="Şarkıyı Engelle">
-                                        <i class="fas fa-ban"></i>
+                                    <button onclick="quickBlockItem(this, 'genre', '{{ track.artist_id }}')" class="btn btn-sm btn-outline-danger" title="Sanatçının Türünü Engelle">
+                                        <i class="fas fa-music-slash"></i>
                                     </button>
                                     <button onclick="removeFromQueue('{{ track.id }}')" class="btn btn-sm btn-outline-danger">
                                         <i class="fas fa-times"></i>
@@ -896,18 +907,20 @@
         }
 
         function refreshSpotifyDevices() {
-            showListLoading('spotify-devices-list', 'Spotify cihazları yenileniyor...');
+            const listElement = $('#spotify-devices-list');
+            listElement.html('<div class="text-center py-3"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Yükleniyor...</span></div></div>');
+            
             $.get('/api/spotify-devices')
                 .done(function(data) {
                     if (data.success && data.devices) {
                         renderSpotifyDevicesList(data.devices, data.active_device_id);
                     } else {
-                        $('#spotify-devices-list').html(`<p class="text-danger">Cihaz listesi alınamadı: ${data.error || '(Veri eksik)'}</p>`);
+                        listElement.html(`<p class="text-danger">Cihaz listesi alınamadı: ${data.error || '(Veri eksik)'}</p>`);
                     }
                 })
                 .fail(function(xhr) {
                     console.error("Error fetching Spotify devices:", xhr);
-                    $('#spotify-devices-list').html('<p class="text-danger">Cihaz listesi alınamadı (API Hatası).</p>');
+                    listElement.html('<p class="text-danger">Cihaz listesi alınamadı (API Hatası).</p>');
                 });
         }
 
@@ -1011,32 +1024,37 @@
             $.get('/api/queue')
                 .done(function(data) {
                     if (data.success && data.queue) {
-                        // Kuyruk listesini güncelle
                         const queueList = $('.queue-list');
                         let html = '';
                         
                         if (data.queue.length > 0) {
                             data.queue.forEach(track => {
+                                const trackId = track.id || '';
+                                const artistId = track.artist_id || '';
+                                const imageUrl = track.image_url || '';
+                                const trackName = track.name || '';
+                                const artistName = track.artist || '';
+
                                 html += `
                                     <div class="queue-item d-flex align-items-center gap-3 p-2 mb-2 rounded hover-bg">
-                                        ${track.image_url ? 
-                                            `<img src="${track.image_url}" alt="Albüm Kapağı" class="queue-item-img" style="width: 40px; height: 40px; object-fit: cover; border-radius: 8px;">` :
+                                        ${imageUrl ? 
+                                            `<img src="${imageUrl}" alt="Albüm Kapağı" class="queue-item-img" style="width: 40px; height: 40px; object-fit: cover; border-radius: 8px;">` :
                                             `<div class="queue-item-img d-flex align-items-center justify-content-center bg-light" style="width: 40px; height: 40px; border-radius: 8px;">
                                                 <i class="fas fa-music text-muted"></i>
                                             </div>`
                                         }
                                         <div class="flex-grow-1 min-width-0">
-                                            <h6 class="mb-1 text-truncate">${track.name}</h6>
-                                            <p class="text-muted mb-0 text-truncate">${track.artist}</p>
+                                            <h6 class="mb-1 text-truncate">${trackName}</h6>
+                                            <p class="text-muted mb-0 text-truncate">${artistName}</p>
                                         </div>
                                         <div class="d-flex gap-2">
-                                            <button onclick="quickBlockItem(this, 'artist', '${track.artist_id}')" class="btn btn-sm btn-outline-danger" title="Sanatçıyı Engelle">
+                                            <button onclick="quickBlockItem(this, 'artist', '${artistId}')" class="btn btn-sm btn-outline-danger" title="Sanatçıyı Engelle">
                                                 <i class="fas fa-user-slash"></i>
                                             </button>
-                                            <button onclick="quickBlockItem(this, 'song', '${track.id}')" class="btn btn-sm btn-outline-danger" title="Şarkıyı Engelle">
-                                                <i class="fas fa-ban"></i>
+                                            <button onclick="quickBlockItem(this, 'genre', '${artistId}')" class="btn btn-sm btn-outline-danger" title="Sanatçının Türünü Engelle">
+                                                <i class="fas fa-music-slash"></i>
                                             </button>
-                                            <button onclick="removeFromQueue('${track.id}')" class="btn btn-sm btn-outline-danger">
+                                            <button onclick="removeFromQueue('${trackId}')" class="btn btn-sm btn-outline-danger">
                                                 <i class="fas fa-times"></i>
                                             </button>
                                         </div>
@@ -1053,7 +1071,6 @@
                         }
                         
                         queueList.html(html);
-                        // Şarkı sayısını güncelle
                         $('.badge.bg-primary').text(`${data.queue.length} Şarkı`);
                     }
                 })
