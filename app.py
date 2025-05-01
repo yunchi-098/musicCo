@@ -1225,82 +1225,99 @@ def api_restart_spotifyd():
 def api_block_item():
     try:
         data = request.get_json()
-        item_type = data.get('type')
-        identifier = data.get('identifier')
-        
-        if not item_type or not identifier:
+        if not data or 'type' not in data or 'identifier' not in data:
             return jsonify({'success': False, 'error': 'Eksik parametreler'}), 400
 
+        item_type = data['type']
+        identifier = data['identifier']
+        
+        # Spotify bağlantısını kontrol et
         spotify = get_spotify_client()
         if not spotify:
             return jsonify({'success': False, 'error': 'Spotify bağlantısı yok'}), 401
 
+        # URI formatını düzelt
+        if not identifier.startswith('spotify:'):
+            if item_type == 'artist':
+                identifier = f'spotify:artist:{identifier}'
+            elif item_type == 'genre':
+                # Genre için özel işlem yapılacak
+                pass
+            else:
+                return jsonify({'success': False, 'error': 'Geçersiz öğe türü'}), 400
+
         # Sanatçı türünü engelleme
         if item_type == 'genre':
-            # Sanatçı ID'sini URI'den al
-            artist_id = identifier.split(':')[-1] if ':' in identifier else identifier
-            
-            # Sanatçının türlerini al
-            artist = spotify.artist(artist_id)
-            genres = artist.get('genres', [])
-            
-            if not genres:
-                return jsonify({'success': False, 'error': 'Sanatçının tür bilgisi bulunamadı'}), 404
-            
-            # Türleri kara listeye ekle
-            settings = load_settings()
-            if 'genre_blacklist' not in settings:
-                settings['genre_blacklist'] = []
-            
-            added_genres = []
-            for genre in genres:
-                if genre not in settings['genre_blacklist']:
-                    settings['genre_blacklist'].append(genre)
-                    added_genres.append(genre)
-            
-            if not added_genres:
-                return jsonify({'success': False, 'error': 'Tüm türler zaten engellenmiş'}), 400
-            
-            save_settings(settings)
-            return jsonify({
-                'success': True,
-                'message': f'"{", ".join(added_genres)}" türleri engellendi',
-                'updated_list': settings['genre_blacklist']
-            })
+            try:
+                # Sanatçının türlerini al
+                artist_info = spotify.artist(identifier.replace('spotify:artist:', ''))
+                if not artist_info or 'genres' not in artist_info:
+                    return jsonify({'success': False, 'error': 'Sanatçı bilgileri alınamadı'}), 404
+
+                genres = artist_info['genres']
+                if not genres:
+                    return jsonify({'success': False, 'error': 'Sanatçının türü bulunamadı'}), 404
+
+                # Kara listeye ekle
+                settings = load_settings()
+                if 'genre_blacklist' not in settings:
+                    settings['genre_blacklist'] = []
+
+                added_genres = []
+                for genre in genres:
+                    if genre not in settings['genre_blacklist']:
+                        settings['genre_blacklist'].append(genre)
+                        added_genres.append(genre)
+
+                if not added_genres:
+                    return jsonify({'success': False, 'error': 'Tüm türler zaten engellenmiş'}), 400
+
+                save_settings(settings)
+                return jsonify({
+                    'success': True,
+                    'message': f'{len(added_genres)} tür engellendi: {", ".join(added_genres)}',
+                    'updated_list': settings['genre_blacklist']
+                })
+
+            except Exception as e:
+                app.logger.error(f"Sanatçı türü engelleme hatası: {str(e)}")
+                return jsonify({'success': False, 'error': f'Sanatçı türü engellenirken hata: {str(e)}'}), 500
 
         # Sanatçı engelleme
         elif item_type == 'artist':
-            # Sanatçı ID'sini URI'den al
-            artist_id = identifier.split(':')[-1] if ':' in identifier else identifier
-            
-            # Sanatçı bilgilerini al
-            artist = spotify.artist(artist_id)
-            artist_name = artist.get('name', 'Bilinmeyen Sanatçı')
-            
-            # Sanatçıyı kara listeye ekle
-            settings = load_settings()
-            if 'artist_blacklist' not in settings:
-                settings['artist_blacklist'] = []
-            
-            artist_uri = f'spotify:artist:{artist_id}'
-            if artist_uri in settings['artist_blacklist']:
-                return jsonify({'success': False, 'error': 'Sanatçı zaten engellenmiş'}), 400
-            
-            settings['artist_blacklist'].append(artist_uri)
-            save_settings(settings)
-            
-            return jsonify({
-                'success': True,
-                'message': f'"{artist_name}" engellendi',
-                'updated_list': settings['artist_blacklist']
-            })
+            try:
+                # Sanatçı bilgilerini al
+                artist_info = spotify.artist(identifier.replace('spotify:artist:', ''))
+                if not artist_info:
+                    return jsonify({'success': False, 'error': 'Sanatçı bulunamadı'}), 404
+
+                # Kara listeye ekle
+                settings = load_settings()
+                if 'artist_blacklist' not in settings:
+                    settings['artist_blacklist'] = []
+
+                if identifier in settings['artist_blacklist']:
+                    return jsonify({'success': False, 'error': 'Sanatçı zaten engellenmiş'}), 400
+
+                settings['artist_blacklist'].append(identifier)
+                save_settings(settings)
+
+                return jsonify({
+                    'success': True,
+                    'message': f'Sanatçı engellendi: {artist_info["name"]}',
+                    'updated_list': settings['artist_blacklist']
+                })
+
+            except Exception as e:
+                app.logger.error(f"Sanatçı engelleme hatası: {str(e)}")
+                return jsonify({'success': False, 'error': f'Sanatçı engellenirken hata: {str(e)}'}), 500
 
         else:
-            return jsonify({'success': False, 'error': 'Geçersiz engelleme türü'}), 400
+            return jsonify({'success': False, 'error': 'Geçersiz öğe türü'}), 400
 
     except Exception as e:
-        app.logger.error(f"Engelleme hatası: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        app.logger.error(f"Engelleme işlemi hatası: {str(e)}")
+        return jsonify({'success': False, 'error': f'Engelleme işlemi sırasında hata: {str(e)}'}), 500
 
 @app.route('/api/add-to-list', methods=['POST'])
 @admin_login_required
