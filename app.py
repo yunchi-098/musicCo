@@ -1236,21 +1236,14 @@ def api_block_item():
         if not spotify:
             return jsonify({'success': False, 'error': 'Spotify bağlantısı yok'}), 401
 
-        # URI formatını düzelt
-        if not identifier.startswith('spotify:'):
-            if item_type == 'artist':
-                identifier = f'spotify:artist:{identifier}'
-            elif item_type == 'genre':
-                # Genre için özel işlem yapılacak
-                pass
-            else:
-                return jsonify({'success': False, 'error': 'Geçersiz öğe türü'}), 400
-
         # Sanatçı türünü engelleme
         if item_type == 'genre':
             try:
+                # Sanatçı URI'sinden ID'yi al
+                artist_id = identifier.replace('spotify:artist:', '')
+                
                 # Sanatçının türlerini al
-                artist_info = spotify.artist(identifier.replace('spotify:artist:', ''))
+                artist_info = spotify.artist(artist_id)
                 if not artist_info or 'genres' not in artist_info:
                     return jsonify({'success': False, 'error': 'Sanatçı bilgileri alınamadı'}), 404
 
@@ -1286,8 +1279,11 @@ def api_block_item():
         # Sanatçı engelleme
         elif item_type == 'artist':
             try:
+                # Sanatçı URI'sinden ID'yi al
+                artist_id = identifier.replace('spotify:artist:', '')
+                
                 # Sanatçı bilgilerini al
-                artist_info = spotify.artist(identifier.replace('spotify:artist:', ''))
+                artist_info = spotify.artist(artist_id)
                 if not artist_info:
                     return jsonify({'success': False, 'error': 'Sanatçı bulunamadı'}), 404
 

@@ -838,26 +838,59 @@
              .always(function() { setButtonLoading(buttonElement[0], false); });
         }
         function quickBlockItem(buttonElement, itemType, identifier) {
-            const typeText = itemType === 'song' ? 'Şarkıyı' : 'Sanatçıyı';
+            const typeText = itemType === 'artist' ? 'Sanatçıyı' : 'Sanatçının Türünü';
+            
             // ID'nin URI formatında olduğundan emin ol
-            const itemUri = identifier.startsWith(`spotify:${itemType}:`) ? identifier : `spotify:${itemType}:${identifier}`;
-            if (!confirm(`${typeText} (${spotifyNameCache[itemUri] || itemUri}) kara listeye eklemek istediğinizden emin misiniz?`)) { return; } // İsim göster
+            let itemUri = identifier;
+            if (!identifier.startsWith('spotify:')) {
+                itemUri = `spotify:artist:${identifier}`;
+            }
+            
+            if (!confirm(`${typeText} (${spotifyNameCache[itemUri] || itemUri}) kara listeye eklemek istediğinizden emin misiniz?`)) {
+                return;
+            }
+            
             console.log(`Quick blocking ${itemType}: ${itemUri}`);
             setButtonLoading(buttonElement, true);
-            $.ajax({ url: '/api/block', type: 'POST', contentType: 'application/json', data: JSON.stringify({ type: itemType, identifier: itemUri }), // itemUri gönderiliyor
+            
+            $.ajax({
+                url: '/api/block',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ 
+                    type: itemType,
+                    identifier: itemUri
+                }),
                 success: function(data) {
                     if (data.success) {
                         showFlashMessage(data.message || 'Öğe başarıyla kara listeye eklendi.', 'success');
-                        const listKey = itemType + '_blacklist';
-                        if (!currentSettings[listKey]) currentSettings[listKey] = [];
-                        if (!currentSettings[listKey].includes(itemUri)) {
-                            currentSettings[listKey].push(itemUri); currentSettings[listKey].sort();
-                            if (currentSettings[itemType + '_filter_mode'] === 'blacklist') { renderFilterList(itemType); }
+                        const listKey = itemType === 'genre' ? 'genre_blacklist' : 'artist_blacklist';
+                        if (!currentSettings[listKey]) {
+                            currentSettings[listKey] = [];
                         }
-                    } else { showFlashMessage('Hata: ' + (data.error || 'Engelleme başarısız.'), 'danger'); }
+                        if (!currentSettings[listKey].includes(itemUri)) {
+                            currentSettings[listKey].push(itemUri);
+                            currentSettings[listKey].sort();
+                            if (currentSettings[itemType + '_filter_mode'] === 'blacklist') {
+                                renderFilterList(itemType);
+                            }
+                        }
+                    } else {
+                        showFlashMessage('Hata: ' + (data.error || 'Engelleme başarısız.'), 'danger');
+                    }
                 },
-                error: function(xhr) { let errorMsg = 'Engelleme sırasında sunucu hatası.'; try { if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; } } catch(e){} showFlashMessage(`Hata: ${errorMsg}`, 'danger'); },
-                complete: function() { setButtonLoading(buttonElement, false); }
+                error: function(xhr) {
+                    let errorMsg = 'Engelleme sırasında sunucu hatası.';
+                    try {
+                        if (xhr.responseJSON && xhr.responseJSON.error) {
+                            errorMsg = xhr.responseJSON.error;
+                        }
+                    } catch (e) {}
+                    showFlashMessage(`Hata: ${errorMsg}`, 'danger');
+                },
+                complete: function() {
+                    setButtonLoading(buttonElement, false);
+                }
             });
         }
 
