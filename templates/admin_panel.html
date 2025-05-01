@@ -369,13 +369,13 @@
                                     <p class="text-muted mb-0 text-truncate">{{ track.artist }}</p>
                                 </div>
                                 <div class="d-flex gap-2">
-                                    <button onclick="quickBlockItem(this, 'artist', '${track.artist_id}')" class="btn btn-sm btn-outline-danger" title="Sanatçıyı Engelle">
+                                    <button onclick="quickBlockItem(this, 'artist', '{{ track.artist_id }}')" class="btn btn-sm btn-outline-danger" title="Sanatçıyı Engelle">
                                         <i class="fas fa-user-slash"></i>
                                     </button>
-                                    <button onclick="quickBlockItem(this, 'song', '${track.id}')" class="btn btn-sm btn-outline-danger" title="Şarkıyı Engelle">
+                                    <button onclick="quickBlockItem(this, 'song', '{{ track.id }}')" class="btn btn-sm btn-outline-danger" title="Şarkıyı Engelle">
                                         <i class="fas fa-ban"></i>
                                     </button>
-                                    <button onclick="removeFromQueue('${track.id}')" class="btn btn-sm btn-outline-danger">
+                                    <button onclick="removeFromQueue('{{ track.id }}')" class="btn btn-sm btn-outline-danger">
                                         <i class="fas fa-times"></i>
                                     </button>
                                 </div>
