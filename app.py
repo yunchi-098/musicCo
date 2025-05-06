@@ -14,16 +14,8 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import traceback # Hata ayıklama için eklendi
 from threading import Lock
-from src import (
-    spotify_client,
-    queue_manager,
-    player,
-    admin_login_required,
-    load_settings,
-    save_settings,
-    format_track_info,
-    format_artist_info,
-    format_playlist_info,
+
+from src.config import (
     TOKEN_FILE,
     SETTINGS_FILE,
     BLACKLIST_FILE,
@@ -38,6 +30,7 @@ from src import (
     DEFAULT_SETTINGS,
     SPOTIFY_SCOPES
 )
+
 from src.routes.admin import admin_bp
 from src.routes.player import player_bp
 from src.routes.queue import queue_bp
