@@ -660,23 +660,52 @@ def admin_panel():
 @app.route('/player/pause')
 @admin_login_required
 def player_pause():
-    global auto_advance_enabled; spotify = get_spotify_client()
+    global auto_advance_enabled, spotify_client
+    spotify = get_spotify_client()
     active_spotify_connect_device_id = settings.get('active_device_id')
-    if not spotify: flash('Spotify bağlantısı yok!', 'danger'); return redirect(url_for('admin_panel'))
+    
+    if not spotify:
+        flash('Spotify bağlantısı yok!', 'danger')
+        return redirect(url_for('admin_panel'))
+        
     try:
         logger.info(f"Admin: Duraklatma isteği (Cihaz: {active_spotify_connect_device_id or '?'}).")
+        
+        # Önce cihazın aktif olup olmadığını kontrol et
+        devices = spotify.devices()
+        if not any(d['id'] == active_spotify_connect_device_id for d in devices.get('devices', [])):
+            logger.warning(f"Aktif cihaz bulunamadı: {active_spotify_connect_device_id}")
+            flash('Aktif Spotify cihazı bulunamadı!', 'warning')
+            return redirect(url_for('admin_panel'))
+            
+        # Duraklatma işlemini dene
         spotify.pause_playback(device_id=active_spotify_connect_device_id)
-        auto_advance_enabled = False; logger.info("Admin: Otomatik geçiş DURAKLATILDI.")
+        auto_advance_enabled = False
+        logger.info("Admin: Otomatik geçiş DURAKLATILDI.")
         flash('Müzik duraklatıldı ve otomatik geçiş kapatıldı.', 'success')
+        
     except spotipy.SpotifyException as e:
         logger.error(f"Spotify duraklatma hatası: {e}")
-        if e.http_status == 401 or e.http_status == 403: flash('Spotify yetkilendirme hatası.', 'danger');
-        global spotify_client; spotify_client = None;
-        if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
-        elif e.http_status == 404: flash(f'Duraklatma hatası: Cihaz bulunamadı ({e.msg})', 'warning')
-        elif e.reason == 'NO_ACTIVE_DEVICE': flash('Aktif Spotify cihazı bulunamadı!', 'warning')
-        else: flash(f'Spotify duraklatma hatası: {e.msg}', 'danger')
-    except Exception as e: logger.error(f"Duraklatma sırasında genel hata: {e}", exc_info=True); flash('Müzik duraklatılırken bir hata oluştu.', 'danger')
+        
+        if e.http_status in [401, 403]:
+            # Token hatası - yeniden yetkilendirme gerekli
+            spotify_client = None
+            if os.path.exists(TOKEN_FILE):
+                os.remove(TOKEN_FILE)
+            flash('Spotify yetkilendirme hatası. Lütfen yeniden giriş yapın.', 'danger')
+            return redirect(url_for('spotify_auth'))
+            
+        elif e.http_status == 404:
+            flash(f'Duraklatma hatası: Cihaz bulunamadı ({e.msg})', 'warning')
+        elif e.reason == 'NO_ACTIVE_DEVICE':
+            flash('Aktif Spotify cihazı bulunamadı!', 'warning')
+        else:
+            flash(f'Spotify duraklatma hatası: {e.msg}', 'danger')
+            
+    except Exception as e:
+        logger.error(f"Duraklatma sırasında genel hata: {e}", exc_info=True)
+        flash('Müzik duraklatılırken bir hata oluştu.', 'danger')
+        
     return redirect(url_for('admin_panel'))
 
 @app.route('/player/resume')
