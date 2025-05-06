@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mekan Müzik İsteği - Pembe Gradyan Tema</title>
+    <title>Müzik Kontrol Paneli</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,6 +16,74 @@
     <style>
         body {
             font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .section {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .button {
+            background-color: #1DB954;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .button:hover {
+            background-color: #1ed760;
+        }
+        .search-box {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .track {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .track:last-child {
+            border-bottom: none;
+        }
+        .alert {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+        .alert-warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffeeba;
+            color: #856404;
+        }
+        .admin-link {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .admin-link a {
+            color: #666;
+            text-decoration: none;
+        }
+        .admin-link a:hover {
+            text-decoration: underline;
         }
         button, input, select, body, div, a {
             transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out, border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
@@ -40,204 +108,119 @@
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 min-h-screen flex items-center justify-center p-4">
 
-    <div class="bg-white dark:bg-gray-800 p-6 md:p-8 rounded-lg shadow-xl w-full max-w-2xl">
-        <h1 class="text-3xl font-bold text-center mb-2 gradient-text">Müzik İsteği Yap</h1>
-        <p class="text-gray-600 dark:text-gray-400 text-center mb-6">Çalmasını istediğiniz şarkıyı arayın ve kuyruğa ekleyin.</p>
-
-        <form id="search-form" class="space-y-4 mb-6">
-            <div>
-                <label for="genre-filter" class="sr-only">Tür Filtresi</label>
-                <div>
-                    <label for="genre-filter" class="sr-only">Tür Filtresi</label>
-                    <select id="genre-filter" name="genre_filter" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-pink-500 dark:focus:ring-pink-400 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 appearance-none">
-                        <option value="">Tüm Türler</option>
-                
-                        {% if allowed_genres %} {# Değişkenin varlığını kontrol etmek iyi bir pratiktir #}
-                            {% for genre in allowed_genres %}
-                                <option value="{{ genre }}">{{ genre|capitalize }}</option> {# genre ismini büyük harfle başlatarak yazdır #}
-                            {% endfor %}
-                        {% endif %}
-                    </select>
-                </div>
-            </div>
-            <div>
-                <label for="search-query" class="sr-only">Arama Sorgusu</label>
-                <input type="text" id="search-query" name="search_query" placeholder="Şarkı veya sanatçı adı..." class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-pink-500 dark:focus:ring-pink-400 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" required>
-            </div>
-            <button type="submit" class="w-full bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 dark:from-pink-600 dark:to-rose-600 dark:hover:from-pink-500 dark:hover:to-rose-500 text-white font-semibold p-3 rounded-md shadow-md hover:shadow-lg transform hover:-translate-y-0.5">
-                Ara
-            </button>
-        </form>
-
-        <div id="status-message" class="mb-4 p-3 rounded-md text-center font-medium" style="display: none;"></div>
-
-        <div id="search-results" class="space-y-4">
+    <div class="container">
+        <div class="header">
+            <h1>Müzik Kontrol Paneli</h1>
         </div>
 
-        <div class="mt-6 text-center">
-            <a href="/queue" class="text-pink-600 hover:text-pink-700 dark:text-pink-400 dark:hover:text-pink-300 hover:underline font-medium">
-                Şarkı Kuyruğunu Görüntüle
-            </a>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% if not spotify_authenticated %}
+            <div class="section">
+                <div class="alert alert-warning">
+                    Spotify hesabınıza bağlanmanız gerekiyor.
+                    <a href="{{ url_for('spotify.login') }}" class="button">Spotify'a Bağlan</a>
+                </div>
+            </div>
+        {% else %}
+            <!-- Şu an çalan şarkı -->
+            <div class="section">
+                <h2>Şu An Çalan</h2>
+                {% if currently_playing_info %}
+                    <div class="track">
+                        <div>
+                            <h3>{{ currently_playing_info.name }}</h3>
+                            <p>{{ currently_playing_info.artist }}</p>
+                        </div>
+                    </div>
+                {% else %}
+                    <p>Şu an çalan şarkı yok.</p>
+                {% endif %}
+            </div>
+
+            <!-- Arama -->
+            <div class="section">
+                <h2>Şarkı Ara ve Ekle</h2>
+                <input type="text" class="search-box" id="searchInput" placeholder="Şarkı, sanatçı veya çalma listesi ara...">
+                <button class="button" onclick="search()">Ara</button>
+                <div id="searchResults"></div>
+            </div>
+
+            <!-- Kuyruk -->
+            <div class="section">
+                <h2>Çalma Kuyruğu</h2>
+                {% if queue %}
+                    {% for track in queue %}
+                        <div class="track">
+                            <div>
+                                <strong>{{ track.name }}</strong>
+                                <br>
+                                <small>{{ track.artist }}</small>
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p>Kuyruk boş.</p>
+                {% endif %}
+            </div>
+        {% endif %}
+
+        <div class="admin-link">
+            <a href="{{ url_for('admin.admin') }}">Yönetici Girişi</a>
         </div>
     </div>
 
     <script>
-        const searchForm = document.getElementById('search-form');
-        const searchQueryInput = document.getElementById('search-query');
-        const genreFilterSelect = document.getElementById('genre-filter');
-        const statusMessageDiv = document.getElementById('status-message');
-        const searchResultsContainer = document.getElementById('search-results');
+        // Arama
+        function search() {
+            const query = document.getElementById('searchInput').value;
+            if (!query) return;
 
-        searchForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            const searchQuery = searchQueryInput.value.trim();
-            const genreFilter = genreFilterSelect.value;
+            fetch(`/search?q=${encodeURIComponent(query)}`)
+                .then(response => response.json())
+                .then(data => {
+                    const resultsDiv = document.getElementById('searchResults');
+                    resultsDiv.innerHTML = '';
 
-            if (!searchQuery) {
-                showStatus('Lütfen bir arama terimi girin.', 'error');
-                searchQueryInput.focus();
-                return;
-            }
-
-            searchResultsContainer.innerHTML = '';
-            hideStatus();
-            showStatus('Aranıyor...', 'loading');
-
-            fetch('/search', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
-                body: `search_query=${encodeURIComponent(searchQuery)}&genre_filter=${encodeURIComponent(genreFilter)}`
-            })
-            .then(response => {
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                return response.json();
-            })
-            .then(data => {
-                hideStatus();
-                if (data.error) {
-                    showStatus(data.error, 'error');
-                    return;
-                }
-                if (!data.results || data.results.length === 0) {
-                    searchResultsContainer.innerHTML = '<p class="text-center text-gray-500 dark:text-gray-400">Sonuç bulunamadı.</p>';
-                    return;
-                }
-
-                data.results.forEach(track => {
-                    const resultItem = document.createElement('div');
-                    resultItem.className = 'result-item bg-gray-50 dark:bg-gray-700 p-4 rounded-md shadow-sm flex items-center space-x-4 border border-transparent dark:border-gray-600';
-
-                    const imageUrl = track.image || `https://placehold.co/64x64/e2e8f0/333333?text=${encodeURIComponent(track.name.substring(0,1))}`;
-                    const fallbackImageUrl = 'https://placehold.co/64x64/fecaca/991b1b?text=Hata';
-
-                    resultItem.innerHTML = `
-                        <img class="result-image w-16 h-16 rounded object-cover flex-shrink-0" src="${imageUrl}" alt="${track.name || 'Albüm Kapağı'}" onerror="this.onerror=null; this.src='${fallbackImageUrl}';">
-                        <div class="result-info flex-grow min-w-0">
-                            <h3 class="font-semibold text-lg text-gray-800 dark:text-gray-100 truncate">${track.name || 'Bilinmeyen Şarkı'}</h3>
-                            <p class="text-gray-600 dark:text-gray-400 text-sm truncate">${track.artist || 'Bilinmeyen Sanatçı'} - ${track.album || 'Bilinmeyen Albüm'}</p>
-                        </div>
-                        <button class="result-add bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 dark:from-pink-600 dark:to-rose-600 dark:hover:from-pink-500 dark:hover:to-rose-500 text-white font-medium py-2 px-4 rounded-md text-sm whitespace-nowrap flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md transform hover:-translate-y-0.5" data-id="${track.id}">Ekle</button>
-                    `;
-                    searchResultsContainer.appendChild(resultItem);
-                });
-                attachAddButtonListeners();
-            })
-            .catch(error => {
-                console.error('Arama sırasında hata:', error);
-                showStatus('Arama sırasında bir hata oluştu. Lütfen tekrar deneyin.', 'error');
-            });
-        });
-
-        function attachAddButtonListeners() {
-            document.querySelectorAll('.result-add').forEach(button => {
-                button.replaceWith(button.cloneNode(true));
-            });
-            document.querySelectorAll('.result-add').forEach(button => {
-                button.addEventListener('click', function() {
-                    const trackId = this.getAttribute('data-id');
-                    if (trackId) {
-                        addToQueue(trackId, this);
-                    } else {
-                        console.error('Track ID bulunamadı.');
-                        showStatus('Şarkı eklenirken bir hata oluştu.', 'error');
+                    if (data.tracks && data.tracks.length > 0) {
+                        data.tracks.forEach(track => {
+                            const trackDiv = document.createElement('div');
+                            trackDiv.className = 'track';
+                            trackDiv.innerHTML = `
+                                <div>
+                                    <strong>${track.name}</strong>
+                                    <br>
+                                    <small>${track.artist}</small>
+                                </div>
+                                <button class="button" onclick="addToQueue('${track.uri}')">Kuyruğa Ekle</button>
+                            `;
+                            resultsDiv.appendChild(trackDiv);
+                        });
                     }
                 });
-            });
         }
 
-        function addToQueue(trackId, buttonElement) {
-            buttonElement.disabled = true;
-            buttonElement.textContent = 'Ekleniyor...';
-            buttonElement.classList.remove('bg-gradient-to-r', 'from-pink-500', 'to-rose-500', 'hover:from-pink-600', 'hover:to-rose-600', 'dark:from-pink-600', 'dark:to-rose-600', 'dark:hover:from-pink-500', 'dark:hover:to-rose-500');
-            buttonElement.classList.add('bg-gray-400', 'dark:bg-gray-500');
-
-
-            fetch('/add-to-queue', {
+        function addToQueue(uri) {
+            fetch('/queue/add', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                body: JSON.stringify({ track_id: trackId })
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ uri })
             })
-            .then(response => {
-                 if (!response.ok) {
-                    return response.json().then(errData => { throw new Error(errData.error || `HTTP error! status: ${response.status}`); })
-                           .catch(() => { throw new Error(`HTTP error! status: ${response.status}`); });
-                 }
-                 return response.json();
-            })
+            .then(response => response.json())
             .then(data => {
-                if (data.error) {
-                    showStatus(data.error, 'error');
-                    buttonElement.disabled = false;
-                    buttonElement.textContent = 'Ekle';
-                    buttonElement.classList.remove('bg-gray-400', 'dark:bg-gray-500');
-                    buttonElement.classList.add('bg-gradient-to-r', 'from-pink-500', 'to-rose-500', 'hover:from-pink-600', 'hover:to-rose-600', 'dark:from-pink-600', 'dark:to-rose-600', 'dark:hover:from-pink-500', 'dark:hover:to-rose-500');
-
-                } else {
-                    showStatus(data.message || 'Şarkı başarıyla kuyruğa eklendi!', 'success');
-                    buttonElement.textContent = 'Eklendi';
-                    buttonElement.classList.add('cursor-not-allowed');
+                if (data.status === 'success') {
+                    location.reload();
                 }
-            })
-            .catch(error => {
-                console.error('Kuyruğa ekleme sırasında hata:', error);
-                showStatus(`Bir hata oluştu: ${error.message}`, 'error');
-                buttonElement.disabled = false;
-                buttonElement.textContent = 'Ekle';
-                buttonElement.classList.remove('bg-gray-400', 'dark:bg-gray-500');
-                buttonElement.classList.add('bg-gradient-to-r', 'from-pink-500', 'to-rose-500', 'hover:from-pink-600', 'hover:to-rose-600', 'dark:from-pink-600', 'dark:to-rose-600', 'dark:hover:from-pink-500', 'dark:hover:to-rose-500');
             });
         }
-
-        function showStatus(message, type) {
-            statusMessageDiv.textContent = message;
-            statusMessageDiv.className = 'mb-4 p-3 rounded-md text-center font-medium';
-
-            switch (type) {
-                case 'error':
-                    statusMessageDiv.classList.add('bg-red-100', 'dark:bg-red-900/40', 'text-red-700', 'dark:text-red-300');
-                    break;
-                case 'success':
-                    statusMessageDiv.classList.add('bg-pink-100', 'dark:bg-pink-900/40', 'text-pink-700', 'dark:text-pink-300');
-                    break;
-                case 'loading':
-                    statusMessageDiv.classList.add('bg-blue-100', 'dark:bg-blue-900/40', 'text-blue-700', 'dark:text-blue-300');
-                    break;
-                default:
-                    statusMessageDiv.classList.add('bg-gray-100', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
-                    break;
-            }
-            statusMessageDiv.style.display = 'block';
-
-            if (type !== 'error' && type !== 'loading') {
-                 setTimeout(hideStatus, 5000);
-            }
-        }
-
-        function hideStatus() {
-            statusMessageDiv.style.display = 'none';
-            statusMessageDiv.textContent = '';
-        }
-
     </script>
 
 </body>

@@ -59,7 +59,35 @@ def create_app():
     @app.route('/')
     def index():
         """Ana sayfayı gösterir."""
-        return redirect(url_for('admin.admin'))
+        try:
+            # Spotify bağlantı durumunu kontrol et
+            spotify_authenticated = spotify_service.is_authenticated()
+            
+            # Şu an çalan şarkı bilgisini al
+            currently_playing_info = None
+            if spotify_authenticated:
+                try:
+                    current = spotify_service.get_current_playback()
+                    if current and current.get('item'):
+                        currently_playing_info = {
+                            'name': current['item']['name'],
+                            'artist': current['item']['artists'][0]['name'],
+                            'is_playing': current['is_playing']
+                        }
+                except Exception as e:
+                    logger.error(f"Şu an çalan şarkı bilgisi alınamadı: {str(e)}")
+
+            # Kuyruk bilgisini al
+            queue = queue_service.get_queue()
+
+            return render_template('index.html',
+                                 spotify_authenticated=spotify_authenticated,
+                                 currently_playing_info=currently_playing_info,
+                                 queue=queue)
+        except Exception as e:
+            logger.error(f"Ana sayfa yüklenirken hata: {str(e)}")
+            flash('Bir hata oluştu. Lütfen tekrar deneyin.', 'error')
+            return redirect(url_for('admin.admin'))
 
     return app
 
