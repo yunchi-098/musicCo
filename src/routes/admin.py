@@ -1,8 +1,11 @@
-from flask import Blueprint, render_template, redirect, url_for, session, flash
+from flask import Blueprint, render_template, redirect, url_for, session, flash, request
+import logging
 from ..services.spotify_service import spotify_service
 from ..services.queue_service import queue_service
 from ..utils.auth import admin_login_required, load_settings
 from ..utils.formatters import format_track_info
+
+logger = logging.getLogger(__name__)
 
 admin_bp = Blueprint('admin', __name__)
 
