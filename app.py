@@ -688,12 +688,10 @@ def player_pause():
         logger.error(f"Spotify duraklatma hatası: {e}")
         
         if e.http_status in [401, 403]:
-            # Token hatası - yeniden yetkilendirme gerekli
+            # Token hatası - sadece client'ı sıfırla, token dosyasını silme
             spotify_client = None
-            if os.path.exists(TOKEN_FILE):
-                os.remove(TOKEN_FILE)
-            flash('Spotify yetkilendirme hatası. Lütfen yeniden giriş yapın.', 'danger')
-            return redirect(url_for('spotify_auth'))
+            flash('Spotify bağlantısı yenileniyor...', 'warning')
+            return redirect(url_for('admin_panel'))
             
         elif e.http_status == 404:
             flash(f'Duraklatma hatası: Cihaz bulunamadı ({e.msg})', 'warning')
