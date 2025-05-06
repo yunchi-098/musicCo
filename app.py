@@ -56,6 +56,11 @@ def create_app():
     app.register_blueprint(spotify_bp)
     app.register_blueprint(audio_bp)
 
+    @app.route('/')
+    def index():
+        """Ana sayfayı gösterir."""
+        return redirect(url_for('admin.admin'))
+
     return app
 
 if __name__ == '__main__':
