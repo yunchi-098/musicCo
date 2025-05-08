@@ -13,6 +13,9 @@ class Config:
     # File paths
     TOKEN_FILE = 'spotify_token.json'
     SETTINGS_FILE = 'settings.json'
+    BLACKLIST_FILE = 'blacklist.json'
+    QUEUE_FILE = 'queue.json'
+    HISTORY_FILE = 'history.json'
     EX_SCRIPT_PATH = 'ex.py'
     
     # Other settings
@@ -20,7 +23,25 @@ class Config:
     ALLOWED_GENRES = ['pop', 'rock', 'jazz', 'electronic', 'hip-hop', 'classical', 'r&b', 'indie', 'turkish']
     
     # Admin settings
+    ADMIN_USERNAME = 'admin'
     ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "mekan123")
+    
+    # Default settings
+    DEFAULT_SETTINGS = {
+        'max_queue_length': 100,
+        'auto_advance': True,
+        'allowed_genres': ALLOWED_GENRES,
+        'blacklist': []
+    }
+    
+    # Spotify scopes
+    SPOTIFY_SCOPES = [
+        'user-read-playback-state',
+        'user-modify-playback-state',
+        'playlist-read-private',
+        'user-read-currently-playing',
+        'user-read-recently-played'
+    ]
 
 class DevelopmentConfig(Config):
     DEBUG = True
