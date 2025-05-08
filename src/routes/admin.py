@@ -1,12 +1,11 @@
-from flask import Blueprint, request, session, redirect, url_for, jsonify, render_template
-from src.config import ADMIN_PASSWORD
+from flask import Blueprint, request, session, redirect, url_for, jsonify, render_template, current_app
 
 admin_bp = Blueprint('admin', __name__)
 
 @admin_bp.route('/admin/login', methods=['POST'])
 def login():
     password = request.form.get('password')
-    if password == ADMIN_PASSWORD:
+    if password == current_app.config['ADMIN_PASSWORD']:
         session['admin'] = True
         return jsonify({'success': True})
     return jsonify({'success': False, 'error': 'Geçersiz şifre'})
