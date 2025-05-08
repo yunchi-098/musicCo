@@ -2,7 +2,7 @@
 import os
 import json
 import logging
-from flask import Flask, render_template
+from flask import Flask, render_template, redirect, url_for
 from src.config import config
 from src.routes.admin import admin_bp
 from src.routes.player import player_bp
@@ -33,6 +33,11 @@ def create_app(config_name='development'):
     @app.route('/')
     def index():
         return render_template('index.html')
+
+    # Admin sayfasına yönlendirme
+    @app.route('/admin')
+    def admin_redirect():
+        return redirect(url_for('admin.login'))
 
     return app
 
