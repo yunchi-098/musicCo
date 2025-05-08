@@ -27,7 +27,8 @@ from src.config import (
     ADMIN_USERNAME,
     ADMIN_PASSWORD,
     DEFAULT_SETTINGS,
-    SPOTIFY_SCOPES
+    SPOTIFY_SCOPES,
+    config
 )
 
 from src.routes.admin import admin_bp
@@ -46,7 +47,7 @@ logger = logging.getLogger(__name__)
 def create_app(config_name='development'):
     """Flask uygulamasını oluşturur ve yapılandırır."""
     app = Flask(__name__)
-    app.secret_key = SECRET_KEY
+    app.config.from_object(config[config_name])
 
     # Blueprint'leri kaydet
     app.register_blueprint(admin_bp)
@@ -55,8 +56,10 @@ def create_app(config_name='development'):
     app.register_blueprint(spotify_bp)
     app.register_blueprint(audio_bp)
 
-    # Route'ları kaydet
-    register_routes(app)
+    # Ana sayfa route'u
+    @app.route('/')
+    def index():
+        return render_template('index.html')
 
     return app
 
