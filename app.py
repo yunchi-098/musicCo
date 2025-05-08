@@ -1,47 +1,38 @@
 # -*- coding: utf-8 -*-
 import os
 import json
+import threading
+import time
 import logging
-from flask import Flask, render_template, redirect, url_for
-from src.config import config
-from src.routes.admin import admin_bp
-from src.routes.player import player_bp
-from src.routes.queue import queue_bp
-from src.routes.spotify import spotify_bp
-from src.routes.audio import audio_bp
+import re # Spotify URL parse ve URI kontrolü için
+import subprocess # ex.py ve spotifyd için
+from functools import wraps
+# flash mesajları için import
+from flask import Flask, request, render_template, redirect, url_for, session, jsonify, flash
+import spotipy
+from spotipy.oauth2 import SpotifyOAuth
+import traceback # Hata ayıklama için eklendi
+
+# --- Yapılandırılabilir Ayarlar ---
+# !!! BU BİLGİLERİ KENDİ SPOTIFY DEVELOPER BİLGİLERİNİZLE DEĞİŞTİRİN !!!
+SPOTIFY_CLIENT_ID = '332e5f2c9fe44d9b9ef19c49d0caeb78' # ÖRNEK - DEĞİŞTİR
+SPOTIFY_CLIENT_SECRET = 'bbb19ad9c7d04d738f61cd0bd4f47426' # ÖRNEK - DEĞİŞTİR
+# !!! BU URI'NIN SPOTIFY DEVELOPER DASHBOARD'DAKİ REDIRECT URI İLE AYNI OLDUĞUNDAN EMİN OLUN !!!
+SPOTIFY_REDIRECT_URI = 'http://100.81.225.104:8080/callback' # ÖRNEK - DEĞİŞTİR
+SPOTIFY_SCOPE = 'user-read-playback-state user-modify-playback-state playlist-read-private user-read-currently-playing user-read-recently-played'
+
+TOKEN_FILE = 'spotify_token.json'
+SETTINGS_FILE = 'settings.json'
+BLUETOOTH_SCAN_DURATION = 12 # Saniye cinsinden Bluetooth tarama süresi
+EX_SCRIPT_PATH = 'ex.py' # ex.py betiğinin yolu
+# Kullanıcı arayüzünde gösterilecek varsayılan türler (opsiyonel)
+ALLOWED_GENRES = ['pop', 'rock', 'jazz', 'electronic', 'hip-hop', 'classical', 'r&b', 'indie', 'turkish']
+# ---------------------------------
 
 # Logging ayarları
-logging.basicConfig(
-    format='%(asctime)s - %(levelname)s - %(name)s - %(threadName)s - %(message)s',
-    level=logging.DEBUG
-)
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(threadName)s - %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-<<<<<<< HEAD
-def create_app(config_name='development'):
-    """Flask uygulamasını oluşturur ve yapılandırır."""
-    app = Flask(__name__)
-    app.config.from_object(config[config_name])
-
-    # Blueprint'leri kaydet
-    app.register_blueprint(admin_bp)
-    app.register_blueprint(player_bp)
-    app.register_blueprint(queue_bp)
-    app.register_blueprint(spotify_bp)
-    app.register_blueprint(audio_bp)
-
-    # Ana sayfa route'u
-    @app.route('/')
-    def index():
-        return render_template('index.html')
-
-    # Admin sayfasına yönlendirme
-    @app.route('/admin')
-    def admin_redirect():
-        return redirect(url_for('admin.login'))
-
-    return app
-=======
 # --- Flask Uygulamasını Başlat ---
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'varsayilan_guvensiz_anahtar_lutfen_degistirin')
@@ -51,33 +42,33 @@ app.jinja_env.globals['ALLOWED_GENRES'] = ALLOWED_GENRES
 # --- Yardımcı Fonksiyon: Spotify URI İşleme ---
 def _ensure_spotify_uri(item_id, item_type):
     """
-    Converts the given ID (or URL) into the correct Spotify URI format or returns None.
-    Always uses 'spotify:track:' for songs.
+    Verilen ID'yi (veya URL'yi) doğru Spotify URI formatına çevirir veya None döner.
+    Şarkılar için her zaman 'spotify:track:' kullanır.
     """
     if not item_id or not isinstance(item_id, str): return None
     item_id = item_id.strip()
 
-    # Normalize item_type: treat 'song' as 'track'
+    # Şarkı tipi 'song' veya 'track' olabilir, prefix hep 'track' olmalı
     actual_item_type = 'track' if item_type in ['song', 'track'] else item_type
     prefix = f"spotify:{actual_item_type}:"
 
-    # If already in the correct URI format, return it
+    # Zaten doğru URI formatındaysa direkt döndür
     if item_id.startswith(prefix): return item_id
 
-    # If it's just an ID (no ':'), add the prefix
+    # Sadece ID ise (':' içermiyorsa) prefix ekle
     if ":" not in item_id: return f"{prefix}{item_id}"
 
-    # If it's a URL, extract the ID
+    # URL ise ID'yi çıkarmayı dene
     if actual_item_type == 'track' and '/track/' in item_id:
         match = re.search(r'/track/([a-zA-Z0-9]+)', item_id)
         if match:
-            return f"spotify:track:{match.group(1)}"
+            return f"spotify:track:{match.group(1)}" # Hep track kullan
     elif actual_item_type == 'artist' and '/artist/' in item_id:
         match = re.search(r'/artist/([a-zA-Z0-9]+)', item_id)
         if match:
             return f"spotify:artist:{match.group(1)}"
 
-    # Unrecognized or invalid format
+    # Diğer durumlar geçersiz kabul edilir
     logger.warning(f"Tanınmayan veya geçersiz Spotify {actual_item_type} ID/URI formatı: {item_id}")
     return None
 
@@ -1407,14 +1398,14 @@ def api_remove_from_list():
 def api_spotify_genres():
     """Spotify'dan mevcut öneri türlerini (genre seeds) alır."""
     spotify = get_spotify_client()
-    if not spotify:
-        return jsonify({'success': False, 'error': 'Spotify bağlantısı yok.'}), 503
+    if not spotify: return jsonify({'success': False, 'error': 'Spotify bağlantısı yok.'}), 503
     try:
         genres = spotify.recommendation_genre_seeds()
         return jsonify({'success': True, 'genres': genres.get('genres', [])})
     except Exception as e:
         logger.error(f"Spotify türleri alınırken hata: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Spotify türleri alınamadı.'}), 500
+
 # Spotify ID'lerinden Detayları Getirme API'si (URI Kullanır)
 @app.route('/api/spotify/details', methods=['POST'])
 @admin_login_required
@@ -1602,8 +1593,39 @@ def start_queue_player():
     thread = threading.Thread(target=background_queue_player, name="QueuePlayerThread", daemon=True)
     thread.start()
     logger.info("Arka plan şarkı çalma/öneri görevi başlatıldı.")
->>>>>>> 67e2e2f (op)
 
 if __name__ == '__main__':
-    app = create_app()
-    app.run(host='0.0.0.0', port=8080, debug=True)
+    logger.info("=================================================")
+    logger.info("       Mekan Müzik Uygulaması Başlatılıyor       ")
+    logger.info("=================================================")
+    logger.info(f"Ayarlar Yüklendi: {SETTINGS_FILE}")
+    logger.info(f"Harici betik yolu: {EX_SCRIPT_PATH}")
+
+    if not SPOTIFY_CLIENT_ID or SPOTIFY_CLIENT_ID.startswith('SENİN_') or \
+       not SPOTIFY_CLIENT_SECRET or SPOTIFY_CLIENT_SECRET.startswith('SENİN_') or \
+       not SPOTIFY_REDIRECT_URI or SPOTIFY_REDIRECT_URI.startswith('http://YOUR_'):
+        logger.error("LÜTFEN app.py dosyasında Spotify API bilgilerinizi ayarlayın!")
+    else:
+         logger.info("Spotify API bilgileri app.py içinde tanımlı görünüyor.")
+         logger.info(f"Kullanılacak Redirect URI: {SPOTIFY_REDIRECT_URI}")
+         logger.info("!!! BU URI'nin Spotify Developer Dashboard'da kayıtlı olduğundan emin olun !!!")
+
+    if not os.path.exists(EX_SCRIPT_PATH):
+        logger.error(f"Kritik Hata: Harici betik '{EX_SCRIPT_PATH}' bulunamadı!")
+    else:
+         logger.info(f"'{EX_SCRIPT_PATH}' betiği test ediliyor...")
+         test_result = _run_command(['list_sinks'], timeout=10)
+         if test_result.get('success'): logger.info(f"'{EX_SCRIPT_PATH}' betiği başarıyla çalıştı.")
+         else: logger.warning(f"'{EX_SCRIPT_PATH}' betiği hatası: {test_result.get('error')}.")
+
+    check_token_on_startup()
+    start_queue_player()
+
+    port = int(os.environ.get('PORT', 8080))
+    logger.info(f"Uygulama arayüzüne http://<SUNUCU_IP>:{port} adresinden erişilebilir.")
+    logger.info(f"Admin paneline http://<SUNUCU_IP>:{port}/admin adresinden erişilebilir.")
+
+    # debug=True geliştirme sırasında kullanışlıdır, ancak production'da False yapın.
+    # use_reloader=False arka plan thread'inin tekrar başlamasını önler.
+    app.run(host='0.0.0.0', port=port, debug=True, use_reloader=False)
+
