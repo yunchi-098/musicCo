@@ -1,7 +1,32 @@
-from flask import Blueprint, request, jsonify, session
+from flask import Blueprint, request, jsonify, session, redirect, url_for
 from src.utils import get_spotify_client, get_spotify_auth, load_token, save_token, settings, save_settings, time_profiles, auto_advance_enabled
 
 spotify_bp = Blueprint('spotify', __name__)
+
+@spotify_bp.route('/login')
+def login():
+    """Spotify'a giriş yapar ve kullanıcıyı yönlendirir."""
+    auth_manager = get_spotify_auth()
+    if not auth_manager:
+        return jsonify({'success': False, 'error': 'Spotify kimlik doğrulama hatası'})
+    
+    auth_url = auth_manager.get_authorize_url()
+    return redirect(auth_url)
+
+@spotify_bp.route('/callback')
+def callback():
+    """Spotify callback işlemini yönetir."""
+    auth_manager = get_spotify_auth()
+    if not auth_manager:
+        return jsonify({'success': False, 'error': 'Spotify kimlik doğrulama hatası'})
+    
+    try:
+        code = request.args.get('code')
+        token = auth_manager.get_access_token(code)
+        save_token(token)
+        return redirect(url_for('index'))
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 @spotify_bp.route('/api/settings', methods=['GET'])
 def get_settings():
