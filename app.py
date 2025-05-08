@@ -64,36 +64,144 @@ def register_routes(app):
     @app.route('/')
     def index():
         """Ana sayfayı gösterir."""
+        return render_template('index.html')
+    
+    @app.route('/admin/login', methods=['POST'])
+    def admin_login():
+        password = request.form.get('password')
+        if password == app.config['ADMIN_PASSWORD']:
+            session['admin'] = True
+            return jsonify({'success': True})
+        return jsonify({'success': False, 'error': 'Geçersiz şifre'})
+    
+    @app.route('/admin/control')
+    def admin_control():
+        if not session.get('admin'):
+            return redirect(url_for('index'))
+        return render_template('admin.html')
+    
+    @app.route('/api/play', methods=['POST'])
+    def play():
+        track_uri = request.form.get('track_uri')
+        if not track_uri:
+            return jsonify({'success': False, 'error': 'Track URI gerekli'})
+        
+        track_uri = _ensure_spotify_uri(track_uri, 'track')
+        if not track_uri:
+            return jsonify({'success': False, 'error': 'Geçersiz Track URI'})
+        
+        spotify = get_spotify_client()
+        if not spotify:
+            return jsonify({'success': False, 'error': 'Spotify bağlantısı yok'})
+        
+        # Filtreleri kontrol et
+        is_allowed, message = check_filters(track_uri, spotify)
+        if not is_allowed:
+            return jsonify({'success': False, 'error': message})
+        
+        result = _run_command(['play', track_uri])
+        if result.get('success'):
+            update_time_profile(track_uri, spotify)
+        return jsonify(result)
+    
+    @app.route('/api/pause', methods=['POST'])
+    def pause():
+        return jsonify(_run_command(['pause']))
+    
+    @app.route('/api/resume', methods=['POST'])
+    def resume():
+        return jsonify(_run_command(['resume']))
+    
+    @app.route('/api/next', methods=['POST'])
+    def next_track():
+        return jsonify(_run_command(['next']))
+    
+    @app.route('/api/previous', methods=['POST'])
+    def previous_track():
+        return jsonify(_run_command(['previous']))
+    
+    @app.route('/api/volume', methods=['POST'])
+    def set_volume():
+        volume = request.form.get('volume')
+        if not volume:
+            return jsonify({'success': False, 'error': 'Ses seviyesi gerekli'})
+        return jsonify(_run_command(['volume', volume]))
+    
+    @app.route('/api/queue', methods=['GET'])
+    def get_queue():
+        with queue_lock:
+            return jsonify({'queue': queue})
+    
+    @app.route('/api/queue/add', methods=['POST'])
+    def add_to_queue():
+        track_uri = request.form.get('track_uri')
+        if not track_uri:
+            return jsonify({'success': False, 'error': 'Track URI gerekli'})
+        
+        track_uri = _ensure_spotify_uri(track_uri, 'track')
+        if not track_uri:
+            return jsonify({'success': False, 'error': 'Geçersiz Track URI'})
+        
+        spotify = get_spotify_client()
+        if not spotify:
+            return jsonify({'success': False, 'error': 'Spotify bağlantısı yok'})
+        
+        # Filtreleri kontrol et
+        is_allowed, message = check_filters(track_uri, spotify)
+        if not is_allowed:
+            return jsonify({'success': False, 'error': message})
+        
+        with queue_lock:
+            if len(queue) >= settings['max_queue_length']:
+                return jsonify({'success': False, 'error': 'Kuyruk dolu'})
+            queue.append(track_uri)
+            update_time_profile(track_uri, spotify)
+        return jsonify({'success': True})
+    
+    @app.route('/api/queue/remove', methods=['POST'])
+    def remove_from_queue():
+        index = request.form.get('index')
+        if not index:
+            return jsonify({'success': False, 'error': 'İndeks gerekli'})
+        
         try:
-            # Spotify bağlantı durumunu kontrol et
-            spotify_authenticated = spotify_service.is_authenticated()
-            
-            # Şu an çalan şarkı bilgisini al
-            currently_playing_info = None
-            if spotify_authenticated:
-                try:
-                    current = spotify_service.get_current_playback()
-                    if current and current.get('item'):
-                        currently_playing_info = {
-                            'name': current['item']['name'],
-                            'artist': current['item']['artists'][0]['name'],
-                            'is_playing': current['is_playing']
-                        }
-                except Exception as e:
-                    logger.error(f"Şu an çalan şarkı bilgisi alınamadı: {str(e)}")
-
-            # Kuyruk bilgisini al
-            queue = queue_service.get_queue()
-
-            return render_template('index.html',
-                                 spotify_authenticated=spotify_authenticated,
-                                 currently_playing_info=currently_playing_info,
-                                 queue=queue)
-        except Exception as e:
-            logger.error(f"Ana sayfa yüklenirken hata: {str(e)}")
-            flash('Bir hata oluştu. Lütfen tekrar deneyin.', 'error')
-            return redirect(url_for('admin.admin'))
+            index = int(index)
+        except ValueError:
+            return jsonify({'success': False, 'error': 'Geçersiz indeks'})
+        
+        with queue_lock:
+            if 0 <= index < len(queue):
+                queue.pop(index)
+                return jsonify({'success': True})
+            return jsonify({'success': False, 'error': 'Geçersiz indeks'})
+    
+    @app.route('/api/settings', methods=['GET'])
+    def get_settings():
+        return jsonify(settings)
+    
+    @app.route('/api/settings', methods=['POST'])
+    def update_settings():
+        if not session.get('admin'):
+            return jsonify({'success': False, 'error': 'Yetkisiz erişim'})
+        
+        new_settings = request.get_json()
+        if not new_settings:
+            return jsonify({'success': False, 'error': 'Geçersiz ayarlar'})
+        
+        settings.update(new_settings)
+        save_settings(settings)
+        return jsonify({'success': True})
+    
+    @app.route('/api/time-profiles', methods=['GET'])
+    def get_time_profiles():
+        return jsonify(time_profiles)
+    
+    @app.route('/api/auto-advance', methods=['POST'])
+    def toggle_auto_advance():
+        global auto_advance_enabled
+        auto_advance_enabled = not auto_advance_enabled
+        return jsonify({'success': True, 'auto_advance': auto_advance_enabled})
 
 if __name__ == '__main__':
     app = create_app()
-    app.run(host='0.0.0.0', port=8080, debug=True)
+    app.run(debug=True)
