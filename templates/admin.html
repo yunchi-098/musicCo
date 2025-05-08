@@ -3,59 +3,226 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Müzik Kontrol Paneli - Giriş</title>
+    <title>Admin Paneli - Müzik Çalar</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         body {
             background-color: #121212;
             color: #ffffff;
         }
-        .login-container {
-            max-width: 400px;
-            margin: 100px auto;
-            padding: 20px;
+        .admin-container {
+            max-width: 1000px;
+            margin: 2rem auto;
+            padding: 2rem;
             background-color: #282828;
-            border-radius: 8px;
+            border-radius: 10px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
-        .form-control {
-            background-color: #3e3e3e;
-            border: none;
-            color: #ffffff;
+        .settings-section {
+            background-color: #404040;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
         }
-        .form-control:focus {
-            background-color: #3e3e3e;
-            color: #ffffff;
+        .form-control, .form-select {
+            background-color: #505050;
+            border: none;
+            color: white;
+        }
+        .form-control:focus, .form-select:focus {
+            background-color: #606060;
+            color: white;
         }
         .btn-primary {
-            background-color: #1db954;
+            background-color: #1DB954;
             border: none;
         }
         .btn-primary:hover {
             background-color: #1ed760;
         }
+        .time-profile {
+            background-color: #404040;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+        .time-profile h4 {
+            color: #1DB954;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="login-container">
-            <h2 class="text-center mb-4">Müzik Kontrol Paneli</h2>
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
-                        <div class="alert alert-{{ category }}">{{ message }}</div>
-                    {% endfor %}
-                {% endif %}
-            {% endwith %}
-            <form method="POST" action="{{ url_for('admin.admin_login') }}">
-                <div class="mb-3">
-                    <label for="password" class="form-label">Şifre</label>
-                    <input type="password" class="form-control" id="password" name="password" required>
+        <div class="admin-container">
+            <h1 class="text-center mb-4">Admin Paneli</h1>
+            
+            <div class="settings-section">
+                <h3>Genel Ayarlar</h3>
+                <form id="settingsForm">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Maksimum Kuyruk Uzunluğu</label>
+                            <input type="number" class="form-control" id="maxQueueLength" min="1" max="100">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Maksimum Kullanıcı İsteği</label>
+                            <input type="number" class="form-control" id="maxUserRequests" min="1" max="20">
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Tür Filtre Modu</label>
+                            <select class="form-select" id="genreFilterMode">
+                                <option value="blacklist">Kara Liste</option>
+                                <option value="whitelist">Beyaz Liste</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Sanatçı Filtre Modu</label>
+                            <select class="form-select" id="artistFilterMode">
+                                <option value="blacklist">Kara Liste</option>
+                                <option value="whitelist">Beyaz Liste</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Tür Kara Listesi</label>
+                            <textarea class="form-control" id="genreBlacklist" rows="3" placeholder="Her satıra bir tür"></textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Tür Beyaz Listesi</label>
+                            <textarea class="form-control" id="genreWhitelist" rows="3" placeholder="Her satıra bir tür"></textarea>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Sanatçı Kara Listesi</label>
+                            <textarea class="form-control" id="artistBlacklist" rows="3" placeholder="Her satıra bir sanatçı"></textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Sanatçı Beyaz Listesi</label>
+                            <textarea class="form-control" id="artistWhitelist" rows="3" placeholder="Her satıra bir sanatçı"></textarea>
+                        </div>
+                    </div>
+                    
+                    <div class="text-center">
+                        <button type="submit" class="btn btn-primary">Ayarları Kaydet</button>
+                    </div>
+                </form>
+            </div>
+            
+            <div class="settings-section">
+                <h3>Zaman Profilleri</h3>
+                <div id="timeProfiles">
+                    <!-- Zaman profilleri buraya dinamik olarak eklenecek -->
                 </div>
-                <button type="submit" class="btn btn-primary w-100">Giriş Yap</button>
-            </form>
+            </div>
+            
+            <div class="settings-section">
+                <h3>Otomatik İlerleme</h3>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="autoAdvanceToggle">
+                    <label class="form-check-label" for="autoAdvanceToggle">Otomatik İlerlemeyi Etkinleştir</label>
+                </div>
+            </div>
         </div>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        // Ayarları yükle
+        function loadSettings() {
+            fetch('/api/settings')
+                .then(response => response.json())
+                .then(settings => {
+                    document.getElementById('maxQueueLength').value = settings.max_queue_length;
+                    document.getElementById('maxUserRequests').value = settings.max_user_requests;
+                    document.getElementById('genreFilterMode').value = settings.genre_filter_mode;
+                    document.getElementById('artistFilterMode').value = settings.artist_filter_mode;
+                    document.getElementById('genreBlacklist').value = settings.genre_blacklist.join('\n');
+                    document.getElementById('genreWhitelist').value = settings.genre_whitelist.join('\n');
+                    document.getElementById('artistBlacklist').value = settings.artist_blacklist.join('\n');
+                    document.getElementById('artistWhitelist').value = settings.artist_whitelist.join('\n');
+                });
+        }
+
+        // Zaman profillerini yükle
+        function loadTimeProfiles() {
+            fetch('/api/time-profiles')
+                .then(response => response.json())
+                .then(profiles => {
+                    const container = document.getElementById('timeProfiles');
+                    container.innerHTML = '';
+                    
+                    for (const [time, tracks] of Object.entries(profiles)) {
+                        const profileDiv = document.createElement('div');
+                        profileDiv.className = 'time-profile';
+                        profileDiv.innerHTML = `
+                            <h4>${time.charAt(0).toUpperCase() + time.slice(1)}</h4>
+                            <ul class="list-unstyled">
+                                ${tracks.map(track => `<li>${track.track_uri}</li>`).join('')}
+                            </ul>
+                        `;
+                        container.appendChild(profileDiv);
+                    }
+                });
+        }
+
+        // Ayarları kaydet
+        document.getElementById('settingsForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const settings = {
+                max_queue_length: parseInt(document.getElementById('maxQueueLength').value),
+                max_user_requests: parseInt(document.getElementById('maxUserRequests').value),
+                genre_filter_mode: document.getElementById('genreFilterMode').value,
+                artist_filter_mode: document.getElementById('artistFilterMode').value,
+                genre_blacklist: document.getElementById('genreBlacklist').value.split('\n').filter(g => g.trim()),
+                genre_whitelist: document.getElementById('genreWhitelist').value.split('\n').filter(g => g.trim()),
+                artist_blacklist: document.getElementById('artistBlacklist').value.split('\n').filter(a => a.trim()),
+                artist_whitelist: document.getElementById('artistWhitelist').value.split('\n').filter(a => a.trim())
+            };
+            
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(settings)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Ayarlar kaydedildi!');
+                } else {
+                    alert('Ayarlar kaydedilirken bir hata oluştu!');
+                }
+            });
+        });
+
+        // Otomatik ilerleme durumunu kontrol et ve değiştir
+        document.getElementById('autoAdvanceToggle').addEventListener('change', function() {
+            fetch('/api/auto-advance', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) {
+                    this.checked = !this.checked;
+                    alert('Otomatik ilerleme durumu değiştirilirken bir hata oluştu!');
+                }
+            });
+        });
+
+        // Sayfa yüklendiğinde ayarları ve zaman profillerini yükle
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSettings();
+            loadTimeProfiles();
+        });
+    </script>
 </body>
 </html>

@@ -1,4 +1,3 @@
-#şarkı blackliste ekleme # <-- This comment seems irrelevant now but kept as original
 # -*- coding: utf-8 -*-
 import os
 import json
@@ -44,7 +43,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def create_app():
+def create_app(config_name='development'):
     """Flask uygulamasını oluşturur ve yapılandırır."""
     app = Flask(__name__)
     app.secret_key = SECRET_KEY
@@ -56,6 +55,12 @@ def create_app():
     app.register_blueprint(spotify_bp)
     app.register_blueprint(audio_bp)
 
+    # Route'ları kaydet
+    register_routes(app)
+
+    return app
+
+def register_routes(app):
     @app.route('/')
     def index():
         """Ana sayfayı gösterir."""
@@ -88,8 +93,6 @@ def create_app():
             logger.error(f"Ana sayfa yüklenirken hata: {str(e)}")
             flash('Bir hata oluştu. Lütfen tekrar deneyin.', 'error')
             return redirect(url_for('admin.admin'))
-
-    return app
 
 if __name__ == '__main__':
     app = create_app()
