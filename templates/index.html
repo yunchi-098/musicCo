@@ -3,225 +3,224 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Müzik Kontrol Paneli</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script>
-        tailwind.config = {
-            darkMode: 'media'
-        }
-    </script>
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #f0f0f0;
-        }
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-        }
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        .section {
-            background: white;
-            padding: 20px;
-            margin-bottom: 20px;
-            border-radius: 5px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .button {
-            background-color: #1DB954;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            cursor: pointer;
-            margin: 5px;
-        }
-        .button:hover {
-            background-color: #1ed760;
-        }
-        .search-box {
-            width: 100%;
-            padding: 10px;
-            margin-bottom: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-        }
-        .track {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px;
-            border-bottom: 1px solid #eee;
-        }
-        .track:last-child {
-            border-bottom: none;
-        }
-        .alert {
-            padding: 10px;
-            margin-bottom: 10px;
-            border-radius: 5px;
-        }
-        .alert-warning {
-            background-color: #fff3cd;
-            border: 1px solid #ffeeba;
-            color: #856404;
-        }
-        .admin-link {
-            text-align: center;
-            margin-top: 20px;
-        }
-        .admin-link a {
-            color: #666;
-            text-decoration: none;
-        }
-        .admin-link a:hover {
-            text-decoration: underline;
-        }
-        button, input, select, body, div, a {
-            transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out, border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
-        }
-        ::placeholder { color: #9ca3af; opacity: 1; }
-        .dark ::placeholder { color: #6b7280; }
-        :-ms-input-placeholder { color: #9ca3af; }
-        .dark :-ms-input-placeholder { color: #6b7280; }
-        ::-ms-input-placeholder { color: #9ca3af; }
-        .dark ::-ms-input-placeholder { color: #6b7280; }
-
-        .gradient-text {
-          background-image: linear-gradient(to right, #ec4899, #f472b6);
-          -webkit-background-clip: text;
-          background-clip: text;
-          color: transparent;
-        }
-        .dark .gradient-text {
-           background-image: linear-gradient(to right, #f9a8d4, #fbcfe8);
-        }
-    </style>
+    <title>Müzik Çalar</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
-<body class="bg-gray-100 dark:bg-gray-900 min-h-screen flex items-center justify-center p-4">
-
-    <div class="container">
-        <div class="header">
-            <h1>Müzik Kontrol Paneli</h1>
-        </div>
-
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category }}">{{ message }}</div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-
-        {% if not spotify_authenticated %}
-            <div class="section">
-                <div class="alert alert-warning">
-                    Spotify hesabınıza bağlanmanız gerekiyor.
-                    <a href="{{ url_for('spotify.login') }}" class="button">Spotify'a Bağlan</a>
-                </div>
+<body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">Müzik Çalar</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('admin.login') }}">Yönetici Girişi</a>
+                    </li>
+                </ul>
             </div>
-        {% else %}
-            <!-- Şu an çalan şarkı -->
-            <div class="section">
-                <h2>Şu An Çalan</h2>
-                {% if currently_playing_info %}
-                    <div class="track">
-                        <div>
-                            <h3>{{ currently_playing_info.name }}</h3>
-                            <p>{{ currently_playing_info.artist }}</p>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h4>Şarkı Ekle</h4>
+                    </div>
+                    <div class="card-body">
+                        <form id="addSongForm">
+                            <div class="mb-3">
+                                <label for="songUrl" class="form-label">Spotify Şarkı URL'si</label>
+                                <input type="text" class="form-control" id="songUrl" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Ekle</button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <h4>Çalma Listesi</h4>
+                    </div>
+                    <div class="card-body">
+                        <div id="queueList" class="list-group">
+                            <!-- Şarkı listesi buraya gelecek -->
                         </div>
                     </div>
-                {% else %}
-                    <p>Şu an çalan şarkı yok.</p>
-                {% endif %}
+                </div>
             </div>
 
-            <!-- Arama -->
-            <div class="section">
-                <h2>Şarkı Ara ve Ekle</h2>
-                <input type="text" class="search-box" id="searchInput" placeholder="Şarkı, sanatçı veya çalma listesi ara...">
-                <button class="button" onclick="search()">Ara</button>
-                <div id="searchResults"></div>
-            </div>
-
-            <!-- Kuyruk -->
-            <div class="section">
-                <h2>Çalma Kuyruğu</h2>
-                {% if queue %}
-                    {% for track in queue %}
-                        <div class="track">
-                            <div>
-                                <strong>{{ track.name }}</strong>
-                                <br>
-                                <small>{{ track.artist }}</small>
-                            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h4>Kontroller</h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-primary" onclick="play()">
+                                <i class="fas fa-play"></i> Oynat
+                            </button>
+                            <button class="btn btn-secondary" onclick="pause()">
+                                <i class="fas fa-pause"></i> Duraklat
+                            </button>
+                            <button class="btn btn-info" onclick="resume()">
+                                <i class="fas fa-play"></i> Devam Et
+                            </button>
+                            <button class="btn btn-warning" onclick="next()">
+                                <i class="fas fa-forward"></i> Sonraki
+                            </button>
+                            <button class="btn btn-warning" onclick="previous()">
+                                <i class="fas fa-backward"></i> Önceki
+                            </button>
                         </div>
-                    {% endfor %}
-                {% else %}
-                    <p>Kuyruk boş.</p>
-                {% endif %}
+                        <div class="mt-3">
+                            <label for="volume" class="form-label">Ses Seviyesi</label>
+                            <input type="range" class="form-range" id="volume" min="0" max="100" value="50">
+                        </div>
+                    </div>
+                </div>
             </div>
-        {% endif %}
-
-        <div class="admin-link">
-            <a href="{{ url_for('admin.admin') }}">Yönetici Girişi</a>
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Arama
-        function search() {
-            const query = document.getElementById('searchInput').value;
-            if (!query) return;
-
-            fetch(`/search?q=${encodeURIComponent(query)}`)
-                .then(response => response.json())
-                .then(data => {
-                    const resultsDiv = document.getElementById('searchResults');
-                    resultsDiv.innerHTML = '';
-
-                    if (data.tracks && data.tracks.length > 0) {
-                        data.tracks.forEach(track => {
-                            const trackDiv = document.createElement('div');
-                            trackDiv.className = 'track';
-                            trackDiv.innerHTML = `
-                                <div>
-                                    <strong>${track.name}</strong>
-                                    <br>
-                                    <small>${track.artist}</small>
-                                </div>
-                                <button class="button" onclick="addToQueue('${track.uri}')">Kuyruğa Ekle</button>
-                            `;
-                            resultsDiv.appendChild(trackDiv);
-                        });
-                    }
+        // Şarkı ekleme
+        document.getElementById('addSongForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const songUrl = document.getElementById('songUrl').value;
+            
+            try {
+                const response = await fetch('/api/queue/add', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `track_uri=${encodeURIComponent(songUrl)}`
                 });
-        }
-
-        function addToQueue(uri) {
-            fetch('/queue/add', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ uri })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    location.reload();
+                
+                const data = await response.json();
+                if (data.success) {
+                    alert('Şarkı eklendi!');
+                    document.getElementById('songUrl').value = '';
+                    updateQueue();
+                } else {
+                    alert(data.error || 'Bir hata oluştu!');
                 }
-            });
-        }
-    </script>
+            } catch (error) {
+                alert('Bir hata oluştu!');
+            }
+        });
 
+        // Ses seviyesi kontrolü
+        document.getElementById('volume').addEventListener('change', async (e) => {
+            const volume = e.target.value;
+            try {
+                await fetch('/api/volume', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `volume=${volume}`
+                });
+            } catch (error) {
+                alert('Ses seviyesi ayarlanamadı!');
+            }
+        });
+
+        // Çalma listesini güncelle
+        async function updateQueue() {
+            try {
+                const response = await fetch('/api/queue');
+                const data = await response.json();
+                const queueList = document.getElementById('queueList');
+                queueList.innerHTML = '';
+                
+                data.queue.forEach((track, index) => {
+                    const item = document.createElement('div');
+                    item.className = 'list-group-item d-flex justify-content-between align-items-center';
+                    item.innerHTML = `
+                        <span>${track}</span>
+                        <button class="btn btn-danger btn-sm" onclick="removeFromQueue(${index})">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    `;
+                    queueList.appendChild(item);
+                });
+            } catch (error) {
+                console.error('Çalma listesi güncellenemedi:', error);
+            }
+        }
+
+        // Şarkıyı listeden kaldır
+        async function removeFromQueue(index) {
+            try {
+                const response = await fetch('/api/queue/remove', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `index=${index}`
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    updateQueue();
+                } else {
+                    alert(data.error || 'Şarkı kaldırılamadı!');
+                }
+            } catch (error) {
+                alert('Bir hata oluştu!');
+            }
+        }
+
+        // Kontrol fonksiyonları
+        async function play() {
+            try {
+                await fetch('/api/play', { method: 'POST' });
+            } catch (error) {
+                alert('Şarkı oynatılamadı!');
+            }
+        }
+
+        async function pause() {
+            try {
+                await fetch('/api/pause', { method: 'POST' });
+            } catch (error) {
+                alert('Şarkı duraklatılamadı!');
+            }
+        }
+
+        async function resume() {
+            try {
+                await fetch('/api/resume', { method: 'POST' });
+            } catch (error) {
+                alert('Şarkı devam ettirilemedi!');
+            }
+        }
+
+        async function next() {
+            try {
+                await fetch('/api/next', { method: 'POST' });
+            } catch (error) {
+                alert('Sonraki şarkıya geçilemedi!');
+            }
+        }
+
+        async function previous() {
+            try {
+                await fetch('/api/previous', { method: 'POST' });
+            } catch (error) {
+                alert('Önceki şarkıya geçilemedi!');
+            }
+        }
+
+        // Sayfa yüklendiğinde çalma listesini güncelle
+        updateQueue();
+    </script>
 </body>
 </html>
