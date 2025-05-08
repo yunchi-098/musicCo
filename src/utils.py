@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import subprocess
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
@@ -22,18 +23,45 @@ def _run_command(command):
     except Exception as e:
         return {'success': False, 'error': str(e)}
 
-def get_spotify_client():
-    """Spotify API istemcisini oluşturur ve döndürür."""
+def get_spotify_auth():
+    """Spotify kimlik doğrulama yöneticisini oluşturur."""
     try:
-        auth_manager = SpotifyOAuth(
+        return SpotifyOAuth(
             client_id=current_app.config['SPOTIFY_CLIENT_ID'],
             client_secret=current_app.config['SPOTIFY_CLIENT_SECRET'],
             redirect_uri=current_app.config['SPOTIFY_REDIRECT_URI'],
             scope=current_app.config['SPOTIFY_SCOPE']
         )
+    except Exception as e:
+        return None
+
+def get_spotify_client():
+    """Spotify API istemcisini oluşturur ve döndürür."""
+    try:
+        auth_manager = get_spotify_auth()
+        if not auth_manager:
+            return None
         return spotipy.Spotify(auth_manager=auth_manager)
     except Exception as e:
         return None
+
+def load_token():
+    """Spotify token'ını dosyadan yükler."""
+    try:
+        if os.path.exists(current_app.config['TOKEN_FILE']):
+            with open(current_app.config['TOKEN_FILE'], 'r') as f:
+                return json.load(f)
+    except:
+        pass
+    return None
+
+def save_token(token):
+    """Spotify token'ını dosyaya kaydeder."""
+    try:
+        with open(current_app.config['TOKEN_FILE'], 'w') as f:
+            json.dump(token, f)
+    except:
+        pass
 
 def _ensure_spotify_uri(uri_or_url, expected_type='track'):
     """URL veya URI'yi Spotify URI'sine dönüştürür."""
@@ -113,4 +141,4 @@ def save_settings(settings):
         with open(current_app.config['SETTINGS_FILE'], 'w') as f:
             json.dump(settings, f)
     except:
-        pass 
+        pass
