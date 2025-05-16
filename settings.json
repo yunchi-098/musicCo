@@ -1,1 +1,14 @@
-{"max_queue_length": 20, "max_user_requests": 280, "active_device_id": "b06b5f6028e43ecb92fcc3fab13d047329692ebe", "active_genres": ["pop", "rock", "jazz", "electronic", "hip-hop", "classical", "r&b", "indie"], "genre_filter_mode": "blacklist", "artist_filter_mode": "blacklist", "genre_blacklist": [], "genre_whitelist": [], "artist_blacklist": [], "artist_whitelist": []}
+{
+    "max_queue_length": 20,
+    "max_user_requests": 280,
+    "active_device_id": "b06b5f6028e43ecb92fcc3fab13d047329692ebe",
+    "genre_filter_mode": "blacklist",
+    "artist_filter_mode": "blacklist",
+    "song_filter_mode": "blacklist",
+    "genre_blacklist": [],
+    "genre_whitelist": [],
+    "artist_blacklist": [],
+    "artist_whitelist": [],
+    "track_blacklist": [],
+    "track_whitelist": []
+}
