@@ -118,7 +118,7 @@
                                         <div class="mt-1">
                                             {% if currently_playing_info.id %}
                                             <button class="btn btn-danger btn-sm quick-block-btn" title="Bu Şarkıyı Kara Listeye Ekle"
-                                                    onclick="quickBlockItem(this, 'song', '{{ currently_playing_info.id }}')">
+                                                    onclick="quickBlockItem(this, 'track', '{{ currently_playing_info.id }}')">
                                                 <i class="fas fa-ban"></i> Şarkı
                                             </button>
                                             {% endif %}
@@ -208,7 +208,7 @@
                                     <div class="mt-1">
                                         {% if song.id %}
                                         <button class="btn btn-danger btn-sm quick-block-btn" title="Bu Şarkıyı Kara Listeye Ekle"
-                                                onclick="quickBlockItem(this, 'song', '{{ song.id }}')">
+                                                onclick="quickBlockItem(this, 'track', '{{ song.id }}')">
                                             <i class="fas fa-ban"></i> Şarkı
                                         </button>
                                         {% endif %}
@@ -290,12 +290,12 @@
                              <div class="form-group">
                                  <label class="mb-0">Şarkı Filtresi:</label>
                                  <div class="custom-control custom-radio custom-control-inline filter-mode-switch">
-                                     <input type="radio" id="song_mode_blacklist" name="song_filter_mode" value="blacklist" class="custom-control-input" {% if settings.song_filter_mode == 'blacklist' %}checked{% endif %}>
-                                     <label class="custom-control-label" for="song_mode_blacklist">Kara Liste</label>
+                                     <input type="radio" id="track_mode_blacklist" name="track_filter_mode" value="blacklist" class="custom-control-input" {% if settings.track_filter_mode == 'blacklist' %}checked{% endif %}>
+                                     <label class="custom-control-label" for="track_mode_blacklist">Kara Liste</label>
                                  </div>
                                  <div class="custom-control custom-radio custom-control-inline filter-mode-switch">
-                                     <input type="radio" id="song_mode_whitelist" name="song_filter_mode" value="whitelist" class="custom-control-input" {% if settings.song_filter_mode == 'whitelist' %}checked{% endif %}>
-                                     <label class="custom-control-label" for="song_mode_whitelist">Beyaz Liste</label>
+                                     <input type="radio" id="track_mode_whitelist" name="track_filter_mode" value="whitelist" class="custom-control-input" {% if settings.track_filter_mode == 'whitelist' %}checked{% endif %}>
+                                     <label class="custom-control-label" for="track_mode_whitelist">Beyaz Liste</label>
                                  </div>
                              </div>
                              <button type="submit" class="btn btn-primary btn-block mt-3">
@@ -406,7 +406,30 @@
                     </div>
                 </div>
                 <div class="col-md-4">
-                  
+                    <div class="card h-100">
+                        <div class="card-header">
+                            Şarkı Filtresi (<span id="track-mode-display">{{ settings.track_filter_mode|replace('blacklist', 'Kara Liste')|replace('whitelist', 'Beyaz Liste') }}</span>)
+                        </div>
+                        <div class="card-body">
+                            <ul class="filter-list" id="track-filter-list"></ul>
+                            <div class="input-group input-group-sm mt-2">
+                                <input type="text" class="form-control" id="track-add-input" placeholder="Spotify Şarkı ID Ekle...">
+                                <div class="input-group-append">
+                                    <button class="btn btn-outline-success" type="button" onclick="addFilterItem('track')">Ekle</button>
+                                </div>
+                            </div>
+                            <hr>
+                            <label>Arama ile Ekle:</label>
+                            <div class="input-group input-group-sm">
+                                <input type="text" class="form-control" id="track-search-input" placeholder="Şarkı Ara...">
+                                <div class="input-group-append">
+                                    <button class="btn btn-outline-primary" type="button" onclick="searchSpotify('track')">Ara</button>
+                                </div>
+                            </div>
+                            <div class="search-results-filter list-group list-group-flush mt-2" id="track-search-results"></div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -559,12 +582,12 @@
             listElement.html('');
             if (list.length === 0) { listElement.html('<li class="text-muted text-center">Liste boş.</li>'); return; }
             const idsToFetch = [];
-            if (filterType === 'artist' || filterType === 'song') { list.forEach(item => { if (!spotifyNameCache[item] && item.startsWith(`spotify:${filterType}:`)) { idsToFetch.push(item); } }); }
+            if (filterType === 'artist' || filterType === 'track') { list.forEach(item => { if (!spotifyNameCache[item] && item.startsWith(`spotify:${filterType}:`)) { idsToFetch.push(item); } }); }
             const fetchNamesAndRender = () => {
                 let html = '';
                 list.forEach(item => {
                     let displayName = item; let displayId = '';
-                    if (filterType === 'artist' || filterType === 'song') { displayName = spotifyNameCache[item] || item; if(spotifyNameCache[item]) { displayId = `<span class="item-id">${item}</span>`; } }
+                    if (filterType === 'artist' || filterType === 'track') { displayName = spotifyNameCache[item] || item; if(spotifyNameCache[item]) { displayId = `<span class="item-id">${item}</span>`; } }
                     else { displayName = item; }
                     html += `<li><span><span class="item-name">${displayName}</span>${displayId}</span><button class="btn btn-xs btn-outline-danger" onclick="removeFilterItem('${filterType}', '${mode}', '${item}')"><i class="fas fa-times"></i></button></li>`;
                 });
@@ -579,7 +602,7 @@
                 });
             } else { fetchNamesAndRender(); }
         }
-        function renderAllFilterLists() { renderFilterList('genre'); renderFilterList('artist'); renderFilterList('song'); }
+        function renderAllFilterLists() { renderFilterList('genre'); renderFilterList('artist'); renderFilterList('track'); }
         $('input[name$="_filter_mode"]').on('change', function() {
             const filterType = this.name.replace('_filter_mode', ''); const newMode = this.value;
             console.log(`Filter mode changed for ${filterType} to ${newMode}`);
@@ -623,7 +646,7 @@
             });
         }
         function searchSpotify(searchType) {
-            const inputIdPrefix = (searchType === 'track') ? 'song' : searchType;
+            const inputIdPrefix = (searchType === 'track') ? 'track' : searchType;
             const inputElement = $(`#${inputIdPrefix}-search-input`); const query = inputElement.val().trim();
             const resultsContainer = $(`#${inputIdPrefix}-search-results`);
             const buttonElement = inputElement.next('.input-group-append').find('button');
@@ -641,7 +664,7 @@
                                 const itemId = item.id; const itemName = item.name || 'İsimsiz'; let itemDetails = '';
                                 if (searchType === 'track') { itemDetails = item.artist || 'Bilinmeyen Sanatçı'; }
                                 else if (searchType === 'artist') { itemDetails = (Array.isArray(item.genres) && item.genres.length > 0) ? item.genres.join(', ') : 'Tür bilgisi yok'; }
-                                const filterItemType = (searchType === 'track') ? 'song' : 'artist';
+                                const filterItemType = (searchType === 'track') ? 'track' : 'artist';
                                 // ID'nin URI formatında olduğundan emin ol (backend zaten yapıyor ama frontend'de de yapalım)
                                 const itemUri = itemId.startsWith(`spotify:${filterItemType}:`) ? itemId : `spotify:${filterItemType}:${itemId}`;
                                 html += `<a href="#" class="list-group-item list-group-item-action list-group-item-light py-1 px-2" onclick="addFilterItemFromSearch(event, '${filterItemType}', '${itemUri}', '${itemName.replace(/'/g, "\\'")}')"><small><strong>${itemName}</strong><br>${itemDetails || ''}</small></a>`;
@@ -691,7 +714,7 @@
              .always(function() { setButtonLoading(buttonElement[0], false); });
         }
         function quickBlockItem(buttonElement, itemType, identifier) {
-            const typeText = itemType === 'song' ? 'Şarkıyı' : 'Sanatçıyı';
+            const typeText = itemType === 'track' ? 'Şarkıyı' : 'Sanatçıyı';
             // ID'nin URI formatında olduğundan emin ol
             const itemUri = identifier.startsWith(`spotify:${itemType}:`) ? identifier : `spotify:${itemType}:${identifier}`;
             if (!confirm(`${typeText} (${spotifyNameCache[itemUri] || itemUri}) kara listeye eklemek istediğinizden emin misiniz?`)) { return; } // İsim göster
@@ -718,8 +741,8 @@
         $(document).ready(function() {
             refreshAudioSinkList(); refreshBluetoothList(0);
             const initialArtistIds = [...(currentSettings.artist_blacklist || []), ...(currentSettings.artist_whitelist || [])];
-            const initialSongIds = [...(currentSettings.song_blacklist || []), ...(currentSettings.song_whitelist || [])];
-            const allIdsToFetch = { artist: [...new Set(initialArtistIds)], track: [...new Set(initialSongIds)] };
+            const initialTrackIds = [...(currentSettings.track_blacklist || []), ...(currentSettings.track_whitelist || [])];
+            const allIdsToFetch = { artist: [...new Set(initialArtistIds)], track: [...new Set(initialTrackIds)] };
             const fetchPromises = [];
             for (const type in allIdsToFetch) {
                 const ids = allIdsToFetch[type];
