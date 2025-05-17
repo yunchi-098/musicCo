@@ -377,14 +377,6 @@
                                 </div>
                             </div>
                             <hr>
-                            <label>Mevcut Türlerden Ekle:</label>
-                            <div class="input-group input-group-sm">
-                                <input type="text" class="form-control" id="genre-search-input" placeholder="Tür Ara...">
-                                <div class="input-group-append">
-                                    <button class="btn btn-outline-primary" type="button" onclick="searchGenres()">Ara</button>
-                                </div>
-                            </div>
-                            <div class="search-results-filter list-group list-group-flush mt-2" id="genre-search-results"></div>
                         </div>
                     </div>
                 </div>
@@ -414,30 +406,7 @@
                     </div>
                 </div>
                 <div class="col-md-4">
-                    <div class="card h-100">
-                        <div class="card-header">
-                            Şarkı Filtresi (<span id="song-mode-display">{{ settings.song_filter_mode|replace('blacklist', 'Kara Liste')|replace('whitelist', 'Beyaz Liste') }}</span>)
-                        </div>
-                        <div class="card-body">
-                            <ul class="filter-list" id="song-filter-list"></ul>
-                            <div class="input-group input-group-sm mt-2">
-                                <input type="text" class="form-control" id="song-add-input" placeholder="Spotify Şarkı ID Ekle...">
-                                <div class="input-group-append">
-                                    <button class="btn btn-outline-success" type="button" onclick="addFilterItem('song')">Ekle</button>
-                                </div>
-                            </div>
-                             <hr>
-                            <label>Arama ile Ekle:</label>
-                            <div class="input-group input-group-sm">
-                                <input type="text" class="form-control" id="song-search-input" placeholder="Şarkı Ara...">
-                                <div class="input-group-append">
-                                    <button class="btn btn-outline-primary" type="button" onclick="searchSpotify('track')">Ara</button>
-                                </div>
-                            </div>
-                            <div class="search-results-filter list-group list-group-flush mt-2" id="song-search-results"></div>
-                        </div>
-                    </div>
-                </div>
+                  
             </div>
         </div>
 

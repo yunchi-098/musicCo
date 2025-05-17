@@ -7,6 +7,7 @@ import logging
 import re # Spotify URL parse ve URI kontrolü için
 import subprocess # ex.py ve spotifyd için
 from functools import wraps
+import requests
 # flash mesajları için import
 from flask import Flask, request, render_template, redirect, url_for, session, jsonify, flash
 import spotipy
@@ -18,8 +19,8 @@ import traceback # Hata ayıklama için eklendi
 SPOTIFY_CLIENT_ID = '332e5f2c9fe44d9b9ef19c49d0caeb78' # ÖRNEK - DEĞİŞTİR
 SPOTIFY_CLIENT_SECRET = 'bbb19ad9c7d04d738f61cd0bd4f47426' # ÖRNEK - DEĞİŞTİR
 # !!! BU URI'NIN SPOTIFY DEVELOPER DASHBOARD'DAKİ REDIRECT URI İLE AYNI OLDUĞUNDAN EMİN OLUN !!!
-SPOTIFY_REDIRECT_URI = 'http://100.81.225.104:8080/callback' # ÖRNEK - DEĞİŞTİR
-SPOTIFY_SCOPE = 'user-read-playback-state user-modify-playback-state playlist-read-private user-read-currently-playing user-read-recently-played'
+SPOTIFY_REDIRECT_URI = 'http://192.168.36.186:8080/callback' # ÖRNEK - DEĞİŞTİR
+SPOTIFY_SCOPE = 'user-read-playback-state user-read-private user-modify-playback-state playlist-read-private user-read-currently-playing user-read-recently-played'
 
 TOKEN_FILE = 'spotify_token.json'
 SETTINGS_FILE = 'settings.json'
@@ -1392,20 +1393,52 @@ def api_remove_from_list():
             return jsonify({'success': False, 'error': f"'{item}' listede bulunamadı.", 'updated_list': target_list}), 404
     except Exception as e: logger.error(f"Listeden çıkarma hatası ({list_key}, {item}): {e}", exc_info=True); return jsonify({'success': False, 'error': f"Listeden öğe çıkarılırken hata: {e}"}), 500
 
-# Spotify Türlerini Getirme API'si
 @app.route('/api/spotify/genres')
 @admin_login_required
 def api_spotify_genres():
-    """Spotify'dan mevcut öneri türlerini (genre seeds) alır."""
-    spotify = get_spotify_client()
+    """
+    Spotify API'den /recommendations/available-genre-seeds endpoint'i ile
+    tüm türleri alır ve 'q' query parametresine göre filtreler.
+    """
+    # Spotify Access Token'ını al
+    spotify = get_spotify_client()              
     if not spotify:
         return jsonify({'success': False, 'error': 'Spotify bağlantısı yok.'}), 503
+    
+    # get_spotify_client() sadece token döndürüyorsa, token'ı al
+    # Örnek: token = spotify.token (veya get_spotify_token())
+    # Burada varsayalım get_spotify_token() adında fonksiyon var
+    
     try:
-        genres = spotify.recommendation_genre_seeds()
-        return jsonify({'success': True, 'genres': genres.get('genres', [])})
+        token = load_token()  # Bu fonksiyon senin token alma mekanizmana göre değişir
+        
+        headers = {
+            "Authorization": f"Bearer {token}"
+        }
+        
+        response = requests.get(
+            "https://api.spotify.com/v1/recommendations/available-genre-seeds",
+            headers=headers
+        )
+        response.raise_for_status()
+        data = response.json()
+        genres = data.get('genres', [])
+        
+        query = request.args.get('q', '').lower()
+        if query:
+            filtered_genres = [g for g in genres if query in g.lower()]
+        else:
+            filtered_genres = genres
+        
+        return jsonify({'success': True, 'genres': filtered_genres})
+    
+    except requests.HTTPError as http_err:
+        logger.error(f"Spotify API HTTP hatası: {http_err}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Spotify API çağrısı başarısız oldu.'}), 502
     except Exception as e:
         logger.error(f"Spotify türleri alınırken hata: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Spotify türleri alınamadı.'}), 500
+
 # Spotify ID'lerinden Detayları Getirme API'si (URI Kullanır)
 @app.route('/api/spotify/details', methods=['POST'])
 @admin_login_required
@@ -1481,6 +1514,30 @@ def api_spotify_details():
     except Exception as e:
         logger.error(f"Error fetching Spotify details (type: {actual_id_type}): {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Spotify detayları alınırken bilinmeyen bir hata oluştu.'}), 500
+# Bu örnek, tür filtresinin doğru çalışıp çalışmadığını hızlıca test etmek için minimal bir Flask rotası sunar
+@app.route('/debug-genre-filter/<artist_id>')
+def debug_genre_filter(artist_id):
+    spotify = get_spotify_client()
+    if not spotify:
+        return jsonify({'error': 'Spotify bağlantısı yok'}), 503
+
+    uri = _ensure_spotify_uri(artist_id, 'artist')
+    if not uri:
+        return jsonify({'error': 'Geçersiz sanatçı ID'}), 400
+
+    try:
+        artist_info = spotify.artist(uri)
+        genres = [g.lower() for g in artist_info.get('genres', [])]
+
+        return jsonify({
+            'artist_name': artist_info.get('name'),
+            'genres': genres,
+            'filter_mode': settings.get('genre_filter_mode'),
+            'genre_blacklist': settings.get('genre_blacklist'),
+            'genre_whitelist': settings.get('genre_whitelist'),
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 # --- Arka Plan Şarkı Çalma İş Parçacığı ---
