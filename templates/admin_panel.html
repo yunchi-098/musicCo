@@ -289,14 +289,7 @@
                              </div>
                              <div class="form-group">
                                  <label class="mb-0">Şarkı Filtresi:</label>
-                                 <div class="custom-control custom-radio custom-control-inline filter-mode-switch">
-                                     <input type="radio" id="track_mode_blacklist" name="track_filter_mode" value="blacklist" class="custom-control-input" {% if settings.track_filter_mode == 'blacklist' %}checked{% endif %}>
-                                     <label class="custom-control-label" for="track_mode_blacklist">Kara Liste</label>
-                                 </div>
-                                 <div class="custom-control custom-radio custom-control-inline filter-mode-switch">
-                                     <input type="radio" id="track_mode_whitelist" name="track_filter_mode" value="whitelist" class="custom-control-input" {% if settings.track_filter_mode == 'whitelist' %}checked{% endif %}>
-                                     <label class="custom-control-label" for="track_mode_whitelist">Beyaz Liste</label>
-                                 </div>
+                                 
                              </div>
                              <button type="submit" class="btn btn-primary btn-block mt-3">
                                  Ayarları Kaydet
@@ -407,26 +400,31 @@
                 </div>
                 <div class="col-md-4">
                     <div class="card h-100">
-                        <div class="card-header">
-                            Şarkı Filtresi (<span id="track-mode-display">{{ settings.track_filter_mode|replace('blacklist', 'Kara Liste')|replace('whitelist', 'Beyaz Liste') }}</span>)
+                        <div class="card-header bg-danger text-white">
+                            <h5 class="mb-0">Engellenmiş Şarkılar (Kara Liste)</h5>
                         </div>
                         <div class="card-body">
-                            <ul class="filter-list" id="track-filter-list"></ul>
-                            <div class="input-group input-group-sm mt-2">
-                                <input type="text" class="form-control" id="track-add-input" placeholder="Spotify Şarkı ID Ekle...">
+                            <div class="input-group input-group-sm mb-3">
+                                <input type="text" class="form-control" id="blocked-track-search-input" placeholder="Engellenmiş Şarkılarda Ara...">
                                 <div class="input-group-append">
-                                    <button class="btn btn-outline-success" type="button" onclick="addFilterItem('track')">Ekle</button>
+                                    <button class="btn btn-outline-secondary" type="button" onclick="searchBlockedTracks()"><i class="fas fa-search"></i> Ara</button>
                                 </div>
                             </div>
-                            <hr>
-                            <label>Arama ile Ekle:</label>
-                            <div class="input-group input-group-sm">
-                                <input type="text" class="form-control" id="track-search-input" placeholder="Şarkı Ara...">
-                                <div class="input-group-append">
-                                    <button class="btn btn-outline-primary" type="button" onclick="searchSpotify('track')">Ara</button>
-                                </div>
+                            <div class="table-responsive">
+                                <table class="table table-hover table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Şarkı Adı</th>
+                                            <th>Sanatçı</th>
+                                            <th>Spotify ID</th>
+                                            <th>İşlemler</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="blocked-tracks-list">
+                                        <!-- JavaScript ile doldurulacak -->
+                                    </tbody>
+                                </table>
                             </div>
-                            <div class="search-results-filter list-group list-group-flush mt-2" id="track-search-results"></div>
                         </div>
                     </div>
                 </div>
@@ -602,7 +600,7 @@
                 });
             } else { fetchNamesAndRender(); }
         }
-        function renderAllFilterLists() { renderFilterList('genre'); renderFilterList('artist'); renderFilterList('track'); }
+        function renderAllFilterLists() { renderFilterList('genre'); renderFilterList('artist'); }
         $('input[name$="_filter_mode"]').on('change', function() {
             const filterType = this.name.replace('_filter_mode', ''); const newMode = this.value;
             console.log(`Filter mode changed for ${filterType} to ${newMode}`);
@@ -755,6 +753,162 @@
             const scanDurationTextElement = document.getElementById('scan-duration-text');
             if (scanDurationTextElement) { scanDurationTextElement.textContent = '{{ BLUETOOTH_SCAN_DURATION | default(12) }}'; }
         });
+
+        function renderBlockedTracksList() {
+            const blockedTracks = currentSettings.track_blacklist || [];
+            const listElement = $('#blocked-tracks-list');
+            listElement.empty(); // Listeyi temizle
+
+            if (blockedTracks.length === 0) {
+                listElement.html('<tr><td colspan="4" class="text-center">Engellenmiş şarkı bulunmuyor.</td></tr>');
+                return;
+            }
+
+            // İsimleri almak için API'ye istek at
+            const idsToFetch = blockedTracks.filter(id => !spotifyNameCache[id]);
+            if (idsToFetch.length > 0) {
+                $.ajax({
+                    url: '/api/spotify/details',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ ids: idsToFetch, type: 'track' }),
+                    success: function(data) {
+                        if (data.success && data.details) {
+                            $.extend(spotifyNameCache, data.details);
+                            updateBlockedTracksTable();
+                        }
+                    },
+                    error: function(xhr) {
+                         console.error("Error fetching blocked track details:", xhr);
+                         // Hata durumunda sadece ID'leri göstererek tabloyu güncelle
+                         updateBlockedTracksTable();
+                    }
+                });
+            } else {
+                updateBlockedTracksTable();
+            }
+
+            function updateBlockedTracksTable() {
+                let html = '';
+                blockedTracks.forEach(trackId => {
+                    // API'den gelen format "Şarkı Adı - Sanatçı Adı"
+                    const fullInfo = spotifyNameCache[trackId] || trackId; // Cache'te yoksa ID'yi kullan
+                    let trackName = 'Bilinmiyor';
+                    let artistName = 'Bilinmiyor';
+
+                    if (fullInfo && typeof fullInfo === 'string') {
+                         // Birleşik stringi ayrıştırmayı dene
+                         const parts = fullInfo.split(' - ');
+                         if (parts.length >= 2) {
+                              trackName = parts.shift(); // İlk parçayı şarkı adı al
+                              artistName = parts.join(' - '); // Geri kalanları sanatçı al
+                         } else {
+                              trackName = fullInfo; // Ayrılamıyorsa tamamını şarkı adı al
+                         }
+                    } else if (fullInfo && typeof fullInfo === 'object') {
+                         // API'den gelen veri {name: '...', artist: '...'} formatındaysa
+                         trackName = fullInfo.name || 'Bilinmiyor';
+                         artistName = fullInfo.artist || 'Bilinmiyor';
+                    }
+
+                    html += `
+                        <tr>
+                            <td>${escapeHTML(trackName)}</td>
+                            <td>${escapeHTML(artistName)}</td>
+                            <td><small class="text-muted">${escapeHTML(trackId)}</small></td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-danger remove-blocked-track" data-track-id="${escapeHTML(trackId)}">
+                                    <i class="fas fa-trash"></i> Kaldır
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                });
+                listElement.html(html);
+            }
+        }
+
+        // Engellenmiş şarkılar listesinde arama fonksiyonu
+        function searchBlockedTracks() {
+             const input = document.getElementById('blocked-track-search-input');
+             const filter = input.value.toLowerCase();
+             const tableBody = document.getElementById('blocked-tracks-list');
+             const rows = tableBody.getElementsByTagName('tr');
+
+             for (let i = 0; i < rows.length; i++) {
+                 let cells = rows[i].getElementsByTagName('td');
+                 let textContent = '';
+                 // Şarkı Adı (index 0), Sanatçı (index 1) ve Spotify ID (index 2) sütunlarını kontrol et
+                 if (cells.length > 2) { // Başlık satırını atlamak için
+                      textContent = (cells[0].textContent + ' ' + cells[1].textContent + ' ' + cells[2].textContent).toLowerCase();
+                 }
+
+                 if (textContent.includes(filter)) {
+                     rows[i].style.display = '';
+                 } else {
+                     rows[i].style.display = 'none';
+                 }
+             }
+         }
+
+        // Kaldırma butonlarına event listener ekleme (delegate edilmiş)
+        $(document).on('click', '.remove-blocked-track', function() {
+            const trackId = $(this).data('track-id');
+            if (trackId) {
+                removeFromBlacklist(trackId);
+            }
+        });
+
+        function removeFromBlacklist(trackId) {
+            const trackName = spotifyNameCache[trackId] || trackId; // Cache'te yoksa ID göster
+            let displayTrackName = trackName;
+            if (typeof trackName === 'string' && trackName.includes(' - ')) {
+                 displayTrackName = trackName.split(' - ')[0]; // Onay mesajında sadece şarkı adını göster
+            }
+
+            if (!confirm(`"${displayTrackName}" şarkısını kara listeden kaldırmak istediğinizden emin misiniz?`)) {
+                return;
+            }
+
+            $.ajax({
+                url: '/api/remove-from-list',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    filter_type: 'track',
+                    list_type: 'blacklist',
+                    item: trackId
+                }),
+                success: function(data) {
+                    if (data.success) {
+                        showFlashMessage('Şarkı kara listeden kaldırıldı.', 'success');
+                        currentSettings.track_blacklist = data.updated_list;
+                        delete spotifyNameCache[trackId]; // Cache'ten sil
+                        renderBlockedTracksList(); // Listeyi yeniden çiz
+                        // renderFilterList('track'); // İlgili diğer listeyi de güncelle (ör: Beyaz Liste görünümü varsa)
+                    } else {
+                        showFlashMessage('Hata: ' + (data.error || 'Şarkı kaldırılamadı.'), 'danger');
+                    }
+                },
+                error: function(xhr) {
+                    let errorMsg = 'Sunucu hatası.';
+                    try {
+                        if (xhr.responseJSON && xhr.responseJSON.error) {
+                            errorMsg = xhr.responseJSON.error;
+                        }
+                    } catch(e) {}
+                    showFlashMessage(`Hata: ${errorMsg}`, 'danger');
+                }
+            });
+        }
+
+        // HTML özel karakterlerini temizlemek için yardımcı fonksiyon
+        function escapeHTML(str) {
+            if (typeof str !== 'string') return str;
+            const div = document.createElement('div');
+            div.appendChild(document.createTextNode(str));
+            return div.innerHTML;
+        }
     </script>
 
 </body>

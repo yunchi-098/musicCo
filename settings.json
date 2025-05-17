@@ -12,7 +12,10 @@
     "genre_whitelist": [],
     "artist_blacklist": [],
     "artist_whitelist": [],
-    "track_blacklist": [],
+    "track_blacklist": [
+        "spotify:track:1FAERur0SW0KB38aii9tPF",
+        "spotify:track:2zN40CUuOiq4dEpCYwnPqQ"
+    ],
     "track_whitelist": [],
     "track_filter_mode": "blacklist"
 }
