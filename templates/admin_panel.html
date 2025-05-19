@@ -137,18 +137,26 @@
                                 </div>
                             </div>
                             <div class="text-center mt-auto">
-                                {% if currently_playing_info.is_playing %}
-                                    <form action="{{ url_for('player_pause') }}" method="GET" style="display: inline;">
-                                         <button type="submit" class="btn btn-warning btn-block mb-2"><i class="fas fa-pause"></i> Durdur & Otomatik Geçişi Kapat</button>
-                                     </form>
-                                {% else %}
-                                    <form action="{{ url_for('player_resume') }}" method="GET" style="display: inline;">
-                                         <button type="submit" class="btn btn-success btn-block mb-2"><i class="fas fa-play"></i> Devam Et & Otomatik Geçişi Aç</button>
-                                     </form>
-                                {% endif %}
-                                <form action="{{ url_for('player_skip') }}" method="GET" style="display: inline;">
-                                    <button type="submit" class="btn btn-info btn-block"><i class="fas fa-forward"></i> Sıradaki Şarkıya Geç</button>
-                                </form>
+                                <div class="btn-group" role="group">
+                                    {% if currently_playing_info.is_playing %}
+                                        <form action="{{ url_for('player_pause') }}" method="GET" style="display: inline;">
+                                            <button type="submit" class="btn btn-warning" title="Durdur & Otomatik Geçişi Kapat">
+                                                <i class="fas fa-pause"></i>
+                                            </button>
+                                        </form>
+                                    {% else %}
+                                        <form action="{{ url_for('player_resume') }}" method="GET" style="display: inline;">
+                                            <button type="submit" class="btn btn-success" title="Devam Et & Otomatik Geçişi Aç">
+                                                <i class="fas fa-play"></i>
+                                            </button>
+                                        </form>
+                                    {% endif %}
+                                    <form action="{{ url_for('player_skip') }}" method="GET" style="display: inline;">
+                                        <button type="submit" class="btn btn-info" title="Sıradaki Şarkıya Geç">
+                                            <i class="fas fa-forward"></i>
+                                        </button>
+                                    </form>
+                                </div>
                             </div>
                         {% else %}
                             <p class="text-muted mb-0 text-center">Şu anda aktif bir şarkı çalınmıyor veya bilgi alınamadı.</p>
