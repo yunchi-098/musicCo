@@ -287,10 +287,6 @@
                                      <label class="custom-control-label" for="artist_mode_whitelist">Beyaz Liste</label>
                                  </div>
                              </div>
-                             <div class="form-group">
-                                 <label class="mb-0">Şarkı Filtresi:</label>
-                                 
-                             </div>
                              <button type="submit" class="btn btn-primary btn-block mt-3">
                                  Ayarları Kaydet
                              </button>
@@ -416,7 +412,6 @@
                                         <tr>
                                             <th>Şarkı Adı</th>
                                             <th>Sanatçı</th>
-                                            <th>Spotify ID</th>
                                             <th>İşlemler</th>
                                         </tr>
                                     </thead>
@@ -909,6 +904,37 @@
             div.appendChild(document.createTextNode(str));
             return div.innerHTML;
         }
+        function loadBlockedTracks() {
+            $.getJSON('/get-blocked-tracks', function(response) {
+                if (response.success && Array.isArray(response.blocked_tracks)) {
+                    let tbody = $('#blocked-tracks-list');
+                    tbody.empty();
+                    response.blocked_tracks.forEach(track => {
+                        const row = `
+                            <tr>
+                                <td>${track.name}</td>
+                                <td>${track.artist}</td>
+                                <td>
+                                    <form method="POST" action="/remove-blocked-track" style="display:inline;">
+                                        <input type="hidden" name="track_uri" value="${track.uri}">
+                                        <button type="submit" class="btn btn-sm btn-danger"><i class="fas fa-trash"></i> Kaldır</button>
+                                    </form>
+                                </td>
+                            </tr>`;
+                        tbody.append(row);
+                    });
+                } else {
+                    $('#blocked-tracks-list').html('<tr><td colspan="3" class="text-muted text-center">Engellenmiş şarkı bulunamadı.</td></tr>');
+                }
+            }).fail(function() {
+                $('#blocked-tracks-list').html('<tr><td colspan="3" class="text-danger text-center">Engellenmiş şarkılar alınamadı.</td></tr>');
+            });
+        }
+
+
+        $(document).ready(function() {
+            loadBlockedTracks();
+        });
     </script>
 
 </body>

@@ -1288,6 +1288,42 @@ def api_restart_spotifyd():
     return jsonify(response_data), status_code
 
 # --- Filtre Yönetimi API Rotaları (Güncellendi) ---
+@app.route('/remove-blocked-track', methods=['POST'])
+@admin_login_required
+def remove_blocked_track():
+    track_uri = request.form.get('track_uri')
+    global settings
+    if track_uri and track_uri in settings.get('track_blacklist', []):
+        settings['track_blacklist'].remove(track_uri)
+        save_settings(settings)
+        flash(f"Şarkı kara listeden çıkarıldı: {track_uri}", "success")
+    else:
+        flash("Şarkı URI geçersiz veya kara listede değil.", "warning")
+    return redirect(url_for('admin_panel'))
+
+@app.route('/get-blocked-tracks')
+@admin_login_required
+def get_blocked_tracks():
+    global settings
+    spotify = get_spotify_client()
+    if not spotify:
+        return jsonify({'success': False, 'error': 'Spotify bağlantısı yok.'}), 500
+
+    blocked_tracks = []
+    for uri in settings.get('track_blacklist', []):
+        try:
+            track = spotify.track(uri)
+            track_name = track.get('name', '?')
+            artist_name = ', '.join([a.get('name') for a in track.get('artists', [])])
+            blocked_tracks.append({
+                'name': track_name,
+                'artist': artist_name,
+                'uri': uri
+            })
+        except Exception as e:
+            continue  # Hatalı track'leri atla
+
+    return jsonify({'success': True, 'blocked_tracks': blocked_tracks})
 
 @app.route('/api/block', methods=['POST'])
 @admin_login_required
