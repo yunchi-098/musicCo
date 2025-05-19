@@ -750,24 +750,33 @@ def player_pause():
 @app.route('/player/resume')
 @admin_login_required
 def player_resume():
-    global auto_advance_enabled; spotify = get_spotify_client()
-    active_spotify_connect_device_id = settings.get('active_device_id')
-    if not spotify: flash('Spotify bağlantısı yok!', 'danger'); return redirect(url_for('admin_panel'))
+    spotify = get_spotify_client()
+    if not spotify:
+        flash('Spotify bağlantısı yok!', 'danger')
+        return redirect(url_for('admin_panel'))
+
     try:
-        logger.info(f"Admin: Sürdürme isteği (Cihaz: {active_spotify_connect_device_id or '?'}).")
-        spotify.start_playback(device_id=active_spotify_connect_device_id)
-        auto_advance_enabled = True; logger.info("Admin: Otomatik geçiş SÜRDÜRÜLDÜ.")
-        flash('Müzik sürdürüldü ve otomatik sıraya geçiş açıldı.', 'success')
-    except spotipy.SpotifyException as e:
-        logger.error(f"Spotify sürdürme hatası: {e}")
-        if e.http_status == 401 or e.http_status == 403: flash('Spotify yetkilendirme hatası.', 'danger');
-        global spotify_client; spotify_client = None;
-        if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
-        elif e.http_status == 404: flash(f'Sürdürme hatası: Cihaz bulunamadı ({e.msg})', 'warning')
-        elif e.reason == 'NO_ACTIVE_DEVICE': flash('Aktif Spotify cihazı bulunamadı!', 'warning')
-        elif e.reason == 'PREMIUM_REQUIRED': flash('Bu işlem için Spotify Premium gerekli.', 'warning')
-        else: flash(f'Spotify sürdürme hatası: {e.msg}', 'danger')
-    except Exception as e: logger.error(f"Sürdürme sırasında genel hata: {e}", exc_info=True); flash('Müzik sürdürülürken bir hata oluştu.', 'danger')
+        spotify.start_playback()
+        flash('Çalma devam ediyor ve otomatik geçiş açık.', 'success')
+    except Exception as e:
+        flash(f'Çalma başlatılamadı: {str(e)}', 'danger')
+
+    return redirect(url_for('admin_panel'))
+
+@app.route('/player/skip')
+@admin_login_required
+def player_skip():
+    spotify = get_spotify_client()
+    if not spotify:
+        flash('Spotify bağlantısı yok!', 'danger')
+        return redirect(url_for('admin_panel'))
+
+    try:
+        spotify.next_track()
+        flash('Sıradaki şarkıya geçildi.', 'success')
+    except Exception as e:
+        flash(f'Şarkı değiştirilemedi: {str(e)}', 'danger')
+
     return redirect(url_for('admin_panel'))
 
 # --- Diğer Rotalar ---
