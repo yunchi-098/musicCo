@@ -16,6 +16,7 @@ import traceback # Hata ayıklama için eklendi
 from datetime import datetime
 from pymongo import MongoClient
 from bson.objectid import ObjectId
+import sqlite3
 
 # --- Yapılandırılabilir Ayarlar ---
 # !!! BU BİLGİLERİ KENDİ SPOTIFY DEVELOPER BİLGİLERİNİZLE DEĞİŞTİRİN !!!
@@ -1646,37 +1647,43 @@ def start_queue_player():
     thread.start()
     logger.info("Arka plan şarkı çalma/öneri görevi başlatıldı.")
 
-# MongoDB bağlantısı
-client = MongoClient('mongodb://localhost:27017/')
-db = client['musicco']
-played_tracks = db['played_tracks']
+# SQLite veritabanı bağlantısı
+DB_PATH = 'musicco.db'
 
-# Çalınan şarkı modeli
-class PlayedTrack:
-    def __init__(self, track_id, track_name, artist_name, played_at=None):
-        self.track_id = track_id
-        self.track_name = track_name
-        self.artist_name = artist_name
-        self.played_at = played_at or datetime.utcnow()
-
-    def to_dict(self):
-        return {
-            'track_id': self.track_id,
-            'track_name': self.track_name,
-            'artist_name': self.artist_name,
-            'played_at': self.played_at
-        }
+def init_db():
+    """Veritabanını ve tabloları oluşturur"""
+    if not os.path.exists(DB_PATH):
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('''
+            CREATE TABLE played_tracks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                track_id TEXT NOT NULL,
+                track_name TEXT NOT NULL,
+                artist_name TEXT NOT NULL,
+                played_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        conn.commit()
+        conn.close()
+        logger.info("SQLite veritabanı oluşturuldu.")
 
 def save_played_track(track_info):
-    """Çalınan şarkıyı MongoDB'ye kaydeder"""
+    """Çalınan şarkıyı SQLite'a kaydeder"""
     try:
-        track = PlayedTrack(
-            track_id=track_info.get('id'),
-            track_name=track_info.get('name'),
-            artist_name=track_info.get('artist')
-        )
-        played_tracks.insert_one(track.to_dict())
-        logger.info(f"Şarkı kaydedildi: {track.track_name} - {track.artist_name}")
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('''
+            INSERT INTO played_tracks (track_id, track_name, artist_name)
+            VALUES (?, ?, ?)
+        ''', (
+            track_info.get('id'),
+            track_info.get('name'),
+            track_info.get('artist')
+        ))
+        conn.commit()
+        conn.close()
+        logger.info(f"Şarkı kaydedildi: {track_info.get('name')} - {track_info.get('artist')}")
     except Exception as e:
         logger.error(f"Şarkı kaydedilirken hata oluştu: {str(e)}")
 
@@ -1684,14 +1691,23 @@ def save_played_track(track_info):
 @admin_login_required
 def get_played_tracks():
     try:
-        # Son 100 çalınan şarkıyı getir
-        tracks = list(played_tracks.find().sort('played_at', -1).limit(100))
-        
-        # ObjectId'leri string'e çevir
-        for track in tracks:
-            track['_id'] = str(track['_id'])
-            track['played_at'] = track['played_at'].strftime('%Y-%m-%d %H:%M:%S')
-        
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('''
+            SELECT track_id, track_name, artist_name, played_at
+            FROM played_tracks
+            ORDER BY played_at DESC
+            LIMIT 100
+        ''')
+        tracks = []
+        for row in c.fetchall():
+            tracks.append({
+                'track_id': row[0],
+                'track_name': row[1],
+                'artist_name': row[2],
+                'played_at': row[3]
+            })
+        conn.close()
         return jsonify({
             'success': True,
             'tracks': tracks
