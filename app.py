@@ -1291,22 +1291,28 @@ def api_disconnect_bluetooth():
 @app.route('/api/switch-to-alsa', methods=['POST'])
 @admin_login_required
 def api_switch_to_alsa():
-    logger.info("API: ALSA ses çıkışına geçiş isteniyor (ex.py aracılığıyla)...")
-    result = _run_command(['switch_to_alsa'])
-    status_code = 200 if result.get('success') else 500
-    final_result = result.copy()
-    # Başarılıysa güncel listeleri de döndür
-    if result.get('success'):
-         sinks_list_res = _run_command(['list_sinks'])
-         bt_list_res = _run_command(['discover_bluetooth', '--duration', '0'])
-         if sinks_list_res.get('success'):
-              final_result['sinks'] = sinks_list_res.get('sinks', [])
-              final_result['default_sink_name'] = sinks_list_res.get('default_sink_name')
-         if bt_list_res.get('success'):
-              all_bt = bt_list_res.get('devices', [])
-              final_result['bluetooth_devices'] = [d for d in all_bt if d.get('paired')]
-         else: final_result['bluetooth_devices'] = []
-    return jsonify(final_result), status_code
+    """Varsayılan ses çıkışını ALSA uyumlu bir cihaza değiştir"""
+    try:
+        # ALSA cihazına geçiş yap
+        result = _run_command(['python3', EX_SCRIPT_PATH, 'switch-to-alsa'])
+        if result.get('success'):
+            return jsonify({
+                'success': True,
+                'message': 'ALSA ses çıkışına geçiş başarılı.',
+                'sinks': result.get('sinks', []),
+                'default_sink_name': result.get('default_sink_name')
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'ALSA geçişi başarısız.')
+            })
+    except Exception as e:
+        logger.error(f"ALSA geçişi sırasında hata: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': f'ALSA geçişi sırasında hata: {str(e)}'
+        })
 
 @app.route('/api/restart-spotifyd', methods=['POST'])
 @admin_login_required
@@ -1333,15 +1339,17 @@ def api_restart_spotifyd():
 @app.route('/remove-blocked-track', methods=['POST'])
 @admin_login_required
 def remove_blocked_track():
+    """Engellenmiş bir şarkıyı kaldır"""
     track_uri = request.form.get('track_uri')
+    if not track_uri:
+        return jsonify({'success': False, 'error': 'Şarkı URI\'si gerekli'})
+
     global settings
     if track_uri and track_uri in settings.get('track_blacklist', []):
         settings['track_blacklist'].remove(track_uri)
         save_settings(settings)
-        flash(f"Şarkı kara listeden çıkarıldı: {track_uri}", "success")
-    else:
-        flash("Şarkı URI geçersiz veya kara listede değil.", "warning")
-    return redirect(url_for('admin_panel'))
+        return jsonify({'success': True, 'message': 'Şarkı kara listeden kaldırıldı'})
+    return jsonify({'success': False, 'error': 'Şarkı kara listede bulunamadı'})
 
 @app.route('/get-blocked-tracks')
 @admin_login_required
