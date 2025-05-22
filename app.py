@@ -417,16 +417,6 @@ def admin_login_required(f):
     return decorated_function
 
 
-@app.route('/api/restart-spotifyd', methods=['POST'])
-@admin_login_required
-def api_restart_spotifyd():
-    """Spotifyd servisini yeniden başlat"""
-    success, message = restart_spotifyd()
-    return jsonify({
-        'success': success,
-        'message': message
-    })
-
 # --- Zaman Profili ve Öneri Fonksiyonları ---
 def get_current_time_profile():
     hour = time.localtime().tm_hour
