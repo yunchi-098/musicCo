@@ -426,11 +426,10 @@
                                         <tr>
                                             <th>Şarkı Adı</th>
                                             <th>Sanatçı</th>
-                                            <th>Tür</th>
-                                            <th>Çalınma Zamanı</th>
+                                            <th>İşlemler</th>
                                         </tr>
                                     </thead>
-                                    <tbody id="played-tracks-list">
+                                    <tbody id="blocked-tracks-list">
                                         <!-- JavaScript ile doldurulacak -->
                                     </tbody>
                                 </table>
@@ -811,7 +810,7 @@
 
         function renderBlockedTracksList() {
             const blockedTracks = currentSettings.track_blacklist || [];
-            const listElement = $('#played-tracks-list');
+            const listElement = $('#blocked-tracks-list');
             listElement.empty(); // Listeyi temizle
 
             if (blockedTracks.length === 0) {
@@ -870,7 +869,6 @@
                         <tr>
                             <td>${escapeHTML(trackName)}</td>
                             <td>${escapeHTML(artistName)}</td>
-                            <td><small class="text-muted">${escapeHTML(trackId)}</small></td>
                             <td>
                                 <button class="btn btn-sm btn-outline-danger remove-blocked-track" data-track-id="${escapeHTML(trackId)}">
                                     <i class="fas fa-trash"></i> Kaldır
@@ -887,7 +885,7 @@
         function searchBlockedTracks() {
              const input = document.getElementById('blocked-track-search-input');
              const filter = input.value.toLowerCase();
-             const tableBody = document.getElementById('played-tracks-list');
+             const tableBody = document.getElementById('blocked-tracks-list');
              const rows = tableBody.getElementsByTagName('tr');
 
              for (let i = 0; i < rows.length; i++) {
@@ -967,7 +965,7 @@
         function loadBlockedTracks() {
             $.getJSON('/get-blocked-tracks', function(response) {
                 if (response.success && Array.isArray(response.blocked_tracks)) {
-                    let tbody = $('#played-tracks-list');
+                    let tbody = $('#blocked-tracks-list');
                     tbody.empty();
                     response.blocked_tracks.forEach(track => {
                         const row = `
@@ -984,7 +982,7 @@
                         tbody.append(row);
                     });
                 } else {
-                    $('#played-tracks-list').html('<tr><td colspan="3" class="text-muted text-center">Engellenmiş şarkı bulunamadı.</td></tr>');
+                    $('#blocked-tracks-list').html('<tr><td colspan="3" class="text-muted text-center">Engellenmiş şarkı bulunamadı.</td></tr>');
                 }
             }).fail(function() {
                 $('#played-tracks-list').html('<tr><td colspan="3" class="text-danger text-center">Engellenmiş şarkılar alınamadı.</td></tr>');

@@ -1655,19 +1655,16 @@ def init_db():
     try:
         logger.info("Veritabanı başlatılıyor...")
         conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        # played_tracks tablosunu oluştur
-        cursor.execute('''CREATE TABLE IF NOT EXISTS played_tracks
+        c = conn.cursor()
+        c.execute('''CREATE TABLE IF NOT EXISTS played_tracks
                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
                      track_id TEXT,
                      track_name TEXT,
                      artist_name TEXT,
                      genre TEXT,
                      played_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-        
         conn.commit()
-        logger.info("Veritabanı başarıyla başlatıldı")
+        logging.info("Veritabanı başarıyla başlatıldı")
     except sqlite3.Error as e:
         logging.error(f"Veritabanı başlatma hatası: {e}")
     finally:
@@ -1681,55 +1678,47 @@ def save_played_track(track_info):
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
-        
-        # Son çalınan şarkıyı kontrol et
-        cursor.execute('''
-            SELECT track_id, played_at FROM played_tracks 
-            ORDER BY played_at DESC LIMIT 1
-        ''')
+        # Son çalınan şarkıyı al
+        cursor.execute('''SELECT track_id, played_at FROM played_tracks 
+                         ORDER BY played_at DESC LIMIT 1''')
         last_track = cursor.fetchone()
         
-        # Eğer son çalınan şarkı aynıysa ve son 5 dakika içinde çalındıysa kaydetme
-        if last_track and last_track[0] == track_info.get('id'):
-            last_played_time = datetime.strptime(last_track[1], '%Y-%m-%d %H:%M:%S')
-            time_diff = datetime.now() - last_played_time
-            if time_diff.total_seconds() < 300:  # 5 dakika
-                logger.info("Bu şarkı zaten son 5 dakika içinde kaydedilmiş, tekrar kaydedilmiyor.")
+        if last_track:
+            last_track_id, last_played_at = last_track
+            last_played_at = datetime.strptime(last_played_at, '%Y-%m-%d %H:%M:%S')
+            time_diff = datetime.now() - last_played_at
+            
+            # Aynı şarkı 5 dakika içinde tekrar çalındıysa kaydetme
+            if last_track_id == track_info.get('id') and time_diff.total_seconds() < 300:
+                logging.info(f"Şarkı son 5 dakika içinde çalındı, kaydedilmiyor: {track_info.get('name', 'Bilinmeyen')}")
                 return
         
-        # Yeni şarkıyı kaydet
-        cursor.execute('''
-            INSERT INTO played_tracks (track_id, track_name, artist_name)
-            VALUES (?, ?, ?)
-        ''', (
-            track_info.get('id', ''),
-            track_info.get('name', 'Bilinmeyen'),
-            track_info.get('artist', 'Bilinmeyen')
-        ))
-        
-        conn.commit()
-        logger.info("Şarkı başarıyla kaydedildi.")
-        
-    except sqlite3.Error as e:
-        logger.error(f"Şarkı kaydedilirken hata oluştu: {str(e)}")
-        # Tablo yoksa oluşturmayı dene
-        if "no such table" in str(e).lower():
-            logger.info("Tablo bulunamadı, yeniden oluşturuluyor...")
-            init_db()
-            # Tekrar kaydetmeyi dene
+        # Şarkının türünü al
+        genre = "Bilinmiyor"
+        if track_info.get('id'):
             try:
-                cursor.execute('''
-                    INSERT INTO played_tracks (track_id, track_name, artist_name)
-                    VALUES (?, ?, ?)
-                ''', (
-                    track_info.get('id', ''),
-                    track_info.get('name', 'Bilinmeyen'),
-                    track_info.get('artist', 'Bilinmeyen')
-                ))
-                conn.commit()
-                logger.info("Şarkı başarıyla kaydedildi (ikinci deneme).")
-            except sqlite3.Error as e2:
-                logger.error(f"İkinci kaydetme denemesi de başarısız: {str(e2)}")
+                spotify = get_spotify_client()
+                if spotify:
+                    track = spotify.track(track_info['id'])
+                    if track and track.get('artists'):
+                        artist = spotify.artist(track['artists'][0]['id'])
+                        if artist and artist.get('genres'):
+                            genre = artist['genres'][0] if artist['genres'] else "Bilinmiyor"
+            except Exception as e:
+                logging.error(f"Tür bilgisi alınamadı: {e}")
+        
+        # Şarkıyı kaydet
+        cursor.execute('''INSERT INTO played_tracks 
+                         (track_id, track_name, artist_name, genre) 
+                         VALUES (?, ?, ?, ?)''',
+                      (track_info.get('id', 'Bilinmiyor'),
+                       track_info.get('name', 'Bilinmiyor'),
+                       track_info.get('artist', 'Bilinmiyor'),
+                       genre))
+        conn.commit()
+        logging.info(f"Şarkı kaydedildi: {track_info.get('name', 'Bilinmiyor')} - {genre}")
+    except sqlite3.Error as e:
+        logging.error(f"Şarkı kaydetme hatası: {e}")
     finally:
         if conn:
             conn.close()
