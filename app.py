@@ -1706,6 +1706,8 @@ def init_db():
 def save_played_track(track_info):
     """Çalınan şarkıyı veritabanına kaydet"""
     try:
+        logger.info(f"Kaydedilecek şarkı bilgileri: {track_info}")
+        
         # Son çalınan şarkıyı kontrol et
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -1725,9 +1727,15 @@ def save_played_track(track_info):
             current_time = datetime.now()
             time_diff = current_time - last_played_time
             
-            # Eğer aynı şarkı son 5 dakika içinde çalındıysa kaydetme
-            if last_track_id == track_info.get('track_id') and time_diff.total_seconds() < 18000:
-                logger.info(f"Şarkı son 5 dakika içinde çalındı, tekrar kaydedilmeyecek: {track_info.get('track_name', 'Bilinmeyen')}")
+            # track_id'yi doğru şekilde al
+            current_track_id = track_info.get('id') or track_info.get('track_id', '')
+            logger.info(f"Son çalınan şarkı ID: {last_track_id}, Şimdiki şarkı ID: {current_track_id}")
+            logger.info(f"Son çalınma zamanı: {last_played_time}, Şimdiki zaman: {current_time}")
+            logger.info(f"Geçen süre (saniye): {time_diff.total_seconds()}")
+            
+            # Eğer aynı şarkı son 5 saat içinde çalındıysa kaydetme
+            if last_track_id == current_track_id and time_diff.total_seconds() < 18000:
+                logger.info(f"Şarkı son 5 saat içinde çalındı, tekrar kaydedilmeyecek: {track_info.get('name', track_info.get('track_name', 'Bilinmeyen'))}")
                 return
         
         # Yeni şarkıyı kaydet
@@ -1735,13 +1743,13 @@ def save_played_track(track_info):
             INSERT INTO played_tracks (track_id, track_name, artist_name, played_at)
             VALUES (?, ?, ?, ?)
         """, (
-            track_info.get('track_id', ''),
-            track_info.get('track_name', 'Bilinmeyen'),
-            track_info.get('artist_name', 'Bilinmeyen'),
+            track_info.get('id') or track_info.get('track_id', ''),
+            track_info.get('name') or track_info.get('track_name', 'Bilinmeyen'),
+            track_info.get('artist') or track_info.get('artist_name', 'Bilinmeyen'),
             datetime.now().isoformat()
         ))
         conn.commit()
-        logger.info(f"Şarkı kaydedildi: {track_info.get('track_name', 'Bilinmeyen')}")
+        logger.info(f"Şarkı başarıyla kaydedildi: {track_info.get('name', track_info.get('track_name', 'Bilinmeyen'))}")
         
     except sqlite3.Error as e:
         logger.error(f"Şarkı kaydedilirken SQLite hatası: {e}")
@@ -1754,13 +1762,13 @@ def save_played_track(track_info):
                     INSERT INTO played_tracks (track_id, track_name, artist_name, played_at)
                     VALUES (?, ?, ?, ?)
                 """, (
-                    track_info.get('track_id', ''),
-                    track_info.get('track_name', 'Bilinmeyen'),
-                    track_info.get('artist_name', 'Bilinmeyen'),
+                    track_info.get('id') or track_info.get('track_id', ''),
+                    track_info.get('name') or track_info.get('track_name', 'Bilinmeyen'),
+                    track_info.get('artist') or track_info.get('artist_name', 'Bilinmeyen'),
                     datetime.now().isoformat()
                 ))
                 conn.commit()
-                logger.info(f"Tablo oluşturuldu ve şarkı kaydedildi: {track_info.get('track_name', 'Bilinmeyen')}")
+                logger.info(f"Tablo oluşturuldu ve şarkı kaydedildi: {track_info.get('name', track_info.get('track_name', 'Bilinmeyen'))}")
             except sqlite3.Error as retry_e:
                 logger.error(f"İkinci denemede şarkı kaydedilirken SQLite hatası: {retry_e}")
     finally:
