@@ -1721,36 +1721,20 @@ def get_played_tracks():
 
 if __name__ == '__main__':
     logger.info("=================================================")
-    logger.info("       Mekan Müzik Uygulaması Başlatılıyor       ")
+    logger.info("Mekan Müzik Sistemi başlatılıyor...")
     logger.info("=================================================")
-    logger.info(f"Ayarlar Yüklendi: {SETTINGS_FILE}")
-    logger.info(f"Harici betik yolu: {EX_SCRIPT_PATH}")
 
-    if not SPOTIFY_CLIENT_ID or SPOTIFY_CLIENT_ID.startswith('SENİN_') or \
-       not SPOTIFY_CLIENT_SECRET or SPOTIFY_CLIENT_SECRET.startswith('SENİN_') or \
-       not SPOTIFY_REDIRECT_URI or SPOTIFY_REDIRECT_URI.startswith('http://YOUR_'):
-        logger.error("LÜTFEN app.py dosyasında Spotify API bilgilerinizi ayarlayın!")
-    else:
-         logger.info("Spotify API bilgileri app.py içinde tanımlı görünüyor.")
-         logger.info(f"Kullanılacak Redirect URI: {SPOTIFY_REDIRECT_URI}")
-         logger.info("!!! BU URI'nin Spotify Developer Dashboard'da kayıtlı olduğundan emin olun !!!")
+    # Veritabanını başlat
+    init_db()
 
-    if not os.path.exists(EX_SCRIPT_PATH):
-        logger.error(f"Kritik Hata: Harici betik '{EX_SCRIPT_PATH}' bulunamadı!")
-    else:
-         logger.info(f"'{EX_SCRIPT_PATH}' betiği test ediliyor...")
-         test_result = _run_command(['list_sinks'], timeout=10)
-         if test_result.get('success'): logger.info(f"'{EX_SCRIPT_PATH}' betiği başarıyla çalıştı.")
-         else: logger.warning(f"'{EX_SCRIPT_PATH}' betiği hatası: {test_result.get('error')}.")
-
+    # Token kontrolü
     check_token_on_startup()
+
+    # Arka plan görevini başlat
     start_queue_player()
 
     port = int(os.environ.get('PORT', 9187))
     logger.info(f"Uygulama arayüzüne http://<SUNUCU_IP>:{port} adresinden erişilebilir.")
     logger.info(f"Admin paneline http://<SUNUCU_IP>:{port}/admin adresinden erişilebilir.")
-
-    # debug=True geliştirme sırasında kullanışlıdır, ancak production'da False yapın.
-    # use_reloader=False arka plan thread'inin tekrar başlamasını önler.
-    app.run(host='0.0.0.0', port=port, debug=True, use_reloader=False)
+    app.run(host='0.0.0.0', port=port, debug=False)
 
