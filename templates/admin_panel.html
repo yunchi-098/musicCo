@@ -791,7 +791,9 @@
 
         // --- Sayfa Yüklendiğinde Çalışacak Kod ---
         $(document).ready(function() {
-            refreshAudioSinkList(); refreshBluetoothList(0);
+            refreshAudioSinkList(); 
+            refreshBluetoothList(0);
+            loadBlockedTracks(); // Engellenmiş şarkıları yükle
             const initialArtistIds = [...(currentSettings.artist_blacklist || []), ...(currentSettings.artist_whitelist || [])];
             const initialTrackIds = [...(currentSettings.track_blacklist || []), ...(currentSettings.track_whitelist || [])];
             const allIdsToFetch = { artist: [...new Set(initialArtistIds)], track: [...new Set(initialTrackIds)] };
@@ -985,7 +987,7 @@
                     $('#blocked-tracks-list').html('<tr><td colspan="3" class="text-muted text-center">Engellenmiş şarkı bulunamadı.</td></tr>');
                 }
             }).fail(function() {
-                $('#played-tracks-list').html('<tr><td colspan="3" class="text-danger text-center">Engellenmiş şarkılar alınamadı.</td></tr>');
+                $('#blocked-tracks-list').html('<tr><td colspan="3" class="text-danger text-center">Engellenmiş şarkılar alınamadı.</td></tr>');
             });
         }
     </script>
