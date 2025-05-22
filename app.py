@@ -1726,7 +1726,7 @@ def save_played_track(track_info):
             time_diff = current_time - last_played_time
             
             # Eğer aynı şarkı son 5 dakika içinde çalındıysa kaydetme
-            if last_track_id == track_info.get('track_id') and time_diff.total_seconds() < 300:
+            if last_track_id == track_info.get('track_id') and time_diff.total_seconds() < 18000:
                 logger.info(f"Şarkı son 5 dakika içinde çalındı, tekrar kaydedilmeyecek: {track_info.get('track_name', 'Bilinmeyen')}")
                 return
         
