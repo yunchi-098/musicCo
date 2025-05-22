@@ -325,19 +325,6 @@
                     </div>
                 </div>
             </div>
-
-            <div class="col-lg-4 col-md-6">
-                <div class="card shadow-sm h-100">
-                    <div class="card-header bg-info text-white">
-                        <h5 class="mb-0">Son Çalınan Şarkılar</h5>
-                    </div>
-                    <div class="card-body card-body-scrollable">
-                        <div id="played-tracks-list">
-                            <p class="text-muted text-center">Yükleniyor...</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
         </div> <div class="audio-management-section shadow-sm mt-4">
              <h4 class="mb-4 text-secondary">Ses Çıkış Yönetimi</h4>
              <div class="row">
@@ -439,10 +426,11 @@
                                         <tr>
                                             <th>Şarkı Adı</th>
                                             <th>Sanatçı</th>
-                                            <th>İşlemler</th>
+                                            <th>Tür</th>
+                                            <th>Çalınma Zamanı</th>
                                         </tr>
                                     </thead>
-                                    <tbody id="blocked-tracks-list">
+                                    <tbody id="played-tracks-list">
                                         <!-- JavaScript ile doldurulacak -->
                                     </tbody>
                                 </table>
@@ -823,7 +811,7 @@
 
         function renderBlockedTracksList() {
             const blockedTracks = currentSettings.track_blacklist || [];
-            const listElement = $('#blocked-tracks-list');
+            const listElement = $('#played-tracks-list');
             listElement.empty(); // Listeyi temizle
 
             if (blockedTracks.length === 0) {
@@ -899,7 +887,7 @@
         function searchBlockedTracks() {
              const input = document.getElementById('blocked-track-search-input');
              const filter = input.value.toLowerCase();
-             const tableBody = document.getElementById('blocked-tracks-list');
+             const tableBody = document.getElementById('played-tracks-list');
              const rows = tableBody.getElementsByTagName('tr');
 
              for (let i = 0; i < rows.length; i++) {
@@ -979,7 +967,7 @@
         function loadBlockedTracks() {
             $.getJSON('/get-blocked-tracks', function(response) {
                 if (response.success && Array.isArray(response.blocked_tracks)) {
-                    let tbody = $('#blocked-tracks-list');
+                    let tbody = $('#played-tracks-list');
                     tbody.empty();
                     response.blocked_tracks.forEach(track => {
                         const row = `
@@ -996,50 +984,12 @@
                         tbody.append(row);
                     });
                 } else {
-                    $('#blocked-tracks-list').html('<tr><td colspan="3" class="text-muted text-center">Engellenmiş şarkı bulunamadı.</td></tr>');
+                    $('#played-tracks-list').html('<tr><td colspan="3" class="text-muted text-center">Engellenmiş şarkı bulunamadı.</td></tr>');
                 }
             }).fail(function() {
-                $('#blocked-tracks-list').html('<tr><td colspan="3" class="text-danger text-center">Engellenmiş şarkılar alınamadı.</td></tr>');
+                $('#played-tracks-list').html('<tr><td colspan="3" class="text-danger text-center">Engellenmiş şarkılar alınamadı.</td></tr>');
             });
         }
-
-        // Çalınan şarkıları yükle
-        function loadPlayedTracks() {
-            $.getJSON('/api/played-tracks', function(response) {
-                if (response.success && Array.isArray(response.tracks)) {
-                    let html = '';
-                    if (response.tracks.length > 0) {
-                        response.tracks.forEach(track => {
-                            html += `
-                                <div class="list-group-item px-0 py-2">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div style="min-width: 0;">
-                                            <strong class="d-block text-truncate">${track.track_name}</strong>
-                                            <small class="text-muted d-block text-truncate">${track.artist_name}</small>
-                                            <small class="text-muted">${track.played_at}</small>
-                                        </div>
-                                    </div>
-                                </div>
-                            `;
-                        });
-                    } else {
-                        html = '<p class="text-muted text-center">Henüz çalınan şarkı yok.</p>';
-                    }
-                    $('#played-tracks-list').html(html);
-                } else {
-                    $('#played-tracks-list').html('<p class="text-danger text-center">Çalınan şarkılar alınamadı.</p>');
-                }
-            }).fail(function() {
-                $('#played-tracks-list').html('<p class="text-danger text-center">Çalınan şarkılar alınamadı.</p>');
-            });
-        }
-
-        // Sayfa yüklendiğinde çalınan şarkıları yükle
-        $(document).ready(function() {
-            loadPlayedTracks();
-            // Her 30 saniyede bir çalınan şarkıları güncelle
-            setInterval(loadPlayedTracks, 30000);
-        });
     </script>
 
 </body>

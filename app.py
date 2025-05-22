@@ -1651,73 +1651,115 @@ def start_queue_player():
 DB_PATH = 'musicco.db'
 
 def init_db():
-    """Veritabanını ve tabloları oluşturur"""
-    if not os.path.exists(DB_PATH):
+    """SQLite veritabanını başlat ve gerekli tabloları oluştur"""
+    try:
+        logger.info("Veritabanı başlatılıyor...")
         conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute('''
-            CREATE TABLE played_tracks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                track_id TEXT NOT NULL,
-                track_name TEXT NOT NULL,
-                artist_name TEXT NOT NULL,
-                played_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
+        cursor = conn.cursor()
+        
+        # played_tracks tablosunu oluştur
+        cursor.execute('''CREATE TABLE IF NOT EXISTS played_tracks
+                    (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     track_id TEXT,
+                     track_name TEXT,
+                     artist_name TEXT,
+                     genre TEXT,
+                     played_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+        
         conn.commit()
-        conn.close()
-        logger.info("SQLite veritabanı oluşturuldu.")
+        logger.info("Veritabanı başarıyla başlatıldı")
+    except sqlite3.Error as e:
+        logging.error(f"Veritabanı başlatma hatası: {e}")
+    finally:
+        if conn:
+            conn.close()
 
 def save_played_track(track_info):
-    """Çalınan şarkıyı SQLite'a kaydeder"""
+    """Çalınan şarkıyı veritabanına kaydet"""
     try:
+        # Son çalınan şarkıyı kontrol et
         conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute('''
+        cursor = conn.cursor()
+        
+        
+        # Son çalınan şarkıyı kontrol et
+        cursor.execute('''
+            SELECT track_id, played_at FROM played_tracks 
+            ORDER BY played_at DESC LIMIT 1
+        ''')
+        last_track = cursor.fetchone()
+        
+        # Eğer son çalınan şarkı aynıysa ve son 5 dakika içinde çalındıysa kaydetme
+        if last_track and last_track[0] == track_info.get('id'):
+            last_played_time = datetime.strptime(last_track[1], '%Y-%m-%d %H:%M:%S')
+            time_diff = datetime.now() - last_played_time
+            if time_diff.total_seconds() < 300:  # 5 dakika
+                logger.info("Bu şarkı zaten son 5 dakika içinde kaydedilmiş, tekrar kaydedilmiyor.")
+                return
+        
+        # Yeni şarkıyı kaydet
+        cursor.execute('''
             INSERT INTO played_tracks (track_id, track_name, artist_name)
             VALUES (?, ?, ?)
         ''', (
-            track_info.get('id'),
-            track_info.get('name'),
-            track_info.get('artist')
+            track_info.get('id', ''),
+            track_info.get('name', 'Bilinmeyen'),
+            track_info.get('artist', 'Bilinmeyen')
         ))
+        
         conn.commit()
-        conn.close()
-        logger.info(f"Şarkı kaydedildi: {track_info.get('name')} - {track_info.get('artist')}")
-    except Exception as e:
+        logger.info("Şarkı başarıyla kaydedildi.")
+        
+    except sqlite3.Error as e:
         logger.error(f"Şarkı kaydedilirken hata oluştu: {str(e)}")
+        # Tablo yoksa oluşturmayı dene
+        if "no such table" in str(e).lower():
+            logger.info("Tablo bulunamadı, yeniden oluşturuluyor...")
+            init_db()
+            # Tekrar kaydetmeyi dene
+            try:
+                cursor.execute('''
+                    INSERT INTO played_tracks (track_id, track_name, artist_name)
+                    VALUES (?, ?, ?)
+                ''', (
+                    track_info.get('id', ''),
+                    track_info.get('name', 'Bilinmeyen'),
+                    track_info.get('artist', 'Bilinmeyen')
+                ))
+                conn.commit()
+                logger.info("Şarkı başarıyla kaydedildi (ikinci deneme).")
+            except sqlite3.Error as e2:
+                logger.error(f"İkinci kaydetme denemesi de başarısız: {str(e2)}")
+    finally:
+        if conn:
+            conn.close()
 
 @app.route('/api/played-tracks')
 @admin_login_required
 def get_played_tracks():
+    """Son çalınan şarkıları getir"""
     try:
         conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute('''
-            SELECT track_id, track_name, artist_name, played_at
-            FROM played_tracks
-            ORDER BY played_at DESC
-            LIMIT 100
-        ''')
-        tracks = []
-        for row in c.fetchall():
-            tracks.append({
-                'track_id': row[0],
-                'track_name': row[1],
-                'artist_name': row[2],
-                'played_at': row[3]
-            })
-        conn.close()
+        cursor = conn.cursor()
+        cursor.execute('''SELECT track_name, artist_name, genre, played_at 
+                         FROM played_tracks 
+                         ORDER BY played_at DESC LIMIT 100''')
+        tracks = cursor.fetchall()
         return jsonify({
             'success': True,
-            'tracks': tracks
+            'tracks': [{
+                'name': track[0],
+                'artist': track[1],
+                'genre': track[2],
+                'played_at': track[3]
+            } for track in tracks]
         })
-    except Exception as e:
-        logger.error(f"Çalınan şarkılar alınırken hata: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+    except sqlite3.Error as e:
+        logging.error(f"Çalınan şarkıları getirme hatası: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+    finally:
+        if conn:
+            conn.close()
 
 if __name__ == '__main__':
     logger.info("=================================================")
