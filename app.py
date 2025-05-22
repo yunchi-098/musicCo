@@ -1680,22 +1680,27 @@ DB_PATH = 'musicco.db'
 def init_db():
     """SQLite veritabanını başlat ve gerekli tabloları oluştur"""
     try:
-        logger.info("Veritabanı başlatılıyor...")
         conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS played_tracks
-                    (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                     track_id TEXT,
-                     track_name TEXT,
-                     artist_name TEXT,
-                     genre TEXT,
-                     played_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+        cursor = conn.cursor()
+        
+        # played_tracks tablosunu oluştur
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS played_tracks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                track_id TEXT,
+                track_name TEXT,
+                artist_name TEXT,
+                played_at TEXT
+            )
+        """)
+        
         conn.commit()
-        logging.info("Veritabanı başarıyla başlatıldı")
+        logger.info("Veritabanı başarıyla başlatıldı")
+        
     except sqlite3.Error as e:
-        logging.error(f"Veritabanı başlatma hatası: {e}")
+        logger.error(f"Veritabanı başlatılırken hata: {e}")
     finally:
-        if conn:
+        if 'conn' in locals():
             conn.close()
 
 def save_played_track(track_info):
@@ -1706,48 +1711,60 @@ def save_played_track(track_info):
         cursor = conn.cursor()
         
         # Son çalınan şarkıyı al
-        cursor.execute('''SELECT track_id, played_at FROM played_tracks 
-                         ORDER BY played_at DESC LIMIT 1''')
+        cursor.execute("""
+            SELECT track_id, played_at 
+            FROM played_tracks 
+            ORDER BY played_at DESC 
+            LIMIT 1
+        """)
         last_track = cursor.fetchone()
         
         if last_track:
             last_track_id, last_played_at = last_track
-            last_played_at = datetime.strptime(last_played_at, '%Y-%m-%d %H:%M:%S')
-            time_diff = datetime.now() - last_played_at
+            last_played_time = datetime.fromisoformat(last_played_at)
+            current_time = datetime.now()
+            time_diff = current_time - last_played_time
             
-            # Aynı şarkı 5 dakika içinde tekrar çalındıysa kaydetme
-            if last_track_id == track_info.get('id') and time_diff.total_seconds() < 300:
-                logging.info(f"Şarkı son 5 dakika içinde çalındı, kaydedilmiyor: {track_info.get('name', 'Bilinmeyen')}")
+            # Eğer aynı şarkı son 5 dakika içinde çalındıysa kaydetme
+            if last_track_id == track_info.get('track_id') and time_diff.total_seconds() < 300:
+                logger.info(f"Şarkı son 5 dakika içinde çalındı, tekrar kaydedilmeyecek: {track_info.get('track_name', 'Bilinmeyen')}")
                 return
         
-        # Şarkının türünü al
-        genre = "Bilinmiyor"
-        if track_info.get('id'):
-            try:
-                spotify = get_spotify_client()
-                if spotify:
-                    track = spotify.track(track_info['id'])
-                    if track and track.get('artists'):
-                        artist = spotify.artist(track['artists'][0]['id'])
-                        if artist and artist.get('genres'):
-                            genre = artist['genres'][0] if artist['genres'] else "Bilinmiyor"
-            except Exception as e:
-                logging.error(f"Tür bilgisi alınamadı: {e}")
-        
-        # Şarkıyı kaydet
-        cursor.execute('''INSERT INTO played_tracks 
-                         (track_id, track_name, artist_name, genre) 
-                         VALUES (?, ?, ?, ?)''',
-                      (track_info.get('id', 'Bilinmiyor'),
-                       track_info.get('name', 'Bilinmiyor'),
-                       track_info.get('artist', 'Bilinmiyor'),
-                       genre))
+        # Yeni şarkıyı kaydet
+        cursor.execute("""
+            INSERT INTO played_tracks (track_id, track_name, artist_name, played_at)
+            VALUES (?, ?, ?, ?)
+        """, (
+            track_info.get('track_id', ''),
+            track_info.get('track_name', 'Bilinmeyen'),
+            track_info.get('artist_name', 'Bilinmeyen'),
+            datetime.now().isoformat()
+        ))
         conn.commit()
-        logging.info(f"Şarkı kaydedildi: {track_info.get('name', 'Bilinmiyor')} - {genre}")
+        logger.info(f"Şarkı kaydedildi: {track_info.get('track_name', 'Bilinmeyen')}")
+        
     except sqlite3.Error as e:
-        logging.error(f"Şarkı kaydetme hatası: {e}")
+        logger.error(f"Şarkı kaydedilirken SQLite hatası: {e}")
+        # Eğer tablo yoksa oluştur
+        if "no such table" in str(e):
+            init_db()
+            # Tekrar kaydetmeyi dene
+            try:
+                cursor.execute("""
+                    INSERT INTO played_tracks (track_id, track_name, artist_name, played_at)
+                    VALUES (?, ?, ?, ?)
+                """, (
+                    track_info.get('track_id', ''),
+                    track_info.get('track_name', 'Bilinmeyen'),
+                    track_info.get('artist_name', 'Bilinmeyen'),
+                    datetime.now().isoformat()
+                ))
+                conn.commit()
+                logger.info(f"Tablo oluşturuldu ve şarkı kaydedildi: {track_info.get('track_name', 'Bilinmeyen')}")
+            except sqlite3.Error as retry_e:
+                logger.error(f"İkinci denemede şarkı kaydedilirken SQLite hatası: {retry_e}")
     finally:
-        if conn:
+        if 'conn' in locals():
             conn.close()
 
 @app.route('/api/played-tracks')
