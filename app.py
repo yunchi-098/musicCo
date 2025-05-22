@@ -135,10 +135,39 @@ def get_spotifyd_pid():
          return []
 
 def restart_spotifyd():
-    """Spotifyd servisini ex.py aracılığıyla yeniden başlatır."""
-    logger.info("Attempting to restart spotifyd via ex.py...")
-    result = _run_command(['restart_spotifyd']) # ex.py'nin kendi komutunu çağırır
-    return result.get('success', False), result.get('message', result.get('error', 'Bilinmeyen hata'))
+    """Spotifyd servisini yeniden başlat"""
+    try:
+        # Önce mevcut spotifyd sürecini sonlandır
+        pid = get_spotifyd_pid()
+        if pid:
+            _run_command(f"kill {pid}")
+            time.sleep(2)  # Sürecin kapanması için bekle
+        
+        # Spotifyd'yi başlat
+        _run_command("spotifyd --no-daemon &")
+        time.sleep(3)  # Servisin başlaması için bekle
+        
+        # Servisin başladığını kontrol et
+        new_pid = get_spotifyd_pid()
+        if new_pid:
+            logging.info(f"Spotifyd başarıyla yeniden başlatıldı (PID: {new_pid})")
+            return True, "Spotifyd başarıyla yeniden başlatıldı"
+        else:
+            logging.error("Spotifyd başlatılamadı")
+            return False, "Spotifyd başlatılamadı"
+    except Exception as e:
+        logging.error(f"Spotifyd yeniden başlatma hatası: {e}")
+        return False, f"Spotifyd yeniden başlatma hatası: {str(e)}"
+
+@app.route('/api/restart-spotifyd', methods=['POST'])
+@admin_login_required
+def api_restart_spotifyd():
+    """Spotifyd servisini yeniden başlat"""
+    success, message = restart_spotifyd()
+    return jsonify({
+        'success': success,
+        'message': message
+    })
 
 # --- Ayarlar Yönetimi (Filtreler Eklendi) ---
 def load_settings():
