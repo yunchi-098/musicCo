@@ -139,13 +139,13 @@
                             <div class="text-center mt-auto">
                                 <div class="btn-group" role="group">
                                     {% if currently_playing_info.is_playing %}
-                                        <form action="{{ url_for('player_pause') }}" method="GET" style="display: inline;">
+                                        <form action="{{ url_for('player_pause') }}" method="GET" style="display: inline; margin-right: 5px;">
                                             <button type="submit" class="btn btn-warning" title="Durdur & Otomatik Geçişi Kapat">
                                                 <i class="fas fa-pause"></i>
                                             </button>
                                         </form>
                                     {% else %}
-                                        <form action="{{ url_for('player_resume') }}" method="GET" style="display: inline;">
+                                        <form action="{{ url_for('player_resume') }}" method="GET" style="display: inline; margin-right: 5px;">
                                             <button type="submit" class="btn btn-success" title="Devam Et & Otomatik Geçişi Aç">
                                                 <i class="fas fa-play"></i>
                                             </button>
@@ -322,6 +322,19 @@
                              <i class="fas fa-redo"></i> Spotifyd'yi Yeniden Başlat
                          </button>
                          <small class="text-muted text-center mt-3">Not: Ses cihazı değişikliklerinden sonra Spotify'ın yeni cihazı görmesi için yeniden başlatma gerekebilir.</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4 col-md-6">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0">Son Çalınan Şarkılar</h5>
+                    </div>
+                    <div class="card-body card-body-scrollable">
+                        <div id="played-tracks-list">
+                            <p class="text-muted text-center">Yükleniyor...</p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -990,9 +1003,42 @@
             });
         }
 
+        // Çalınan şarkıları yükle
+        function loadPlayedTracks() {
+            $.getJSON('/api/played-tracks', function(response) {
+                if (response.success && Array.isArray(response.tracks)) {
+                    let html = '';
+                    if (response.tracks.length > 0) {
+                        response.tracks.forEach(track => {
+                            html += `
+                                <div class="list-group-item px-0 py-2">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div style="min-width: 0;">
+                                            <strong class="d-block text-truncate">${track.track_name}</strong>
+                                            <small class="text-muted d-block text-truncate">${track.artist_name}</small>
+                                            <small class="text-muted">${track.played_at}</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                    } else {
+                        html = '<p class="text-muted text-center">Henüz çalınan şarkı yok.</p>';
+                    }
+                    $('#played-tracks-list').html(html);
+                } else {
+                    $('#played-tracks-list').html('<p class="text-danger text-center">Çalınan şarkılar alınamadı.</p>');
+                }
+            }).fail(function() {
+                $('#played-tracks-list').html('<p class="text-danger text-center">Çalınan şarkılar alınamadı.</p>');
+            });
+        }
 
+        // Sayfa yüklendiğinde çalınan şarkıları yükle
         $(document).ready(function() {
-            loadBlockedTracks();
+            loadPlayedTracks();
+            // Her 30 saniyede bir çalınan şarkıları güncelle
+            setInterval(loadPlayedTracks, 30000);
         });
     </script>
 

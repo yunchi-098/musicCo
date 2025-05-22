@@ -13,6 +13,9 @@ from flask import Flask, request, render_template, redirect, url_for, session, j
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import traceback # Hata ayıklama için eklendi
+from datetime import datetime
+from pymongo import MongoClient
+from bson.objectid import ObjectId
 
 # --- Yapılandırılabilir Ayarlar ---
 # !!! BU BİLGİLERİ KENDİ SPOTIFY DEVELOPER BİLGİLERİNİZLE DEĞİŞTİRİN !!!
@@ -1587,102 +1590,49 @@ def debug_genre_filter(artist_id):
 
 # --- Arka Plan Şarkı Çalma İş Parçacığı ---
 def background_queue_player():
-    global spotify_client, song_queue, user_requests, settings, auto_advance_enabled
-    logger.info("Arka plan şarkı çalma/öneri görevi başlatılıyor...")
-    last_played_song_uri = None; last_suggested_song_uri = None
+    global auto_advance_enabled
+    logger.info("Arka plan şarkı çalma/öneri görevi başlatıldı.")
+    
     while True:
         try:
             spotify = get_spotify_client()
-            active_spotify_connect_device_id = settings.get('active_device_id')
-            if not spotify or not active_spotify_connect_device_id: time.sleep(10); continue
-            current_playback = None
-            try: current_playback = spotify.current_playback(additional_types='track,episode', market='TR')
-            except spotipy.SpotifyException as pb_err:
-                logger.error(f"Arka plan: Playback kontrol hatası: {pb_err}")
-                if pb_err.http_status == 401 or pb_err.http_status == 403: spotify_client = None;
-                if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
-                time.sleep(10); continue
-            except Exception as pb_err: logger.error(f"Arka plan: Playback kontrol genel hata: {pb_err}", exc_info=True); time.sleep(15); continue
+            if not spotify:
+                logger.warning("Spotify bağlantısı yok, 30 saniye bekleniyor...")
+                time.sleep(30)
+                continue
 
-            is_playing_now = False; current_track_uri_now = None
-            if current_playback:
-                is_playing_now = current_playback.get('is_playing', False); item = current_playback.get('item')
-                current_track_uri_now = item.get('uri') if item else None
+            current_track = spotify.current_playback()
+            if not current_track:
+                logger.info("Şu anda çalan şarkı yok.")
+                time.sleep(5)
+                continue
 
-            # Otomatik ilerleme aktifse ve müzik çalmıyorsa
-            if auto_advance_enabled and not is_playing_now:
-                # Önce kuyruğu kontrol et
-                if song_queue:
-                    logger.info(f"Arka plan: Çalma durdu, otomatik ilerleme aktif. Kuyruktan çalınıyor...")
-                    next_song = song_queue.pop(0) # Kuyruktan ilk şarkıyı al
-                    next_song_uri = next_song.get('id') # Kuyrukta 'id' olarak URI tutuluyor
+            # Çalınan şarkıyı kaydet
+            if current_track.get('item'):
+                track_info = {
+                    'id': current_track['item']['id'],
+                    'name': current_track['item']['name'],
+                    'artist': ', '.join([artist['name'] for artist in current_track['item']['artists']])
+                }
+                save_played_track(track_info)
 
-                    if not next_song_uri or not next_song_uri.startswith('spotify:track:'):
-                        logger.warning(f"Arka plan: Kuyrukta geçersiz URI formatı: {next_song_uri}"); continue
-
-                    # Aynı şarkıyı tekrar çalmayı önle (nadiren olabilir)
-                    if next_song_uri == last_played_song_uri:
-                        logger.debug(f"Şarkı ({next_song.get('name')}) zaten son çalınandı, atlanıyor."); last_played_song_uri = None; time.sleep(1); continue
-
-                    logger.info(f"Arka plan: Çalınacak: {next_song.get('name')} ({next_song_uri})")
-                    try:
-                        # Şarkıyı çalmaya başla
-                        spotify.start_playback(device_id=active_spotify_connect_device_id, uris=[next_song_uri])
-                        logger.info(f"===> Şarkı çalmaya başlandı: {next_song.get('name')}")
-                        last_played_song_uri = next_song_uri; last_suggested_song_uri = None # Son öneriyi sıfırla
-
-                        # Kullanıcı limitini azalt (eğer kullanıcı eklediyse)
-                        user_ip = next_song.get('added_by')
-                        if user_ip and user_ip != 'admin' and user_ip != 'auto-time':
-                             user_requests[user_ip] = max(0, user_requests.get(user_ip, 0) - 1)
-                             logger.debug(f"Kullanıcı {user_ip} limiti azaltıldı: {user_requests.get(user_ip)}")
-                        time.sleep(1); continue # Bir sonraki döngüye geç
-
-                    except spotipy.SpotifyException as start_err:
-                        logger.error(f"Arka plan: Şarkı başlatılamadı ({next_song_uri}): {start_err}")
-                        song_queue.insert(0, next_song) # Başlatılamayan şarkıyı başa ekle
-                        if start_err.http_status == 401 or start_err.http_status == 403: spotify_client = None;
-                        if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
-                        elif start_err.http_status == 404 and 'device_id' in str(start_err).lower():
-                             logger.warning(f"Aktif Spotify Connect cihazı ({active_spotify_connect_device_id}) bulunamadı.");
-                             settings['active_device_id'] = None; save_settings(settings)
-                        elif start_err.http_status == 400:
-                             logger.error(f"Arka plan: Geçersiz URI nedeniyle şarkı başlatılamadı: {next_song_uri}")
-                        time.sleep(5); continue
-                    except Exception as start_err: logger.error(f"Arka plan: Şarkı başlatılırken genel hata ({next_song_uri}): {start_err}", exc_info=True); song_queue.insert(0, next_song); time.sleep(10); continue
-                # Kuyruk boşsa öneri yapmayı dene
+            # Şarkı bitti mi kontrol et
+            if current_track.get('progress_ms') and current_track.get('item'):
+                progress = current_track['progress_ms']
+                duration = current_track['item']['duration_ms']
+                
+                if progress >= duration - 1000 and auto_advance_enabled:
+                    logger.info("Şarkı bitti, sıradaki şarkıya geçiliyor...")
+                    spotify.next_track()
+                    time.sleep(2)  # Yeni şarkının yüklenmesi için bekle
                 else:
-                    suggested_song_info = suggest_song_for_time(spotify)
-                    if suggested_song_info and suggested_song_info.get('id') != last_suggested_song_uri:
-                        suggested_uri = suggested_song_info['id']
-                        logger.info(f"Otomatik öneri bulundu: {suggested_song_info['name']} ({suggested_uri})")
-                        # Önerilen şarkıyı kuyruğa ekle (filtre kontrolü suggest_song_for_time içinde yapıldı)
-                        song_queue.append({
-                            'id': suggested_uri,
-                            'name': suggested_song_info['name'],
-                            'artist': suggested_song_info.get('artist', '?'),
-                            'artist_ids': suggested_song_info.get('artist_ids', []),
-                            'added_by': 'auto-time',
-                            'added_at': time.time()
-                        })
-                        last_suggested_song_uri = suggested_uri # Tekrar aynı öneriyi eklememek için
-                        logger.info(f"Otomatik öneri kuyruğa eklendi: {suggested_song_info['name']}")
-                    else:
-                        # Uygun öneri yoksa veya son öneriyle aynıysa bekle
-                        time.sleep(15) # Daha uzun bekleme süresi
-            # Müzik zaten çalıyorsa
-            elif is_playing_now:
-                 if current_track_uri_now and current_track_uri_now != last_played_song_uri:
-                     logger.debug(f"Arka plan: Yeni şarkı algılandı: {current_track_uri_now}");
-                     last_played_song_uri = current_track_uri_now; last_suggested_song_uri = None # Son öneriyi sıfırla
-                     # Çalan şarkıyı zaman profiline ekle
-                     update_time_profile(current_track_uri_now, spotify)
-                 time.sleep(5) # Normal kontrol aralığı
-            # Otomatik ilerleme kapalıysa ve müzik çalmıyorsa
+                    time.sleep(5)
             else:
-                 time.sleep(10) # Daha seyrek kontrol et
+                time.sleep(5)
 
-        except Exception as loop_err: logger.error(f"Arka plan döngü hatası: {loop_err}", exc_info=True); time.sleep(15)
+        except Exception as e:
+            logger.error(f"Arka plan görevinde hata: {str(e)}")
+            time.sleep(30)
 
 # --- Uygulama Başlangıcı ---
 def check_token_on_startup():
@@ -1695,6 +1645,63 @@ def start_queue_player():
     thread = threading.Thread(target=background_queue_player, name="QueuePlayerThread", daemon=True)
     thread.start()
     logger.info("Arka plan şarkı çalma/öneri görevi başlatıldı.")
+
+# MongoDB bağlantısı
+client = MongoClient('mongodb://localhost:27017/')
+db = client['musicco']
+played_tracks = db['played_tracks']
+
+# Çalınan şarkı modeli
+class PlayedTrack:
+    def __init__(self, track_id, track_name, artist_name, played_at=None):
+        self.track_id = track_id
+        self.track_name = track_name
+        self.artist_name = artist_name
+        self.played_at = played_at or datetime.utcnow()
+
+    def to_dict(self):
+        return {
+            'track_id': self.track_id,
+            'track_name': self.track_name,
+            'artist_name': self.artist_name,
+            'played_at': self.played_at
+        }
+
+def save_played_track(track_info):
+    """Çalınan şarkıyı MongoDB'ye kaydeder"""
+    try:
+        track = PlayedTrack(
+            track_id=track_info.get('id'),
+            track_name=track_info.get('name'),
+            artist_name=track_info.get('artist')
+        )
+        played_tracks.insert_one(track.to_dict())
+        logger.info(f"Şarkı kaydedildi: {track.track_name} - {track.artist_name}")
+    except Exception as e:
+        logger.error(f"Şarkı kaydedilirken hata oluştu: {str(e)}")
+
+@app.route('/api/played-tracks')
+@admin_login_required
+def get_played_tracks():
+    try:
+        # Son 100 çalınan şarkıyı getir
+        tracks = list(played_tracks.find().sort('played_at', -1).limit(100))
+        
+        # ObjectId'leri string'e çevir
+        for track in tracks:
+            track['_id'] = str(track['_id'])
+            track['played_at'] = track['played_at'].strftime('%Y-%m-%d %H:%M:%S')
+        
+        return jsonify({
+            'success': True,
+            'tracks': tracks
+        })
+    except Exception as e:
+        logger.error(f"Çalınan şarkılar alınırken hata: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 if __name__ == '__main__':
     logger.info("=================================================")
