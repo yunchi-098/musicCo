@@ -1730,7 +1730,7 @@ if __name__ == '__main__':
     check_token_on_startup()
     start_queue_player()
 
-    port = int(os.environ.get('PORT', 8080))
+    port = int(os.environ.get('PORT', 9187))
     logger.info(f"Uygulama arayüzüne http://<SUNUCU_IP>:{port} adresinden erişilebilir.")
     logger.info(f"Admin paneline http://<SUNUCU_IP>:{port}/admin adresinden erişilebilir.")
 
