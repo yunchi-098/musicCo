@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 # --- Flask Uygulamasını Başlat ---
 app = Flask(__name__)
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'varsayilan_guvensiz_anahtar_lutfen_degistirin')
+app.secret_key = os.urandom(24)
 app.jinja_env.globals['BLUETOOTH_SCAN_DURATION'] = BLUETOOTH_SCAN_DURATION
 app.jinja_env.globals['ALLOWED_GENRES'] = ALLOWED_GENRES
 
@@ -159,15 +159,6 @@ def restart_spotifyd():
         logging.error(f"Spotifyd yeniden başlatma hatası: {e}")
         return False, f"Spotifyd yeniden başlatma hatası: {str(e)}"
 
-@app.route('/api/restart-spotifyd', methods=['POST'])
-@admin_login_required
-def api_restart_spotifyd():
-    """Spotifyd servisini yeniden başlat"""
-    success, message = restart_spotifyd()
-    return jsonify({
-        'success': success,
-        'message': message
-    })
 
 # --- Ayarlar Yönetimi (Filtreler Eklendi) ---
 def load_settings():
@@ -421,11 +412,20 @@ def admin_login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not session.get('admin_logged_in'):
-            logger.warning("Yetkisiz admin paneli erişim girişimi")
-            flash("Bu sayfaya erişmek için yönetici girişi yapmalısınız.", "warning")
             return redirect(url_for('admin'))
         return f(*args, **kwargs)
     return decorated_function
+
+
+@app.route('/api/restart-spotifyd', methods=['POST'])
+@admin_login_required
+def api_restart_spotifyd():
+    """Spotifyd servisini yeniden başlat"""
+    success, message = restart_spotifyd()
+    return jsonify({
+        'success': success,
+        'message': message
+    })
 
 # --- Zaman Profili ve Öneri Fonksiyonları ---
 def get_current_time_profile():
