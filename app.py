@@ -993,14 +993,21 @@ def api_set_audio_sink():
         logger.error(f"Ses çıkışı ayarlanırken hata: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
-@app.route('/api/discover-bluetooth', methods=['POST'])
+@app.route('/api/discover-bluetooth', methods=['GET', 'POST'])
 @admin_login_required
 def api_discover_bluetooth():
     """Bluetooth cihazlarını tarar"""
     try:
+        # GET isteğinde duration parametresini URL'den al, POST isteğinde JSON'dan al
+        if request.method == 'GET':
+            duration = int(request.args.get('duration', BLUETOOTH_SCAN_DURATION))
+        else:
+            data = request.get_json()
+            duration = int(data.get('duration', BLUETOOTH_SCAN_DURATION))
+
         # Bluetooth adaptörünü bul
         nearby_devices = bluetooth.discover_devices(
-            duration=BLUETOOTH_SCAN_DURATION,
+            duration=duration,
             lookup_names=True,
             flush_cache=True,
             lookup_class=True
