@@ -268,7 +268,7 @@ def admin_login():
             flash('Sistem yapılandırma hatası.', 'danger')
             return redirect(url_for('admin'))
         
-        logger.debug(f"Stored password format: {'Hash\'lenmiş' if '$' in stored_password else 'Düz metin'}")
+        logger.debug(f"Stored password format: {'Hashlenmiş' if '$' in stored_password else 'Düz metin'}")
         
         # IP bazlı giriş denemesi kontrolü
         if ip in login_attempts:
