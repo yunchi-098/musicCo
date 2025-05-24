@@ -398,6 +398,7 @@ def logout():
     return redirect(url_for('admin'))
 
 @app.route('/admin-panel')
+@admin_login_required
 def admin_panel():
     """Yönetim panelini gösterir. Ayarları ve listeleri şablona gönderir."""
     global auto_advance_enabled, settings, song_queue
