@@ -95,7 +95,7 @@ def hash_password(password):
         key = hashlib.pbkdf2_hmac(
             'sha256',
             password.encode('utf-8'),
-            salt.encode('utf-8'),
+            bytes.fromhex(salt),
             100000
         ).hex()
         logger.debug(f"Key oluşturuldu, uzunluk: {len(key)}")
@@ -141,7 +141,7 @@ def verify_password(stored_password, provided_password):
             new_key = hashlib.pbkdf2_hmac(
                 'sha256',
                 provided_password.encode('utf-8'),
-                salt.encode('utf-8'),
+                bytes.fromhex(salt),
                 100000
             ).hex()
             logger.debug(f"Yeni key oluşturuldu, uzunluk: {len(new_key)}")
@@ -180,6 +180,43 @@ MAX_LOGIN_ATTEMPTS = 5
 LOGIN_TIMEOUT = 300  # 5 dakika
 SESSION_TIMEOUT = 3600  # 1 saat
 
+# Global değişkenler
+settings = {}
+auto_advance_enabled = True
+song_queue = []
+
+def load_settings():
+    """Ayarları settings.json dosyasından yükler."""
+    try:
+        if os.path.exists(SETTINGS_FILE):
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return {
+            'max_queue_length': 50,
+            'max_user_requests': 3,
+            'genre_filter_mode': 'blacklist',
+            'artist_filter_mode': 'blacklist',
+            'genre_blacklist': [],
+            'genre_whitelist': [],
+            'artist_blacklist': [],
+            'artist_whitelist': [],
+            'track_blacklist': [],
+            'active_device_id': None
+        }
+    except Exception as e:
+        logger.error(f"Ayarlar yüklenirken hata: {e}")
+        return {}
+
+def save_settings(new_settings):
+    """Ayarları settings.json dosyasına kaydeder."""
+    try:
+        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(new_settings, f, indent=4, ensure_ascii=False)
+        return True
+    except Exception as e:
+        logger.error(f"Ayarlar kaydedilirken hata: {e}")
+        return False
+
 # --- Flask Uygulamasını Başlat ---
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(32))
@@ -189,6 +226,9 @@ app.jinja_env.globals['ALLOWED_GENRES'] = ALLOWED_GENRES
 
 # Login denemelerini takip etmek için
 login_attempts = {}
+
+# Başlangıçta ayarları yükle
+settings = load_settings()
 
 # Güvenli oturum yönetimi
 @app.before_request
