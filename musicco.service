@@ -1,0 +1,16 @@
+[Unit]
+Description=Mekan Müzik Sistemi
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/c/Users/90552/Desktop/x/musicCo
+ExecStart=/usr/bin/python3 app.py
+Restart=always
+RestartSec=10
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+
+[Install]
+WantedBy=multi-user.target 

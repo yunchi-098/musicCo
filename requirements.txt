@@ -1,0 +1,8 @@
+flask==2.0.1
+spotipy==2.19.0
+requests==2.26.0
+pymongo==3.12.0
+python-dotenv==1.0.0
+Flask-Limiter==3.5.0
+PyBluez==0.23
+dbus-python==1.2.18 
