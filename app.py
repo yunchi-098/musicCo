@@ -17,6 +17,7 @@ from datetime import datetime
 from pymongo import MongoClient
 from bson.objectid import ObjectId
 import sqlite3
+import bcrypt # Şifre hashleme için eklendi
 
 # --- Yapılandırılabilir Ayarlar ---
 # !!! BU BİLGİLERİ KENDİ SPOTIFY DEVELOPER BİLGİLERİNİZLE DEĞİŞTİRİN !!!
@@ -634,12 +635,20 @@ def admin():
 @app.route('/admin-login', methods=['POST'])
 def admin_login():
     """Admin giriş isteğini işler."""
-    ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "mekan123") # Güvenli bir yerden alınmalı
-    if request.form.get('password') == ADMIN_PASSWORD:
-        session['admin_logged_in'] = True; logger.info("Admin girişi başarılı")
-        flash("Yönetim paneline hoş geldiniz!", "success"); return redirect(url_for('admin_panel'))
+    password = request.form.get('password')
+    if not password:
+        flash("Şifre giriniz.", "danger")
+        return redirect(url_for('admin'))
+    
+    hashed_password = get_admin_password()
+    if verify_password(password, hashed_password):
+        session['admin_logged_in'] = True
+        logger.info("Admin girişi başarılı")
+        flash("Yönetim paneline hoş geldiniz!", "success")
+        return redirect(url_for('admin_panel'))
     else:
-        logger.warning("Başarısız admin girişi denemesi"); flash("Yanlış şifre girdiniz.", "danger")
+        logger.warning("Başarısız admin girişi denemesi")
+        flash("Yanlış şifre girdiniz.", "danger")
         return redirect(url_for('admin'))
 
 @app.route('/logout')
@@ -1801,6 +1810,42 @@ def get_played_tracks():
     finally:
         if conn:
             conn.close()
+
+@app.route('/change-admin-password', methods=['POST'])
+@admin_login_required
+def change_admin_password():
+    """Admin şifresini değiştirir."""
+    current_password = request.form.get('current_password')
+    new_password = request.form.get('new_password')
+    confirm_password = request.form.get('confirm_password')
+    
+    if not all([current_password, new_password, confirm_password]):
+        flash("Tüm alanları doldurunuz.", "danger")
+        return redirect(url_for('admin_panel'))
+    
+    if new_password != confirm_password:
+        flash("Yeni şifreler eşleşmiyor.", "danger")
+        return redirect(url_for('admin_panel'))
+    
+    if len(new_password) < 8:
+        flash("Yeni şifre en az 8 karakter olmalıdır.", "danger")
+        return redirect(url_for('admin_panel'))
+    
+    # Mevcut şifreyi doğrula
+    hashed_password = get_admin_password()
+    if not verify_password(current_password, hashed_password):
+        flash("Mevcut şifre yanlış.", "danger")
+        return redirect(url_for('admin_panel'))
+    
+    # Yeni şifreyi kaydet
+    if update_admin_password(new_password):
+        flash("Şifre başarıyla değiştirildi.", "success")
+        logger.info("Admin şifresi değiştirildi")
+    else:
+        flash("Şifre değiştirilirken bir hata oluştu.", "danger")
+        logger.error("Admin şifresi değiştirilemedi")
+    
+    return redirect(url_for('admin_panel'))
 
 if __name__ == '__main__':
     logger.info("=================================================")
