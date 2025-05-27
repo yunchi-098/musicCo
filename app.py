@@ -759,7 +759,6 @@ def lastfm_callback():
             
             if not configured_username: # Eğer ayarlarda username yoksa, API'den geleni kullan ve kaydet
                 logger.info(f"Last.fm username not in settings, using from API: {username_from_lastfm}")
-                global settings
                 current_settings = load_settings()
                 current_settings['lastfm_username'] = username_from_lastfm
                 save_settings(current_settings)
