@@ -801,7 +801,7 @@ def admin():
         if hashed_password and verify_password(password, hashed_password):
             session['admin'] = True; flash('Başarıyla giriş yapıldı', 'success'); return redirect(url_for('admin_panel'))
         else: flash('Geçersiz şifre veya admin şifresi ayarlanmamış.', 'error'); return redirect(url_for('admin'))
-    return render_template('admin_login.html') # admin.html yerine admin_login.html kullanılıyor
+    return render_template('admin.html') # admin.html yerine admin_login.html kullanılıyor
 
 @app.route('/admin/login', methods=['GET', 'POST']) # Bu rota zaten admin() ile aynı işlevi görüyor, birleştirilebilir.
 def admin_login():
