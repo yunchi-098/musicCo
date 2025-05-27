@@ -718,6 +718,7 @@ def lastfm_do_auth():
 @admin_login_required # Sadece admin bu callback'i işlemeli
 def lastfm_callback():
     """Last.fm yetkilendirmesinden sonra çağrılır."""
+    global settings
     token = request.args.get('token')
     intended_username = session.pop('lastfm_intended_username', None)
     configured_username = settings.get('lastfm_username')
