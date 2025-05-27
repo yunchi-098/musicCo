@@ -973,11 +973,12 @@ def player_skip():
 @spotify_auth_required # Cihazları almak için Spotify bağlantısı gerekir
 def refresh_devices():
     current_spotify_client = get_spotify_client()
+    global settings
     try:
         result = current_spotify_client.devices(); devices = result.get('devices', [])
         active_spotify_connect_device = settings.get('active_device_id')
         if active_spotify_connect_device and not any(d['id'] == active_spotify_connect_device for d in devices):
-            global settings
+            
             current_settings = load_settings()
             current_settings['active_device_id'] = None; save_settings(current_settings)
             settings = current_settings
