@@ -8,11 +8,21 @@
         h1 { color: #1DB954; }
         input, button { padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-box; }
         button { background-color: #1DB954; color: white; border: none; cursor: pointer; }
+        .alert { padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .alert-error { background-color: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
+        .alert-success { background-color: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
     </style>
 </head>
 <body>
     <h1>Yönetici Girişi</h1>
-    <form action="/admin-login" method="post">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+    <form action="{{ url_for('admin') }}" method="post">
         <input type="password" name="password" placeholder="Yönetici şifresi" required>
         <button type="submit">Giriş</button>
     </form>

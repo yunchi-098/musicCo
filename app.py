@@ -630,30 +630,47 @@ def index():
     """Ana sayfayı gösterir."""
     return render_template('index.html', allowed_genres=ALLOWED_GENRES)
 
-@app.route('/admin')
+@app.route('/admin', methods=['GET', 'POST'])
 def admin():
     """Admin giriş sayfasını veya paneli gösterir."""
-    if session.get('admin_logged_in'): return redirect(url_for('admin_panel'))
+    if session.get('admin'):
+        return redirect(url_for('admin_panel'))
+    
+    if request.method == 'POST':
+        password = request.form.get('password')
+        if not password:
+            flash('Şifre gerekli', 'error')
+            return redirect(url_for('admin'))
+        
+        hashed_password = get_admin_password()
+        if verify_password(password, hashed_password):
+            session['admin'] = True
+            flash('Başarıyla giriş yapıldı', 'success')
+            return redirect(url_for('admin_panel'))
+        else:
+            flash('Geçersiz şifre', 'error')
+            return redirect(url_for('admin'))
+    
     return render_template('admin.html')
 
-@app.route('/admin-login', methods=['POST'])
+@app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():
-    """Admin giriş isteğini işler."""
-    password = request.form.get('password')
-    if not password:
-        flash("Şifre giriniz.", "danger")
-        return redirect(url_for('admin'))
+    if request.method == 'POST':
+        password = request.form.get('password')
+        if not password:
+            flash('Şifre gerekli', 'error')
+            return redirect(url_for('admin_login'))
+        
+        hashed_password = get_admin_password()
+        if verify_password(password, hashed_password):
+            session['admin'] = True
+            flash('Başarıyla giriş yapıldı', 'success')
+            return redirect(url_for('admin_panel'))
+        else:
+            flash('Geçersiz şifre', 'error')
+            return redirect(url_for('admin_login'))
     
-    hashed_password = get_admin_password()
-    if verify_password(password, hashed_password):
-        session['admin_logged_in'] = True
-        logger.info("Admin girişi başarılı")
-        flash("Yönetim paneline hoş geldiniz!", "success")
-        return redirect(url_for('admin_panel'))
-    else:
-        logger.warning("Başarısız admin girişi denemesi")
-        flash("Yanlış şifre girdiniz.", "danger")
-        return redirect(url_for('admin'))
+    return render_template('admin_login.html')
 
 @app.route('/logout')
 @admin_login_required
@@ -1851,6 +1868,7 @@ def change_admin_password():
     
     return redirect(url_for('admin_panel'))
 
+<<<<<<< HEAD
 def get_admin_password():
     """Admin şifresini .env dosyasından alır."""
     try:
@@ -1898,6 +1916,62 @@ def update_admin_password(new_password):
                 file.write(f'ADMIN_PASSWORD={hashed_password.decode("utf-8")}\n')
         
         logger.info("Admin şifresi başarıyla güncellendi")
+=======
+# --- Şifre Yönetimi Fonksiyonları ---
+def hash_password(password):
+    """Şifreyi bcrypt ile hashler"""
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
+
+def get_admin_password():
+    """Admin şifresini settings.json'dan alır veya varsayılan şifreyi hashler"""
+    try:
+        with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+            settings = json.load(f)
+            if 'admin_password' in settings:
+                return settings['admin_password']
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+    
+    # Varsayılan şifre yoksa veya dosya bozuksa, varsayılan şifreyi hashle ve kaydet
+    default_password = "mekan123"
+    hashed_password = hash_password(default_password)
+    
+    try:
+        settings = {}
+        try:
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                settings = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
+        
+        settings['admin_password'] = hashed_password
+        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(settings, f, indent=4)
+    except Exception as e:
+        logger.error(f"Admin şifresi kaydedilirken hata: {e}")
+    
+    return hashed_password
+
+def verify_password(password, hashed_password):
+    """Şifrenin hash ile eşleşip eşleşmediğini kontrol eder"""
+    return bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8'))
+
+def update_admin_password(new_password):
+    """Admin şifresini günceller"""
+    try:
+        hashed_password = hash_password(new_password)
+        settings = {}
+        try:
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                settings = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
+        
+        settings['admin_password'] = hashed_password
+        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(settings, f, indent=4)
+>>>>>>> 4a01010a6a0f2f496fbed2945dcf8b73934d02b6
         return True
     except Exception as e:
         logger.error(f"Admin şifresi güncellenirken hata: {e}")
