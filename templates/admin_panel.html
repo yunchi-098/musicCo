@@ -437,6 +437,79 @@
                         </div>
                     </div>
                 </div>
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <i class="fab fa-lastfm"></i> Last.fm Bağlantı Durumu
+                    </div>
+                    <div class="card-body">
+                        {% if not lastfm_config_complete %}
+                            <div class="alert alert-danger">
+                                <strong>Yapılandırma Eksik!</strong> Last.fm API Key, Shared Secret veya Redirect URI .env dosyasında ayarlanmamış.
+                                Bu ayarlar olmadan Last.fm bağlantısı kurulamayacaktır. Lütfen sunucu yapılandırmasını kontrol edin.
+                            </div>
+                        {% elif not lastfm_username_configured %}
+                            <div class="alert alert-warning">
+                                Last.fm kullanıcı adı <a href="#settings-card" onclick="document.getElementById('lastfm_username').focus(); return false;">ayarlarda</a> tanımlanmamış.
+                                Lütfen öneri özelliği için bir kullanıcı adı girin.
+                            </div>
+                        {% elif lastfm_connected %}
+                            <div class="alert alert-success">
+                                <i class="fas fa-check-circle"></i> Last.fm kullanıcısı <strong>{{ settings.get('lastfm_username') }}</strong> ile bağlantı aktif.
+                            </div>
+                            <form action="{{ url_for('lastfm_do_auth') }}" method="GET" class="d-inline">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">
+                                    <i class="fab fa-lastfm-square"></i> Last.fm Bağlantısını Yenile/Değiştir
+                                </button>
+                            </form>
+                            <!-- İsteğe Bağlı: Bağlantıyı Kes Butonu
+                            <form action="{{ url_for('lastfm_disconnect_route') }}" method="POST" class="d-inline ms-2">
+                                <button type="submit" class="btn btn-sm btn-warning">Bağlantıyı Kes</button>
+                            </form>
+                            -->
+                        {% else %}
+                            <div class="alert alert-info">
+                                <i class="fas fa-exclamation-circle"></i> Last.fm kullanıcısı <strong>{{ settings.get('lastfm_username') }}</strong> için bağlantı kurulu değil.
+                                Öneri özelliğini kullanmak için lütfen bağlanın.
+                            </div>
+                            <form action="{{ url_for('lastfm_do_auth') }}" method="GET">
+                                <button type="submit" class="btn btn-danger">
+                                    <i class="fab fa-lastfm-square"></i> {{ settings.get('lastfm_username') }} Olarak Last.fm'e Bağlan
+                                </button>
+                            </form>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <i class="fas fa-headphones-alt"></i> Last.fm Önerileri
+                    </div>
+                    <div class="card-body">
+                        {% if not lastfm_config_complete %}
+                            <p class="text-danger">Last.fm API yapılandırması eksik. Lütfen .env dosyasını kontrol edin.</p>
+                        {% elif not lastfm_username_configured %}
+                            <p class="text-warning">
+                                Lütfen <a href="#settings-card" onclick="document.getElementById('lastfm_username').focus(); return false;">ayarlardan</a> bir Last.fm kullanıcı adı girin.
+                            </p>
+                        {% elif not lastfm_connected %}
+                            <p class="text-info">
+                                Last.fm önerilerini kullanmak için yukarıdaki durum panelinden <strong>{{ settings.get('lastfm_username') }}</strong> kullanıcısı ile Last.fm'e bağlanın.
+                            </p>
+                             <a href="{{ url_for('lastfm_do_auth') }}" class="btn btn-danger">
+                                <i class="fab fa-lastfm-square"></i> {{ settings.get('lastfm_username') }} Olarak Last.fm'e Bağlan
+                            </a>
+                        {% else %}
+                            <form action="{{ url_for('recommend_lastfm_route') }}" method="POST">
+                                <button type="submit" class="btn btn-info">
+                                    <i class="fas fa-random"></i> {{ settings.get('lastfm_username') }} Geçmişinden Öner ve Çal
+                                </button>
+                            </form>
+                            <small class="form-text text-muted mt-2">
+                                {{ settings.get('lastfm_username') }} kullanıcısının Last.fm'deki son 5 şarkısına göre Spotify'dan yeni bir şarkı önerilir ve çalınır.
+                            </small>
+                        {% endif %}
+                    </div>
+                </div>
             </div>
         </div>
 
