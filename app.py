@@ -18,6 +18,10 @@ from pymongo import MongoClient
 from bson.objectid import ObjectId
 import sqlite3
 import bcrypt # Şifre hashleme için eklendi
+from dotenv import load_dotenv # .env dosyası için eklendi
+
+# .env dosyasını yükle
+load_dotenv()
 
 # --- Yapılandırılabilir Ayarlar ---
 # !!! BU BİLGİLERİ KENDİ SPOTIFY DEVELOPER BİLGİLERİNİZLE DEĞİŞTİRİN !!!
@@ -1846,6 +1850,58 @@ def change_admin_password():
         logger.error("Admin şifresi değiştirilemedi")
     
     return redirect(url_for('admin_panel'))
+
+def get_admin_password():
+    """Admin şifresini .env dosyasından alır."""
+    try:
+        admin_password = os.getenv('ADMIN_PASSWORD')
+        if not admin_password:
+            logger.error("ADMIN_PASSWORD .env dosyasında bulunamadı!")
+            return None
+        return admin_password
+    except Exception as e:
+        logger.error(f"Admin şifresi alınırken hata: {e}")
+        return None
+
+def verify_password(password, hashed_password):
+    """Girilen şifreyi hash ile karşılaştırır."""
+    try:
+        if not password or not hashed_password:
+            return False
+        return bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8'))
+    except Exception as e:
+        logger.error(f"Şifre doğrulama hatası: {e}")
+        return False
+
+def update_admin_password(new_password):
+    """Admin şifresini günceller."""
+    try:
+        # Yeni şifreyi hashle
+        salt = bcrypt.gensalt()
+        hashed_password = bcrypt.hashpw(new_password.encode('utf-8'), salt)
+        
+        # .env dosyasını güncelle
+        env_path = '.env'
+        if os.path.exists(env_path):
+            with open(env_path, 'r', encoding='utf-8') as file:
+                lines = file.readlines()
+            
+            with open(env_path, 'w', encoding='utf-8') as file:
+                for line in lines:
+                    if line.startswith('ADMIN_PASSWORD='):
+                        file.write(f'ADMIN_PASSWORD={hashed_password.decode("utf-8")}\n')
+                    else:
+                        file.write(line)
+        else:
+            # .env dosyası yoksa oluştur
+            with open(env_path, 'w', encoding='utf-8') as file:
+                file.write(f'ADMIN_PASSWORD={hashed_password.decode("utf-8")}\n')
+        
+        logger.info("Admin şifresi başarıyla güncellendi")
+        return True
+    except Exception as e:
+        logger.error(f"Admin şifresi güncellenirken hata: {e}")
+        return False
 
 if __name__ == '__main__':
     logger.info("=================================================")
