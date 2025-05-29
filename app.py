@@ -100,7 +100,7 @@ def save_lastfm_session(username, session_key):
     session_data = {
         'username': username,
         'session_key': session_key,
-        'retrieved_at': datetime.utcnow().isoformat()
+        'retrieved_at': datetime.now(datetime.UTC).isoformat()
     }
     try:
         with open(LASTFM_SESSION_FILE, 'w', encoding='utf-8') as f:
