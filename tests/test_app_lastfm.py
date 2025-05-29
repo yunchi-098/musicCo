@@ -325,6 +325,66 @@ class TestApiLastFmSuggestion(unittest.TestCase):
         # We can also check if 'Location' header points to the expected redirect URL
         # For example: self.assertTrue('/spotify-auth-prompt' in response.headers['Location'])
 
+    @patch('app.save_lastfm_session')
+    @patch('requests.post') # Mocks requests.post used within lastfm_callback
+    @patch('app.save_settings') # Mocks app.save_settings
+    @patch('app.load_settings') # Mocks app.load_settings
+    # Ensure necessary global configurations are patched if not handled at class/module level
+    @patch('app.LASTFM_SHARED_SECRET', 'mock_secret')
+    @patch('app.LASTFM_API_KEY', 'mock_api_key')
+    @patch('app.LASTFM_REDIRECT_URI', 'http://mockhost/lastfm_callback') # Not directly used by callback but good practice
+    @patch('app.get_spotify_client') # For @admin_login_required if it uses spotify_auth_required, or if callback itself calls it
+    def test_lastfm_callback_saves_username_if_missing(self, mock_get_spotify_client_dec, mock_load_settings, mock_save_settings, mock_requests_post, mock_save_lfm_session):
+        if not self.client: self.skipTest("Flask client not available")
+
+        # Mock for decorator if it's an admin-only page that also needs Spotify
+        mock_get_spotify_client_dec.return_value = MagicMock()
+
+        # --- Mock Configuration ---
+        initial_settings_without_username = {'max_queue_length': 20, 'some_other_setting': 'value'}
+        mock_load_settings.return_value = initial_settings_without_username
+
+        mock_lfm_api_response = MagicMock()
+        mock_lfm_api_response.json.return_value = {
+            "session": {
+                "name": "test_lastfm_user_from_api", # Distinct name for clarity
+                "key": "test_session_key_from_api",
+                "subscriber": "0"
+            }
+        }
+        mock_lfm_api_response.raise_for_status = MagicMock() # Ensure it doesn't raise for status
+        mock_requests_post.return_value = mock_lfm_api_response
+        
+        # --- Test Execution ---
+        # Simulate admin login for the callback, as it's decorated with @admin_login_required
+        with self.client.session_transaction() as sess:
+            sess['admin'] = True 
+            # sess['lastfm_intended_username'] = 'any_user_or_none' # Not strictly needed if configured_username is None initially
+
+        response = self.client.get('/lastfm_callback?token=dummy_token_from_lastfm')
+
+        # --- Assertions ---
+        mock_load_settings.assert_called() 
+        
+        mock_save_settings.assert_called()
+        saved_settings_arg = None
+        # Iterate through calls to find the one that contains 'lastfm_username'
+        # because load_settings might call save_settings if defaults are missing initially.
+        for call_args_tuple in mock_save_settings.call_args_list:
+            args, _ = call_args_tuple
+            if args and isinstance(args[0], dict) and 'lastfm_username' in args[0]:
+                saved_settings_arg = args[0]
+                break
+        
+        self.assertIsNotNone(saved_settings_arg, "save_settings was not called with settings dictionary, or 'lastfm_username' was missing.")
+        self.assertEqual(saved_settings_arg.get('lastfm_username'), 'test_lastfm_user_from_api')
+
+        mock_save_lfm_session.assert_called_once_with('test_lastfm_user_from_api', 'test_session_key_from_api')
+        
+        self.assertEqual(response.status_code, 302, f"Response should be a redirect. Got {response.status_code}. Response data: {response.data.decode()}")
+        # Check if it redirects to admin_panel or the 'next_url_lastfm' if that was in session
+        self.assertTrue('/admin_panel' in response.headers.get('Location', ''), "Redirect location should lead to admin_panel.")
+
 
 if __name__ == '__main__':
     # Basic test runner. More sophisticated runners can be used.
