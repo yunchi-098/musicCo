@@ -3,84 +3,91 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mekan Müzik İsteği - Pembe Gradyan Tema</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script>
-        tailwind.config = {
-            darkMode: 'media'
-        }
-    </script>
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-        }
-        button, input, select, body, div, a {
-            transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out, border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
-        }
-        ::placeholder { color: #9ca3af; opacity: 1; }
-        .dark ::placeholder { color: #6b7280; }
-        :-ms-input-placeholder { color: #9ca3af; }
-        .dark :-ms-input-placeholder { color: #6b7280; }
-        ::-ms-input-placeholder { color: #9ca3af; }
-        .dark ::-ms-input-placeholder { color: #6b7280; }
-
-        .gradient-text {
-          background-image: linear-gradient(to right, #ec4899, #f472b6);
-          -webkit-background-clip: text;
-          background-clip: text;
-          color: transparent;
-        }
-        .dark .gradient-text {
-           background-image: linear-gradient(to right, #f9a8d4, #fbcfe8);
-        }
-    </style>
+    <title>Müzik Çalar</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
-<body class="bg-gray-100 dark:bg-gray-900 min-h-screen flex items-center justify-center p-4">
+<body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">Müzik Çalar</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('admin_login') }}">Yönetici Girişi</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
 
-    <div class="bg-white dark:bg-gray-800 p-6 md:p-8 rounded-lg shadow-xl w-full max-w-2xl">
-        <h1 class="text-3xl font-bold text-center mb-2 gradient-text">Müzik İsteği Yap</h1>
-        <p class="text-gray-600 dark:text-gray-400 text-center mb-6">Çalmasını istediğiniz şarkıyı arayın ve kuyruğa ekleyin.</p>
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h4>Şarkı Ekle</h4>
+                    </div>
+                    <div class="card-body">
+                        <form id="addSongForm">
+                            <div class="mb-3">
+                                <label for="songUrl" class="form-label">Spotify Şarkı URL'si</label>
+                                <input type="text" class="form-control" id="songUrl" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Ekle</button>
+                        </form>
+                    </div>
+                </div>
 
-        <form id="search-form" class="space-y-4 mb-6">
-            <div>
-                <label for="genre-filter" class="sr-only">Tür Filtresi</label>
-                <div>
-                    <label for="genre-filter" class="sr-only">Tür Filtresi</label>
-                    <select id="genre-filter" name="genre_filter" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-pink-500 dark:focus:ring-pink-400 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 appearance-none">
-                        <option value="">Tüm Türler</option>
-                
-                        {% if allowed_genres %} {# Değişkenin varlığını kontrol etmek iyi bir pratiktir #}
-                            {% for genre in allowed_genres %}
-                                <option value="{{ genre }}">{{ genre|capitalize }}</option> {# genre ismini büyük harfle başlatarak yazdır #}
-                            {% endfor %}
-                        {% endif %}
-                    </select>
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <h4>Çalma Listesi</h4>
+                    </div>
+                    <div class="card-body">
+                        <div id="queueList" class="list-group">
+                            <!-- Şarkı listesi buraya gelecek -->
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div>
-                <label for="search-query" class="sr-only">Arama Sorgusu</label>
-                <input type="text" id="search-query" name="search_query" placeholder="Şarkı veya sanatçı adı..." class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-pink-500 dark:focus:ring-pink-400 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" required>
+
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h4>Kontroller</h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-primary" onclick="play()">
+                                <i class="fas fa-play"></i> Oynat
+                            </button>
+                            <button class="btn btn-secondary" onclick="pause()">
+                                <i class="fas fa-pause"></i> Duraklat
+                            </button>
+                            <button class="btn btn-info" onclick="resume()">
+                                <i class="fas fa-play"></i> Devam Et
+                            </button>
+                            <button class="btn btn-warning" onclick="next()">
+                                <i class="fas fa-forward"></i> Sonraki
+                            </button>
+                            <button class="btn btn-warning" onclick="previous()">
+                                <i class="fas fa-backward"></i> Önceki
+                            </button>
+                        </div>
+                        <div class="mt-3">
+                            <label for="volume" class="form-label">Ses Seviyesi</label>
+                            <input type="range" class="form-range" id="volume" min="0" max="100" value="50">
+                        </div>
+                    </div>
+                </div>
             </div>
-            <button type="submit" class="w-full bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 dark:from-pink-600 dark:to-rose-600 dark:hover:from-pink-500 dark:hover:to-rose-500 text-white font-semibold p-3 rounded-md shadow-md hover:shadow-lg transform hover:-translate-y-0.5">
-                Ara
-            </button>
-        </form>
-
-        <div id="status-message" class="mb-4 p-3 rounded-md text-center font-medium" style="display: none;"></div>
-
-        <div id="search-results" class="space-y-4">
-        </div>
-
-        <div class="mt-6 text-center">
-            <a href="/queue" class="text-pink-600 hover:text-pink-700 dark:text-pink-400 dark:hover:text-pink-300 hover:underline font-medium">
-                Şarkı Kuyruğunu Görüntüle
-            </a>
         </div>
     </div>
 
+<<<<<<< HEAD
     <div class="w-full max-w-2xl mx-auto"> <!-- This div is to match the main container's width and centering -->
         <div id="lastfm-suggestion-section" class="my-8 p-6 bg-pink-50 dark:bg-pink-900/30 rounded-lg shadow-md" style="display: none;">
             <h2 class="text-2xl font-semibold mb-4 text-pink-700 dark:text-pink-300">Sana Özel Öneri!</h2>
@@ -91,163 +98,109 @@
         </div>
     </div>
 
+=======
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+>>>>>>> main
     <script>
-        const searchForm = document.getElementById('search-form');
-        const searchQueryInput = document.getElementById('search-query');
-        const genreFilterSelect = document.getElementById('genre-filter');
-        const statusMessageDiv = document.getElementById('status-message');
-        const searchResultsContainer = document.getElementById('search-results');
-
-        searchForm.addEventListener('submit', function(e) {
+        // Şarkı ekleme
+        document.getElementById('addSongForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const searchQuery = searchQueryInput.value.trim();
-            const genreFilter = genreFilterSelect.value;
-
-            if (!searchQuery) {
-                showStatus('Lütfen bir arama terimi girin.', 'error');
-                searchQueryInput.focus();
-                return;
-            }
-
-            searchResultsContainer.innerHTML = '';
-            hideStatus();
-            showStatus('Aranıyor...', 'loading');
-
-            fetch('/search', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
-                body: `search_query=${encodeURIComponent(searchQuery)}&genre_filter=${encodeURIComponent(genreFilter)}`
-            })
-            .then(response => {
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                return response.json();
-            })
-            .then(data => {
-                hideStatus();
-                if (data.error) {
-                    showStatus(data.error, 'error');
-                    return;
-                }
-                if (!data.results || data.results.length === 0) {
-                    searchResultsContainer.innerHTML = '<p class="text-center text-gray-500 dark:text-gray-400">Sonuç bulunamadı.</p>';
-                    return;
-                }
-
-                data.results.forEach(track => {
-                    const resultItem = document.createElement('div');
-                    resultItem.className = 'result-item bg-gray-50 dark:bg-gray-700 p-4 rounded-md shadow-sm flex items-center space-x-4 border border-transparent dark:border-gray-600';
-
-                    const imageUrl = track.image || `https://placehold.co/64x64/e2e8f0/333333?text=${encodeURIComponent(track.name.substring(0,1))}`;
-                    const fallbackImageUrl = 'https://placehold.co/64x64/fecaca/991b1b?text=Hata';
-
-                    resultItem.innerHTML = `
-                        <img class="result-image w-16 h-16 rounded object-cover flex-shrink-0" src="${imageUrl}" alt="${track.name || 'Albüm Kapağı'}" onerror="this.onerror=null; this.src='${fallbackImageUrl}';">
-                        <div class="result-info flex-grow min-w-0">
-                            <h3 class="font-semibold text-lg text-gray-800 dark:text-gray-100 truncate">${track.name || 'Bilinmeyen Şarkı'}</h3>
-                            <p class="text-gray-600 dark:text-gray-400 text-sm truncate">${track.artist || 'Bilinmeyen Sanatçı'} - ${track.album || 'Bilinmeyen Albüm'}</p>
-                        </div>
-                        <button class="result-add bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 dark:from-pink-600 dark:to-rose-600 dark:hover:from-pink-500 dark:hover:to-rose-500 text-white font-medium py-2 px-4 rounded-md text-sm whitespace-nowrap flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md transform hover:-translate-y-0.5" data-id="${track.id}">Ekle</button>
-                    `;
-                    searchResultsContainer.appendChild(resultItem);
+            const songUrl = document.getElementById('songUrl').value;
+            
+            try {
+                const response = await fetch('/api/queue/add', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `track_uri=${encodeURIComponent(songUrl)}`
                 });
-                attachAddButtonListeners();
-            })
-            .catch(error => {
-                console.error('Arama sırasında hata:', error);
-                showStatus('Arama sırasında bir hata oluştu. Lütfen tekrar deneyin.', 'error');
-            });
+                
+                const data = await response.json();
+                if (data.success) {
+                    alert('Şarkı eklendi!');
+                    document.getElementById('songUrl').value = '';
+                    updateQueue();
+                } else {
+                    alert(data.error || 'Bir hata oluştu!');
+                }
+            } catch (error) {
+                alert('Bir hata oluştu!');
+            }
         });
 
-        function attachAddButtonListeners() {
-            document.querySelectorAll('.result-add').forEach(button => {
-                button.replaceWith(button.cloneNode(true));
-            });
-            document.querySelectorAll('.result-add').forEach(button => {
-                button.addEventListener('click', function() {
-                    const trackId = this.getAttribute('data-id');
-                    if (trackId) {
-                        addToQueue(trackId, this);
-                    } else {
-                        console.error('Track ID bulunamadı.');
-                        showStatus('Şarkı eklenirken bir hata oluştu.', 'error');
-                    }
+        // Ses seviyesi kontrolü
+        document.getElementById('volume').addEventListener('change', async (e) => {
+            const volume = e.target.value;
+            try {
+                await fetch('/api/volume', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `volume=${volume}`
                 });
-            });
+            } catch (error) {
+                alert('Ses seviyesi ayarlanamadı!');
+            }
+        });
+
+        // Çalma listesini güncelle
+        async function updateQueue() {
+            try {
+                const response = await fetch('/api/queue');
+                const data = await response.json();
+                const queueList = document.getElementById('queueList');
+                queueList.innerHTML = '';
+                
+                data.queue.forEach((track, index) => {
+                    const item = document.createElement('div');
+                    item.className = 'list-group-item d-flex justify-content-between align-items-center';
+                    item.innerHTML = `
+                        <span>${track}</span>
+                        <button class="btn btn-danger btn-sm" onclick="removeFromQueue(${index})">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    `;
+                    queueList.appendChild(item);
+                });
+            } catch (error) {
+                console.error('Çalma listesi güncellenemedi:', error);
+            }
         }
 
-        function addToQueue(trackId, buttonElement) {
-            buttonElement.disabled = true;
-            buttonElement.textContent = 'Ekleniyor...';
-            buttonElement.classList.remove('bg-gradient-to-r', 'from-pink-500', 'to-rose-500', 'hover:from-pink-600', 'hover:to-rose-600', 'dark:from-pink-600', 'dark:to-rose-600', 'dark:hover:from-pink-500', 'dark:hover:to-rose-500');
-            buttonElement.classList.add('bg-gray-400', 'dark:bg-gray-500');
-
-
-            fetch('/add-to-queue', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                body: JSON.stringify({ track_id: trackId })
-            })
-            .then(response => {
-                 if (!response.ok) {
-                    return response.json().then(errData => { throw new Error(errData.error || `HTTP error! status: ${response.status}`); })
-                           .catch(() => { throw new Error(`HTTP error! status: ${response.status}`); });
-                 }
-                 return response.json();
-            })
-            .then(data => {
-                if (data.error) {
-                    showStatus(data.error, 'error');
-                    buttonElement.disabled = false;
-                    buttonElement.textContent = 'Ekle';
-                    buttonElement.classList.remove('bg-gray-400', 'dark:bg-gray-500');
-                    buttonElement.classList.add('bg-gradient-to-r', 'from-pink-500', 'to-rose-500', 'hover:from-pink-600', 'hover:to-rose-600', 'dark:from-pink-600', 'dark:to-rose-600', 'dark:hover:from-pink-500', 'dark:hover:to-rose-500');
-
+        // Şarkıyı listeden kaldır
+        async function removeFromQueue(index) {
+            try {
+                const response = await fetch('/api/queue/remove', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `index=${index}`
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    updateQueue();
                 } else {
-                    showStatus(data.message || 'Şarkı başarıyla kuyruğa eklendi!', 'success');
-                    buttonElement.textContent = 'Eklendi';
-                    buttonElement.classList.add('cursor-not-allowed');
+                    alert(data.error || 'Şarkı kaldırılamadı!');
                 }
-            })
-            .catch(error => {
-                console.error('Kuyruğa ekleme sırasında hata:', error);
-                showStatus(`Bir hata oluştu: ${error.message}`, 'error');
-                buttonElement.disabled = false;
-                buttonElement.textContent = 'Ekle';
-                buttonElement.classList.remove('bg-gray-400', 'dark:bg-gray-500');
-                buttonElement.classList.add('bg-gradient-to-r', 'from-pink-500', 'to-rose-500', 'hover:from-pink-600', 'hover:to-rose-600', 'dark:from-pink-600', 'dark:to-rose-600', 'dark:hover:from-pink-500', 'dark:hover:to-rose-500');
-            });
-        }
-
-        function showStatus(message, type) {
-            statusMessageDiv.textContent = message;
-            statusMessageDiv.className = 'mb-4 p-3 rounded-md text-center font-medium';
-
-            switch (type) {
-                case 'error':
-                    statusMessageDiv.classList.add('bg-red-100', 'dark:bg-red-900/40', 'text-red-700', 'dark:text-red-300');
-                    break;
-                case 'success':
-                    statusMessageDiv.classList.add('bg-pink-100', 'dark:bg-pink-900/40', 'text-pink-700', 'dark:text-pink-300');
-                    break;
-                case 'loading':
-                    statusMessageDiv.classList.add('bg-blue-100', 'dark:bg-blue-900/40', 'text-blue-700', 'dark:text-blue-300');
-                    break;
-                default:
-                    statusMessageDiv.classList.add('bg-gray-100', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
-                    break;
-            }
-            statusMessageDiv.style.display = 'block';
-
-            if (type !== 'error' && type !== 'loading') {
-                 setTimeout(hideStatus, 5000);
+            } catch (error) {
+                alert('Bir hata oluştu!');
             }
         }
 
-        function hideStatus() {
-            statusMessageDiv.style.display = 'none';
-            statusMessageDiv.textContent = '';
+        // Kontrol fonksiyonları
+        async function play() {
+            try {
+                await fetch('/api/play', { method: 'POST' });
+            } catch (error) {
+                alert('Şarkı oynatılamadı!');
+            }
         }
 
+<<<<<<< HEAD
 // (Existing JavaScript code in templates/index.html should be above this)
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -379,7 +332,42 @@ function fetchLastFmSuggestion() {
 // is used for general status messages by `addToQueue`. The `lastfm-suggestion-status` div
 // is specifically for messages related to the suggestion loading process itself.
 // `addToQueue(trackId, buttonElement)` is also assumed to be globally available.
-    </script>
+=======
+        async function pause() {
+            try {
+                await fetch('/api/pause', { method: 'POST' });
+            } catch (error) {
+                alert('Şarkı duraklatılamadı!');
+            }
+        }
 
+        async function resume() {
+            try {
+                await fetch('/api/resume', { method: 'POST' });
+            } catch (error) {
+                alert('Şarkı devam ettirilemedi!');
+            }
+        }
+
+        async function next() {
+            try {
+                await fetch('/api/next', { method: 'POST' });
+            } catch (error) {
+                alert('Sonraki şarkıya geçilemedi!');
+            }
+        }
+
+        async function previous() {
+            try {
+                await fetch('/api/previous', { method: 'POST' });
+            } catch (error) {
+                alert('Önceki şarkıya geçilemedi!');
+            }
+        }
+
+        // Sayfa yüklendiğinde çalma listesini güncelle
+        updateQueue();
+>>>>>>> main
+    </script>
 </body>
 </html>
