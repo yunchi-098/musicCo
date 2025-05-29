@@ -122,6 +122,102 @@ def get_lastfm_session_key_for_user(target_username):
         return session_data['session_key']
     return None
 
+
+# --- Yeni Last.fm Şarkı Öneri Fonksiyonu (API için) ---
+def get_lastfm_song_suggestion():
+    global settings # spotify_client global'den değil, get_spotify_client() ile alınacak
+
+    # Spotify bağlantısını al/kontrol et
+    current_spotify_client = get_spotify_client()
+    if not current_spotify_client:
+        logger.warning("get_lastfm_song_suggestion: Spotify client not available.")
+        return None, "Spotify bağlantısı yok."
+
+    # Last.fm yapılandırmasını kontrol et
+    lastfm_username = settings.get('lastfm_username')
+    if not LASTFM_API_KEY:
+        logger.error("get_lastfm_song_suggestion: Last.fm API Key (LASTFM_API_KEY) .env dosyasında bulunamadı.")
+        return None, "Last.fm API anahtarı yapılandırılmamış."
+    if not lastfm_username:
+        logger.warning("get_lastfm_song_suggestion: Last.fm kullanıcı adı ayarlarda tanımlanmamış.")
+        return None, "Last.fm kullanıcı adı eksik."
+    
+    if not LASTFM_SHARED_SECRET: # Session key almak için shared secret gerekli
+        logger.error("get_lastfm_song_suggestion: Last.fm Shared Secret .env dosyasında ayarlanmamış.")
+        return None, "Last.fm yapılandırması eksik (Shared Secret)."
+
+    lastfm_sk = get_lastfm_session_key_for_user(lastfm_username)
+    if not lastfm_sk:
+        logger.info(f"get_lastfm_song_suggestion: Last.fm session key for user '{lastfm_username}' not found.")
+        # API endpoint'i olduğu için flash mesajı yok, sadece log ve return.
+        return None, f"'{lastfm_username}' kullanıcısı için Last.fm bağlantısı gerekli."
+
+    logger.info(f"get_lastfm_song_suggestion: Attempting to get recommendation from Last.fm for user: {lastfm_username}")
+    recent_fm_tracks = get_lastfm_recent_tracks(lastfm_username, LASTFM_API_KEY, limit=5)
+
+    if not recent_fm_tracks:
+        logger.warning(f"get_lastfm_song_suggestion: Last.fm'den {lastfm_username} için son çalınan şarkılar alınamadı.")
+        return None, "Last.fm'den son çalınan şarkılar alınamadı."
+
+    seed_track_uris = []
+    for fm_track in recent_fm_tracks:
+        uri = find_spotify_uri_from_lastfm_track(fm_track['name'], fm_track['artist'], current_spotify_client)
+        if uri: seed_track_uris.append(uri)
+        if len(seed_track_uris) >= 5: break
+    
+    if not seed_track_uris:
+        logger.warning(f"get_lastfm_song_suggestion: Son Last.fm şarkıları için Spotify URI'leri bulunamadı ({lastfm_username}).")
+        return None, "Spotify URI bulunamadı."
+
+    logger.info(f"get_lastfm_song_suggestion: Using {len(seed_track_uris)} seed URIs for Spotify recommendation: {seed_track_uris}")
+    try:
+        recs = current_spotify_client.recommendations(seed_tracks=seed_track_uris[:min(len(seed_track_uris),5)], limit=10, market='TR')
+        if recs and recs['tracks']:
+            for suggested_track in recs['tracks']:
+                suggested_uri = suggested_track.get('uri')
+                if not suggested_uri: continue
+                
+                is_allowed, reason = check_song_filters(suggested_uri, current_spotify_client)
+                if not is_allowed:
+                    logger.info(f"get_lastfm_song_suggestion: Öneri filtrelendi ({reason}): {suggested_track.get('name')}")
+                    continue
+                
+                track_name_rec = suggested_track.get('name', 'Bilinmeyen Şarkı')
+                artist_list = suggested_track.get('artists', [])
+                artist_name_rec = ', '.join([a.get('name') for a in artist_list]) if artist_list else 'Bilinmeyen Sanatçı'
+                images = suggested_track.get('album', {}).get('images', [])
+                image_url_rec = images[0].get('url') if images else None # Genellikle en büyük resim ilk sırada olur, veya sondaki daha küçük olabilir. İhtiyaca göre seç.
+
+                recommendation_details = {
+                    'id': suggested_uri,
+                    'name': track_name_rec,
+                    'artist': artist_name_rec,
+                    'image_url': image_url_rec
+                }
+                logger.info(f"get_lastfm_song_suggestion: Uygun öneri bulundu: '{track_name_rec}'")
+                return recommendation_details, f"Öneri bulundu: '{track_name_rec}'."
+            
+            logger.info("get_lastfm_song_suggestion: Filtrelerden geçen uygun Last.fm önerisi bulunamadı.")
+            return None, "Uygun öneri yok."
+        else:
+            logger.warning("get_lastfm_song_suggestion: Spotify'dan Last.fm geçmişine göre öneri alınamadı.")
+            return None, "Spotify önerisi yok."
+            
+    except spotipy.SpotifyException as e:
+        logger.error(f"get_lastfm_song_suggestion: Spotify recommendation error (Last.fm): {e}")
+        # Token hatası ise global client'ı resetle (get_spotify_client() sonraki çağrıda yenilemeyi dener)
+        if e.http_status in [401, 403]: 
+            global spotify_client # spotify_client'ı global olarak işaretle
+            spotify_client = None 
+            if os.path.exists(TOKEN_FILE): # Token dosyasını silmek daha iyi olabilir
+                try: os.remove(TOKEN_FILE); logger.info("Token dosyası silindi (SpotifyException nedeniyle).")
+                except OSError as rm_err: logger.error(f"Token dosyası silinemedi: {rm_err}")
+        return None, f"Spotify hatası: {e.msg}"
+    except Exception as e:
+        logger.error(f"get_lastfm_song_suggestion: Unexpected error: {e}", exc_info=True)
+        return None, "Beklenmedik bir hata oluştu."
+
+
 # --- Spotify Auth Decorator (Mevcut) ---
 def spotify_auth_required(f):
     @wraps(f)
@@ -1255,6 +1351,20 @@ def recommend_lastfm_route():
     # Flash mesajları recommend_and_play_from_lastfm içinde hallediliyor.
     return redirect(url_for('admin_panel'))
 
+@app.route('/api/lastfm-suggestion')
+@spotify_auth_required # Spotify bağlantısı ve yetkilendirmesi bu API için gerekli
+# @admin_login_required # Bu API admin olmayan kullanıcılar tarafından da kullanılabilir mi? Şimdilik evet.
+                         # Eğer sadece admin içinse, bu satırı aktif et.
+def api_lastfm_suggestion():
+    """Last.fm geçmişine dayalı bir şarkı önerisi döndürür (API)."""
+    suggestion_dict, message = get_lastfm_song_suggestion()
+    if suggestion_dict:
+        return jsonify({'success': True, 'suggestion': suggestion_dict, 'message': message})
+    else:
+        # Hata durumunda uygun HTTP durum kodu da döndürülebilir,
+        # örn: if "bağlantısı yok" in message or "yapılandırması eksik" in message: status_code = 503 (Service Unavailable)
+        # şimdilik sadece success: False dönüyoruz.
+        return jsonify({'success': False, 'suggestion': None, 'message': message})
 
 # --- Arka Plan Şarkı Çalma İş Parçacığı (Mevcut) ---
 def background_queue_player():
