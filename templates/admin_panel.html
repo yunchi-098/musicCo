@@ -448,10 +448,22 @@
                                 Bu ayarlar olmadan Last.fm bağlantısı kurulamayacaktır. Lütfen sunucu yapılandırmasını kontrol edin.
                             </div>
                         {% elif not lastfm_username_configured %}
-                            <div class="alert alert-warning">
-                                Last.fm kullanıcı adı <a href="#settings-card" onclick="document.getElementById('lastfm_username').focus(); return false;">ayarlarda</a> tanımlanmamış.
-                                Lütfen öneri özelliği için bir kullanıcı adı girin.
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle"></i> Last.fm kullanıcı adı henüz ayarlanmamış.
+                                <br>
+                                Last.fm hesabınızı bağlayarak kullanıcı adınızın otomatik olarak kaydedilmesini sağlayabilir veya ayarlardan manuel olarak girebilirsiniz.
                             </div>
+                            <form action="{{ url_for('lastfm_do_auth') }}" method="GET" class="mb-2">
+                                <button type="submit" class="btn btn-danger btn-block">
+                                    <i class="fab fa-lastfm-square"></i> Last.fm ile Bağlan (Kullanıcı Adını Otomatik Al)
+                                </button>
+                            </form>
+                            <div class="text-center my-2">
+                                <small class="text-muted">VEYA</small>
+                            </div>
+                            <a href="#settings-card" onclick="document.getElementById('lastfm_username').focus(); return false;" class="btn btn-secondary btn-block">
+                                Kullanıcı Adını Manuel Gir/Düzenle
+                            </a>
                         {% elif lastfm_connected %}
                             <div class="alert alert-success">
                                 <i class="fas fa-check-circle"></i> Last.fm kullanıcısı <strong>{{ settings.get('lastfm_username') }}</strong> ile bağlantı aktif.

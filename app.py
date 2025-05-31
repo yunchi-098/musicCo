@@ -122,6 +122,7 @@ def get_lastfm_session_key_for_user(target_username):
         return session_data['session_key']
     return None
 
+
 # --- Spotify Auth Decorator (Mevcut) ---
 def spotify_auth_required(f):
     @wraps(f)
@@ -1255,6 +1256,20 @@ def recommend_lastfm_route():
     # Flash mesajları recommend_and_play_from_lastfm içinde hallediliyor.
     return redirect(url_for('admin_panel'))
 
+@app.route('/api/suggestion')
+@spotify_auth_required # Spotify bağlantısı ve yetkilendirmesi bu API için gerekli
+# @admin_login_required # Bu API admin olmayan kullanıcılar tarafından da kullanılabilir mi? Şimdilik evet.
+                         # Eğer sadece admin içinse, bu satırı aktif et.
+def api_get_suggestion():
+    """Yerel çalma geçmişine dayalı bir şarkı önerisi döndürür (API)."""
+    suggestion_dict, message = get_spotify_recommendation_from_local_history()
+    if suggestion_dict:
+        return jsonify({'success': True, 'suggestion': suggestion_dict, 'message': message})
+    else:
+        # Hata durumunda uygun HTTP durum kodu da döndürülebilir,
+        # örn: if "bağlantısı yok" in message or "yapılandırması eksik" in message: status_code = 503 (Service Unavailable)
+        # şimdilik sadece success: False dönüyoruz.
+        return jsonify({'success': False, 'suggestion': None, 'message': message})
 
 # --- Arka Plan Şarkı Çalma İş Parçacığı (Mevcut) ---
 def background_queue_player():
@@ -1291,9 +1306,24 @@ def background_queue_player():
                         last_played_song_uri_from_queue = song_uri_to_play
                     else:
                         logger.info(f"Arka plan: Kuyruktaki '{next_song_obj.get('name')}' filtrelere takıldı, atlanıyor.")
-                elif settings.get('lastfm_username') and get_lastfm_session_key_for_user(settings.get('lastfm_username')): # Kuyruk boşsa ve LastFM bağlıysa öneri yap
-                    logger.info("Arka plan: Kuyruk boş, Last.fm'den öneri deneniyor...")
-                    recommend_and_play_from_lastfm() # Bu fonksiyon kendi içinde çalmayı başlatır
+                else: # Kuyruk boş, otomatik öneri dene
+                    logger.info("Arka plan: Kuyruk boş, yerel geçmişten öneri deneniyor...")
+                    played_from_local, local_msg = recommend_and_play_from_local_history()
+                    if played_from_local:
+                        logger.info(f"Arka plan (yerel öneri): {local_msg}")
+                        last_played_song_uri_from_queue = None
+                    else:
+                        logger.info(f"Arka plan: Yerel öneri başarısız/bulunamadı ({local_msg}). Last.fm'den öneri deneniyor...")
+                        if settings.get('lastfm_username') and get_lastfm_session_key_for_user(settings.get('lastfm_username')):
+                            played_from_lastfm, lastfm_msg = recommend_and_play_from_lastfm()
+                            # recommend_and_play_from_lastfm already logs and flashes, so just check success
+                            if played_from_lastfm:
+                                logger.info(f"Arka plan (Last.fm öneri): {lastfm_msg}")
+                                last_played_song_uri_from_queue = None
+                            else:
+                                logger.info(f"Arka plan: Last.fm önerisi de başarısız/bulunamadı ({lastfm_msg}).")
+                        else:
+                            logger.info("Arka plan: Last.fm yapılandırılmamış veya bağlı değil.")
                 continue # Bir sonraki döngüye geç
 
             # Bir şey çalıyorsa, şarkının bitip bitmediğini kontrol et
@@ -1335,16 +1365,27 @@ def background_queue_player():
                              logger.info("Arka plan: Kullanıcı şarkıyı değiştirdi, şarkı bitince Spotify'ın sıradakine geçilecek.")
                              current_spotify_client.next_track(device_id=settings.get('active_device_id'))
                              last_played_song_uri_from_queue = None
-
-                    elif settings.get('lastfm_username') and get_lastfm_session_key_for_user(settings.get('lastfm_username')): # Kuyruk boşsa LastFM önerisi
-                        logger.info(f"Arka plan: '{current_item.get('name')}' bitti, kuyruk boş, Last.fm'den öneri deneniyor...")
-                        recommend_and_play_from_lastfm()
-                        last_played_song_uri_from_queue = None # Önerilen şarkı kuyruk dışı
-                    else: # Kuyruk boş ve LastFM yoksa, Spotify'ın kendi sıradakine geç
-                        logger.info(f"Arka plan: '{current_item.get('name')}' bitti, kuyruk boş, Spotify sıradakine geçiyor.")
-                        current_spotify_client.next_track(device_id=settings.get('active_device_id'))
-                        last_played_song_uri_from_queue = None
-                    
+                    else: # Kuyruk boş, otomatik öneri dene
+                        logger.info(f"Arka plan: '{current_item.get('name')}' bitti, kuyruk boş. Yerel geçmişten öneri deneniyor...")
+                        played_from_local, local_msg = recommend_and_play_from_local_history()
+                        if played_from_local:
+                            logger.info(f"Arka plan (yerel öneri): {local_msg}")
+                            last_played_song_uri_from_queue = None
+                        else:
+                            logger.info(f"Arka plan: '{current_item.get('name')}' bitti. Yerel öneri başarısız/bulunamadı ({local_msg}). Last.fm'den öneri deneniyor...")
+                            if settings.get('lastfm_username') and get_lastfm_session_key_for_user(settings.get('lastfm_username')):
+                                played_from_lastfm, lastfm_msg = recommend_and_play_from_lastfm()
+                                if played_from_lastfm:
+                                    logger.info(f"Arka plan (Last.fm öneri): {lastfm_msg}")
+                                    last_played_song_uri_from_queue = None
+                                else:
+                                    logger.info(f"Arka plan: Last.fm önerisi de başarısız/bulunamadı ({lastfm_msg}). Spotify sıradakine geçiyor.")
+                                    current_spotify_client.next_track(device_id=settings.get('active_device_id'))
+                                    last_played_song_uri_from_queue = None
+                            else:
+                                logger.info(f"Arka plan: Last.fm yapılandırılmamış veya bağlı değil. Spotify sıradakine geçiyor.")
+                                current_spotify_client.next_track(device_id=settings.get('active_device_id'))
+                                last_played_song_uri_from_queue = None
                     time.sleep(5) # Geçiş sonrası kısa bir bekleme
         except spotipy.SpotifyException as e:
             if e.http_status == 401 or e.http_status == 403: # Yetkilendirme hatası
@@ -1408,6 +1449,172 @@ def save_played_track(track_info):
     except sqlite3.Error as e: logger.error(f"Şarkı kaydetme SQLite hatası: {e}")
     finally: conn.close() if 'conn' in locals() and conn else None
 
+def get_recent_spotify_tracks_from_db(limit: int = 5) -> list[str]:
+    """
+    Veritabanından en son çalınan benzersiz Spotify track_id'lerini alır.
+    """
+    conn = None
+    track_ids = []
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        query = "SELECT DISTINCT track_id FROM played_tracks ORDER BY played_at DESC LIMIT ?"
+        cursor.execute(query, (limit,))
+        rows = cursor.fetchall()
+        track_ids = [row[0] for row in rows if row[0] and row[0].startswith('spotify:track:')]
+        logger.info(f"Veritabanından {len(track_ids)} adet son çalınan Spotify track_id alındı (limit: {limit}).")
+    except sqlite3.Error as e:
+        logger.error(f"Veritabanından son çalınan şarkıları alırken SQLite hatası: {e}")
+        return [] # Hata durumunda boş liste dön
+    except Exception as e:
+        logger.error(f"Veritabanından son çalınan şarkıları alırken beklenmedik hata: {e}", exc_info=True)
+        return [] # Hata durumunda boş liste dön
+    finally:
+        if conn:
+            conn.close()
+    return track_ids
+
+def get_spotify_recommendation_from_local_history():
+    """
+    Yerel veritabanındaki çalma geçmişine göre Spotify'dan şarkı önerisi alır.
+    Çalma işlemi yapmaz.
+    """
+    global spotify_client # For resetting on auth error
+
+    current_spotify_client = get_spotify_client()
+    if not current_spotify_client:
+        logger.warning("get_spotify_recommendation_from_local_history: Spotify client not available.")
+        return None, "Spotify bağlantısı yok."
+
+    seed_track_uris = get_recent_spotify_tracks_from_db(limit=5)
+    if not seed_track_uris:
+        logger.info("get_spotify_recommendation_from_local_history: Veritabanında öneri için yeterli çalma geçmişi bulunamadı.")
+        return None, "Veritabanında yeterli çalma geçmişi bulunamadı."
+
+    logger.info(f"get_spotify_recommendation_from_local_history: Using {len(seed_track_uris)} seed URIs from local DB for Spotify recommendation: {seed_track_uris}")
+
+    try:
+        # Spotify API'si en fazla 5 seed kabul eder (track, artist, genre toplamı).
+        # get_recent_spotify_tracks_from_db zaten 5 ile limitliyor.
+        recs = current_spotify_client.recommendations(seed_tracks=seed_track_uris, limit=10, market='TR')
+
+        if recs and recs.get('tracks'):
+            for suggested_track in recs['tracks']:
+                suggested_uri = suggested_track.get('uri')
+                if not suggested_uri:
+                    continue
+
+                is_allowed, reason = check_song_filters(suggested_uri, current_spotify_client)
+                if not is_allowed:
+                    logger.info(f"get_spotify_recommendation_from_local_history: Öneri filtrelendi ({reason}): {suggested_track.get('name')}")
+                    continue
+
+                track_name_rec = suggested_track.get('name', 'Bilinmeyen Şarkı')
+                artists = suggested_track.get('artists', [])
+                artist_name_rec = ', '.join([a.get('name') for a in artists]) if artists else 'Bilinmeyen Sanatçı'
+                images = suggested_track.get('album', {}).get('images', [])
+                # Use last image for consistency (often smaller, good for lists)
+                image_url_rec = images[-1].get('url') if images else None
+
+                recommendation_details = {
+                    'id': suggested_uri,
+                    'name': track_name_rec,
+                    'artist': artist_name_rec,
+                    'image_url': image_url_rec
+                }
+                logger.info(f"get_spotify_recommendation_from_local_history: Uygun öneri bulundu: '{track_name_rec}'")
+                return recommendation_details, "Dinleme geçmişinize göre bir şarkı önerisi bulundu."
+
+            logger.info("get_spotify_recommendation_from_local_history: Filtrelerden geçen uygun bir öneri bulunamadı (yerel geçmişten).")
+            return None, "Filtrelerden geçen uygun bir öneri bulunamadı."
+        else:
+            logger.warning("get_spotify_recommendation_from_local_history: Spotify'dan çalma geçmişine göre öneri alınamadı.")
+            return None, "Spotify'dan öneri alınamadı."
+
+    except spotipy.SpotifyException as e:
+        logger.error(f"get_spotify_recommendation_from_local_history: Spotify API Hatası: {e.http_status} - {e.msg}", exc_info=True)
+        if e.http_status in [401, 403]:
+            spotify_client = None # Reset global client
+            if os.path.exists(TOKEN_FILE):
+                try:
+                    os.remove(TOKEN_FILE)
+                    logger.info(f"Token dosyası ({TOKEN_FILE}) silindi (SpotifyException nedeniyle).")
+                except OSError as rm_err:
+                    logger.error(f"Token dosyası ({TOKEN_FILE}) silinemedi: {rm_err}")
+        return None, f"Spotify API Hatası: {e.msg}"
+    except Exception as e:
+        logger.error(f"get_spotify_recommendation_from_local_history: Beklenmedik hata: {e}", exc_info=True)
+        return None, "Öneri alınırken beklenmedik bir hata oluştu."
+
+def recommend_and_play_from_local_history():
+    """
+    Yerel DB geçmişinden şarkı önerisi alır ve çalmaya çalışır.
+    Flash mesajları yerine loglama ve (başarı_durumu, mesaj) tuple'ı döndürür.
+    """
+    global spotify_client, settings # For settings and client reset
+
+    suggestion_dict, message = get_spotify_recommendation_from_local_history()
+
+    if not suggestion_dict:
+        logger.info(f"recommend_and_play_from_local_history: Öneri alınamadı. Sebep: {message}")
+        return False, message # Propagate the message from the suggestion function
+
+    current_spotify_client = get_spotify_client()
+    if not current_spotify_client:
+        # This case should ideally be caught by get_spotify_recommendation_from_local_history,
+        # but as a safeguard:
+        logger.warning("recommend_and_play_from_local_history: Spotify client not available for playback.")
+        return False, "Spotify bağlantısı yok."
+
+    suggested_uri = suggestion_dict.get('id')
+    track_name_to_play = suggestion_dict.get('name', 'Bilinmeyen Şarkı')
+    artist_name_to_play = suggestion_dict.get('artist', 'Bilinmeyen Sanatçı')
+
+    try:
+        active_device_id = settings.get('active_device_id')
+        if not active_device_id:
+            logger.info("recommend_and_play_from_local_history: Aktif Spotify cihazı ayarlarda kayıtlı değil, tespit ediliyor...")
+            try:
+                devices_info = current_spotify_client.devices()
+                active_devices = [d for d in devices_info['devices'] if d.get('is_active')] if devices_info and devices_info.get('devices') else []
+
+                if active_devices:
+                    active_device_id = active_devices[0]['id']
+                    logger.info(f"recommend_and_play_from_local_history: Aktif cihaz bulundu: {active_device_id}")
+                elif devices_info and devices_info.get('devices'):
+                    active_device_id = devices_info['devices'][0]['id'] # İlk cihazı seç
+                    logger.info(f"recommend_and_play_from_local_history: Aktif cihaz bulunamadı, ilk cihaz ({active_device_id}) kullanılıyor ve playback aktarılıyor.")
+                    current_spotify_client.transfer_playback(device_id=active_device_id, force_play=False)
+                    time.sleep(1) # Transferin tamamlanması için kısa bir bekleme
+                else:
+                    logger.error("recommend_and_play_from_local_history: Hiç Spotify Connect cihazı bulunamadı.")
+                    return False, "Aktif Spotify cihazı bulunamadı."
+            except Exception as dev_ex:
+                logger.error(f"recommend_and_play_from_local_history: Spotify cihazları alınırken/aktarılırken hata: {dev_ex}", exc_info=True)
+                return False, f"Spotify cihaz hatası: {str(dev_ex)}"
+
+        logger.info(f"recommend_and_play_from_local_history: Playing local history recommended: '{track_name_to_play}' ({suggested_uri}) on device {active_device_id}")
+        current_spotify_client.start_playback(device_id=active_device_id, uris=[suggested_uri])
+
+        update_time_profile(suggested_uri, current_spotify_client)
+        save_played_track({'id': suggested_uri, 'name': track_name_to_play, 'artist': artist_name_to_play})
+
+        return True, f"Yerel geçmişten önerilen '{track_name_to_play}' çalınıyor."
+
+    except spotipy.SpotifyException as e:
+        logger.error(f"recommend_and_play_from_local_history: Spotify API Hatası (Öneri Çalma): {e.http_status} - {e.msg}", exc_info=True)
+        if e.http_status in [401, 403]:
+            spotify_client = None # Reset global client
+            if os.path.exists(TOKEN_FILE):
+                try:
+                    os.remove(TOKEN_FILE)
+                    logger.info(f"Token dosyası ({TOKEN_FILE}) silindi (SpotifyException çalma sırasında).")
+                except OSError as rm_err:
+                    logger.error(f"Token dosyası ({TOKEN_FILE}) silinemedi: {rm_err}")
+        return False, f"Spotify API Hatası (Öneri Çalma): {e.msg}"
+    except Exception as e:
+        logger.error(f"recommend_and_play_from_local_history: Şarkı çalınırken beklenmedik bir hata oluştu: {e}", exc_info=True)
+        return False, "Şarkı çalınırken beklenmedik bir hata oluştu."
 
 @app.route('/api/played-tracks')
 @admin_login_required
