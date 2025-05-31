@@ -137,26 +137,15 @@
                                 </div>
                             </div>
                             <div class="text-center mt-auto">
-                                <div class="btn-group" role="group">
-                                    {% if currently_playing_info.is_playing %}
-                                        <form action="{{ url_for('player_pause') }}" method="GET" style="display: inline; margin-right: 5px;">
-                                            <button type="submit" class="btn btn-warning" title="Durdur & Otomatik Geçişi Kapat">
-                                                <i class="fas fa-pause"></i>
-                                            </button>
-                                        </form>
-                                    {% else %}
-                                        <form action="{{ url_for('player_resume') }}" method="GET" style="display: inline; margin-right: 5px;">
-                                            <button type="submit" class="btn btn-success" title="Devam Et & Otomatik Geçişi Aç">
-                                                <i class="fas fa-play"></i>
-                                            </button>
-                                        </form>
-                                    {% endif %}
-                                    <form action="{{ url_for('player_skip') }}" method="GET" style="display: inline;">
-                                        <button type="submit" class="btn btn-info" title="Sıradaki Şarkıya Geç">
-                                            <i class="fas fa-forward"></i>
-                                        </button>
-                                    </form>
-                                </div>
+                                {% if currently_playing_info.is_playing %}
+                                    <form action="{{ url_for('player_pause') }}" method="GET" style="display: inline;">
+                                         <button type="submit" class="btn btn-warning btn-block"><i class="fas fa-pause"></i> Durdur & Otomatik Geçişi Kapat</button>
+                                     </form>
+                                {% else %}
+                                    <form action="{{ url_for('player_resume') }}" method="GET" style="display: inline;">
+                                         <button type="submit" class="btn btn-success btn-block"><i class="fas fa-play"></i> Devam Et & Otomatik Geçişi Aç</button>
+                                     </form>
+                                {% endif %}
                             </div>
                         {% else %}
                             <p class="text-muted mb-0 text-center">Şu anda aktif bir şarkı çalınmıyor veya bilgi alınamadı.</p>
@@ -235,11 +224,8 @@
                                         {% endif %}
                                     </div>
                                 </div>
-                                <form method="POST" action="{{ url_for('remove_song', song_id_str=song.id) }}" class="ml-2">
-                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Kuyruktan Kaldır">
-                                        <i class="fas fa-times"></i>
-                                    </button>
-                                </form>
+                                 <form method="POST" action="{{ url_for('remove_song', song_id_str=song.id) }}" class="ml-2"> <button type="submit" class="btn btn-sm btn-outline-danger" title="Kuyruktan Kaldır"></button>
+                                 </form>
                             </li>
                             {% endfor %}
                         </ul>
@@ -262,7 +248,8 @@
                 </div>
             </div>
 
-             <div class="col-lg-6 col-md-6"> <div class="card shadow-sm h-100">
+            <div class="col-lg-4 col-md-6">
+                 <div class="card shadow-sm h-100">
                      <div class="card-header bg-warning">
                          <h5 class="mb-0">Genel Ayarlar & Filtre Modları</h5>
                      </div>
@@ -300,6 +287,10 @@
                                      <label class="custom-control-label" for="artist_mode_whitelist">Beyaz Liste</label>
                                  </div>
                              </div>
+                             <div class="form-group">
+                                 <label class="mb-0">Şarkı Filtresi:</label>
+                                 
+                             </div>
                              <button type="submit" class="btn btn-primary btn-block mt-3">
                                  Ayarları Kaydet
                              </button>
@@ -308,7 +299,8 @@
                  </div>
              </div>
 
-             <div class="col-lg-6 col-md-6"> <div class="card shadow-sm h-100">
+             <div class="col-lg-4 col-md-6">
+                <div class="card shadow-sm h-100">
                     <div class="card-header bg-secondary text-white">
                         <h5 class="mb-0">Diğer İşlemler</h5>
                     </div>
@@ -323,9 +315,7 @@
                     </div>
                 </div>
             </div>
-        </div>
-
-        <div class="audio-management-section shadow-sm mt-4">
+        </div> <div class="audio-management-section shadow-sm mt-4">
              <h4 class="mb-4 text-secondary">Ses Çıkış Yönetimi</h4>
              <div class="row">
                  <div class="col-md-6 mb-3 mb-md-0">
@@ -366,7 +356,8 @@
         <div class="filter-management-section shadow-sm mt-4">
             <h4 class="mb-4 text-secondary">Filtre Yönetimi</h4>
             <div class="row">
-                <div class="col-md-6"> <div class="card h-100">
+                <div class="col-md-4">
+                    <div class="card h-100">
                         <div class="card-header">
                             Tür Filtresi (<span id="genre-mode-display">{{ settings.genre_filter_mode|replace('blacklist', 'Kara Liste')|replace('whitelist', 'Beyaz Liste') }}</span>)
                         </div>
@@ -382,7 +373,8 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-md-6"> <div class="card h-100">
+                <div class="col-md-4">
+                    <div class="card h-100">
                         <div class="card-header">
                             Sanatçı Filtresi (<span id="artist-mode-display">{{ settings.artist_filter_mode|replace('blacklist', 'Kara Liste')|replace('whitelist', 'Beyaz Liste') }}</span>)
                         </div>
@@ -424,6 +416,7 @@
                                         <tr>
                                             <th>Şarkı Adı</th>
                                             <th>Sanatçı</th>
+                                            <th>Spotify ID</th>
                                             <th>İşlemler</th>
                                         </tr>
                                     </thead>
@@ -435,101 +428,6 @@
                         </div>
                     </div>
                 </div>
-                <div class="card mt-4">
-                    <div class="card-header">
-                        <i class="fab fa-lastfm"></i> Last.fm Bağlantı Durumu
-                    </div>
-                    <div class="card-body">
-                        {% if not lastfm_config_complete %}
-                            <div class="alert alert-danger">
-                                <strong>Yapılandırma Eksik!</strong> Last.fm API Key, Shared Secret veya Redirect URI .env dosyasında ayarlanmamış.
-                                Bu ayarlar olmadan Last.fm bağlantısı kurulamayacaktır. Lütfen sunucu yapılandırmasını kontrol edin.
-                            </div>
-                        {% elif not lastfm_username_configured %}
-                            <div class="alert alert-info">
-                                <i class="fas fa-info-circle"></i> Last.fm kullanıcı adı henüz ayarlanmamış.
-                                <br>
-                                Last.fm hesabınızı bağlayarak kullanıcı adınızın otomatik olarak kaydedilmesini sağlayabilir veya ayarlardan manuel olarak girebilirsiniz.
-                            </div>
-                            <form action="{{ url_for('lastfm_do_auth') }}" method="GET" class="mb-2">
-                                <button type="submit" class="btn btn-danger btn-block">
-                                    <i class="fab fa-lastfm-square"></i> Last.fm ile Bağlan (Kullanıcı Adını Otomatik Al)
-                                </button>
-                            </form>
-                            <div class="text-center my-2">
-                                <small class="text-muted">VEYA</small>
-                            </div>
-                            <a href="#settings-card" onclick="document.getElementById('lastfm_username').focus(); return false;" class="btn btn-secondary btn-block">
-                                Kullanıcı Adını Manuel Gir/Düzenle
-                            </a>
-                        {% elif lastfm_connected %}
-                            <div class="alert alert-success">
-                                <i class="fas fa-check-circle"></i> Last.fm kullanıcısı <strong>{{ settings.get('lastfm_username') }}</strong> ile bağlantı aktif.
-                            </div>
-                            <form action="{{ url_for('lastfm_do_auth') }}" method="GET" class="d-inline">
-                                <button type="submit" class="btn btn-sm btn-outline-danger">
-                                    <i class="fab fa-lastfm-square"></i> Last.fm Bağlantısını Yenile/Değiştir
-                                </button>
-                            </form>
-                            <!-- İsteğe Bağlı: Bağlantıyı Kes Butonu
-                            <form action="{{ url_for('lastfm_disconnect_route') }}" method="POST" class="d-inline ms-2">
-                                <button type="submit" class="btn btn-sm btn-warning">Bağlantıyı Kes</button>
-                            </form>
-                            -->
-                        {% else %}
-                            <div class="alert alert-info">
-                                <i class="fas fa-exclamation-circle"></i> Last.fm kullanıcısı <strong>{{ settings.get('lastfm_username') }}</strong> için bağlantı kurulu değil.
-                                Öneri özelliğini kullanmak için lütfen bağlanın.
-                            </div>
-                            <form action="{{ url_for('lastfm_do_auth') }}" method="GET">
-                                <button type="submit" class="btn btn-danger">
-                                    <i class="fab fa-lastfm-square"></i> {{ settings.get('lastfm_username') }} Olarak Last.fm'e Bağlan
-                                </button>
-                            </form>
-                        {% endif %}
-                    </div>
-                </div>
-                
-                <div class="card mt-4">
-                    <div class="card-header">
-                        <i class="fas fa-headphones-alt"></i> Last.fm Önerileri
-                    </div>
-                    <div class="card-body">
-                        {% if not lastfm_config_complete %}
-                            <p class="text-danger">Last.fm API yapılandırması eksik. Lütfen .env dosyasını kontrol edin.</p>
-                        {% elif not lastfm_username_configured %}
-                            <p class="text-warning">
-                                Lütfen <a href="#settings-card" onclick="document.getElementById('lastfm_username').focus(); return false;">ayarlardan</a> bir Last.fm kullanıcı adı girin.
-                            </p>
-                        {% elif not lastfm_connected %}
-                            <p class="text-info">
-                                Last.fm önerilerini kullanmak için yukarıdaki durum panelinden <strong>{{ settings.get('lastfm_username') }}</strong> kullanıcısı ile Last.fm'e bağlanın.
-                            </p>
-                             <a href="{{ url_for('lastfm_do_auth') }}" class="btn btn-danger">
-                                <i class="fab fa-lastfm-square"></i> {{ settings.get('lastfm_username') }} Olarak Last.fm'e Bağlan
-                            </a>
-                        {% else %}
-                            <form action="{{ url_for('recommend_lastfm_route') }}" method="POST">
-                                <button type="submit" class="btn btn-info">
-                                    <i class="fas fa-random"></i> {{ settings.get('lastfm_username') }} Geçmişinden Öner ve Çal
-                                </button>
-                            </form>
-                            <small class="form-text text-muted mt-2">
-                                {{ settings.get('lastfm_username') }} kullanıcısının Last.fm'deki son 5 şarkısına göre Spotify'dan yeni bir şarkı önerilir ve çalınır.
-                            </small>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="row mb-4">
-            <div class="col">
-                <form action="{{ url_for('recommend_spotify_route') }}" method="post" class="d-inline">
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-music"></i> Spotify'dan Öneri Al
-                    </button>
-                </form>
             </div>
         </div>
 
@@ -560,12 +458,7 @@
             } else {
                 buttonElement.disabled = false; buttonElement.classList.remove('btn-loading');
                 if (buttonElement.dataset.originalHtml) { buttonElement.innerHTML = buttonElement.dataset.originalHtml; delete buttonElement.dataset.originalHtml; } // originalHtml'i temizle
-                else {
-                    // Fallback text
-                    const icon = buttonElement.querySelector('i');
-                    buttonElement.textContent = buttonElement.dataset.originalText || "İşlem";
-                    if (icon) buttonElement.prepend(icon, ' '); // İkonu geri ekle
-                 }
+                else { buttonElement.textContent = "İşlem"; } // Fallback text
             }
         }
 
@@ -681,22 +574,11 @@
 
         // --- Filtre Yönetimi Fonksiyonları ---
         function renderFilterList(filterType) {
-            // 'song' filterType için işlem yapma
-            if (filterType === 'song') return;
-
-            const mode = currentSettings[filterType + '_filter_mode'];
-            const listKey = filterType + '_' + mode;
-            const list = currentSettings[listKey] || [];
-            const listElement = $(`#${filterType}-filter-list`);
-            const modeDisplayElement = $(`#${filterType}-mode-display`);
-            modeDisplayElement.text(mode === 'blacklist' ? 'Kara Liste' : 'Beyaz Liste');
+            const mode = currentSettings[filterType + '_filter_mode']; const listKey = filterType + '_' + mode;
+            const list = currentSettings[listKey] || []; const listElement = $(`#${filterType}-filter-list`);
+            const modeDisplayElement = $(`#${filterType}-mode-display`); modeDisplayElement.text(mode === 'blacklist' ? 'Kara Liste' : 'Beyaz Liste');
             listElement.html('');
-
-            if (list.length === 0) {
-                listElement.html('<li class="text-muted text-center">Liste boş.</li>');
-                return;
-            }
-
+            if (list.length === 0) { listElement.html('<li class="text-muted text-center">Liste boş.</li>'); return; }
             const idsToFetch = [];
             if (filterType === 'artist' || filterType === 'track') { list.forEach(item => { if (!spotifyNameCache[item] && item.startsWith(`spotify:${filterType}:`)) { idsToFetch.push(item); } }); }
             const fetchNamesAndRender = () => {
@@ -709,122 +591,56 @@
                 });
                 listElement.html(html);
             };
-
             if (idsToFetch.length > 0) {
                 console.log(`Fetching details for ${filterType} IDs:`, idsToFetch);
-                $.ajax({
-                    url: '/api/spotify/details', type: 'POST', contentType: 'application/json',
-                    data: JSON.stringify({ ids: idsToFetch, type: filterType }), // type: 'artist' olacak
-                    success: function(data) {
-                        if (data.success && data.details) {
-                            $.extend(spotifyNameCache, data.details);
-                            console.log("Updated spotifyNameCache:", spotifyNameCache);
-                        } else {
-                            console.warn("Could not fetch some details:", data.error);
-                        }
-                    },
+                $.ajax({ url: '/api/spotify/details', type: 'POST', contentType: 'application/json', data: JSON.stringify({ ids: idsToFetch, type: filterType }),
+                    success: function(data) { if (data.success && data.details) { $.extend(spotifyNameCache, data.details); console.log("Updated spotifyNameCache:", spotifyNameCache); } else { console.warn("Could not fetch some details:", data.error); } },
                     error: function(xhr) { console.error("Error fetching Spotify details:", xhr); },
                     complete: function() { fetchNamesAndRender(); }
                 });
-            } else {
-                fetchNamesAndRender();
-            }
-        }
-        function renderAllFilterLists() {
-            renderFilterList('genre');
-            renderFilterList('artist');
-            // renderFilterList('song') çağrısı kaldırıldı
+            } else { fetchNamesAndRender(); }
         }
         function renderAllFilterLists() { renderFilterList('genre'); renderFilterList('artist'); }
         $('input[name$="_filter_mode"]').on('change', function() {
-            const filterType = this.name.replace('_filter_mode', '');
-            // 'song' için işlem yapma
-            if (filterType === 'song') return;
-
-            const newMode = this.value;
+            const filterType = this.name.replace('_filter_mode', ''); const newMode = this.value;
             console.log(`Filter mode changed for ${filterType} to ${newMode}`);
-            currentSettings[filterType + '_filter_mode'] = newMode;
-            renderFilterList(filterType);
-            $(`#${filterType}-search-results`).html(''); // Arama sonuçlarını temizle
+            currentSettings[filterType + '_filter_mode'] = newMode; renderFilterList(filterType);
+            $(`#${filterType}-search-results`).html('');
         });
         function addFilterItem(filterType) {
-            // 'song' için işlem yapma
-            if (filterType === 'song') return;
-
-            const mode = currentSettings[filterType + '_filter_mode'];
-            const listType = mode;
-            const inputElement = $(`#${filterType}-add-input`);
-            const item = inputElement.val().trim();
-
-            if (!item) {
-                showFlashMessage('Lütfen eklenecek bir değer girin.', 'warning');
-                inputElement.focus();
-                return;
-            }
-
+            const mode = currentSettings[filterType + '_filter_mode']; const listType = mode;
+            const inputElement = $(`#${filterType}-add-input`); const item = inputElement.val().trim();
+            if (!item) { showFlashMessage('Lütfen eklenecek bir değer girin.', 'warning'); inputElement.focus(); return; }
             console.log(`Adding '${item}' to ${filterType} ${listType} list...`);
             const buttonElement = inputElement.next('.input-group-append').find('button');
             setButtonLoading(buttonElement[0], true);
-
-            $.ajax({
-                url: '/api/add-to-list', type: 'POST', contentType: 'application/json',
-                data: JSON.stringify({ filter_type: filterType, list_type: listType, item: item }),
+            $.ajax({ url: '/api/add-to-list', type: 'POST', contentType: 'application/json', data: JSON.stringify({ filter_type: filterType, list_type: listType, item: item }),
                 success: function(data) {
                     if (data.success) {
                         showFlashMessage(data.message || 'Öğe listeye eklendi.', 'success');
                         currentSettings[filterType + '_' + listType] = data.updated_list || currentSettings[filterType + '_' + listType];
-                        // İsim cache'ini güncellemek için detayları tekrar çekebiliriz (sadece artist için)
-                        if (filterType === 'artist' && item.startsWith('spotify:artist:') && !spotifyNameCache[item]) {
-                             $.ajax({ url: '/api/spotify/details', type: 'POST', contentType: 'application/json', data: JSON.stringify({ ids: [item], type: 'artist' }),
-                                success: function(detailData) { if (detailData.success && detailData.details) { $.extend(spotifyNameCache, detailData.details); } },
-                                complete: function() { renderFilterList(filterType); }
-                             });
-                        } else {
-                            renderFilterList(filterType);
-                        }
+                        // İsim cache'ini güncellemek için detayları tekrar çekebiliriz veya manuel ekleyebiliriz
+                        // Şimdilik sadece listeyi yeniden çizelim
+                        renderFilterList(filterType);
                         inputElement.val('');
-                    } else {
-                        showFlashMessage('Hata: ' + (data.error || 'Ekleme başarısız.'), 'danger');
-                    }
+                    } else { showFlashMessage('Hata: ' + (data.error || 'Ekleme başarısız.'), 'danger'); }
                 },
-                error: function(xhr) {
-                    let errorMsg = 'Listeye eklenirken sunucu hatası.';
-                    try { if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; } } catch(e){}
-                    showFlashMessage(`Hata: ${errorMsg}`, 'danger');
-                },
+                error: function(xhr) { let errorMsg = 'Listeye eklenirken sunucu hatası.'; try { if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; } } catch(e){} showFlashMessage(`Hata: ${errorMsg}`, 'danger'); },
                 complete: function() { setButtonLoading(buttonElement[0], false); }
             });
         }
         function removeFilterItem(filterType, listType, item) {
-            // 'song' için işlem yapma
-            if (filterType === 'song') return;
-
-            if (!confirm(`'${spotifyNameCache[item] || item}' öğesini ${filterType} ${listType} listesinden çıkarmak istediğinizden emin misiniz?`)) {
-                return;
-            }
+            if (!confirm(`'${spotifyNameCache[item] || item}' öğesini ${filterType} ${listType} listesinden çıkarmak istediğinizden emin misiniz?`)) { return; }
             console.log(`Removing '${item}' from ${filterType} ${listType} list...`);
-
-            $.ajax({
-                url: '/api/remove-from-list', type: 'POST', contentType: 'application/json',
-                data: JSON.stringify({ filter_type: filterType, list_type: listType, item: item }),
+            $.ajax({ url: '/api/remove-from-list', type: 'POST', contentType: 'application/json', data: JSON.stringify({ filter_type: filterType, list_type: listType, item: item }),
                 success: function(data) {
                     if (data.success) {
                         showFlashMessage(data.message || 'Öğe listeden çıkarıldı.', 'success');
                         currentSettings[filterType + '_' + listType] = data.updated_list || currentSettings[filterType + '_' + listType];
-                        // Cache'den sil (sadece artist için anlamlı)
-                        if (filterType === 'artist') {
-                            delete spotifyNameCache[item];
-                        }
-                        renderFilterList(filterType);
-                    } else {
-                        showFlashMessage('Hata: ' + (data.error || 'Çıkarma başarısız.'), 'danger');
-                    }
+                        delete spotifyNameCache[item]; renderFilterList(filterType);
+                    } else { showFlashMessage('Hata: ' + (data.error || 'Çıkarma başarısız.'), 'danger'); }
                 },
-                error: function(xhr) {
-                    let errorMsg = 'Listeden çıkarılırken sunucu hatası.';
-                    try { if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; } } catch(e){}
-                    showFlashMessage(`Hata: ${errorMsg}`, 'danger');
-                }
+                error: function(xhr) { let errorMsg = 'Listeden çıkarılırken sunucu hatası.'; try { if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; } } catch(e){} showFlashMessage(`Hata: ${errorMsg}`, 'danger'); }
             });
         }
         function searchSpotify(searchType) {
@@ -832,24 +648,15 @@
             const inputElement = $(`#${inputIdPrefix}-search-input`); const query = inputElement.val().trim();
             const resultsContainer = $(`#${inputIdPrefix}-search-results`);
             const buttonElement = inputElement.next('.input-group-append').find('button');
-
-            if (!query) {
-                showFlashMessage('Lütfen arama terimi girin.', 'warning');
-                inputElement.focus();
-                return;
-            }
+            if (!query) { showFlashMessage('Lütfen arama terimi girin.', 'warning'); inputElement.focus(); return; }
             resultsContainer.html('<p class="text-muted p-2 text-center">Aranıyor...</p>');
             const rawButtonElement = buttonElement.length > 0 ? buttonElement[0] : null;
             setButtonLoading(rawButtonElement, true);
-
-            $.ajax({
-                url: '/search', type: 'POST',
-                data: `search_query=${encodeURIComponent(query)}&type=artist`, // Sadece 'artist' tipi
+            $.ajax({ url: '/search', type: 'POST', data: `search_query=${encodeURIComponent(query)}&type=${searchType}`,
                 success: function(data) {
                     let html = '';
-                    if (data.error) {
-                        html = `<p class="text-danger p-2 text-center">${data.error}</p>`;
-                    } else if (data.results && data.results.length > 0) {
+                    if (data.error) { html = `<p class="text-danger p-2 text-center">${data.error}</p>`; }
+                    else if (data.results && data.results.length > 0) {
                         data.results.forEach(item => {
                             try {
                                 const itemId = item.id; const itemName = item.name || 'İsimsiz'; let itemDetails = '';
@@ -859,60 +666,30 @@
                                 // ID'nin URI formatında olduğundan emin ol (backend zaten yapıyor ama frontend'de de yapalım)
                                 const itemUri = itemId.startsWith(`spotify:${filterItemType}:`) ? itemId : `spotify:${filterItemType}:${itemId}`;
                                 html += `<a href="#" class="list-group-item list-group-item-action list-group-item-light py-1 px-2" onclick="addFilterItemFromSearch(event, '${filterItemType}', '${itemUri}', '${itemName.replace(/'/g, "\\'")}')"><small><strong>${itemName}</strong><br>${itemDetails || ''}</small></a>`;
-                            } catch (renderError) {
-                                console.error("Arama sonucu render hatası:", renderError, item);
-                                html += `<p class="text-warning p-2 text-center">Bir sonuç işlenirken hata oluştu.</p>`;
-                            }
+                            } catch (renderError) { console.error("Arama sonucu render hatası:", renderError, item); html += `<p class="text-warning p-2 text-center">Bir sonuç işlenirken hata oluştu.</p>`; }
                         });
-                    } else {
-                        html = '<p class="text-muted p-2 text-center">Sonuç bulunamadı.</p>';
-                    }
+                    } else { html = '<p class="text-muted p-2 text-center">Sonuç bulunamadı.</p>'; }
                     resultsContainer.html(html);
                 },
-                error: function(xhr, status, error) {
-                    console.error(`Error searching ${searchType}:`, status, error, xhr);
-                    let errorMsg = 'Arama sırasında bir sunucu hatası oluştu.';
-                    try { if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; } } catch(e){}
-                    resultsContainer.html(`<p class="text-danger p-2 text-center">Hata: ${errorMsg}</p>`);
-                },
+                error: function(xhr, status, error) { console.error(`Error searching ${searchType}:`, status, error, xhr); let errorMsg = 'Arama sırasında bir sunucu hatası oluştu.'; try { if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; } } catch(e){} resultsContainer.html(`<p class="text-danger p-2 text-center">Hata: ${errorMsg}</p>`); },
                 complete: function() { setButtonLoading(rawButtonElement, false); }
             });
         }
-        function addFilterItemFromSearch(event, filterType, itemUri, itemName) {
-            event.preventDefault();
-            // 'song' için işlem yapma
-            if (filterType === 'song') return;
-
-            const mode = currentSettings[filterType + '_filter_mode'];
-            const listType = mode;
-            if (!confirm(`'${itemName}' öğesini ${filterType} ${listType} listesine eklemek istiyor musunuz?`)) {
-                return;
-            }
+        function addFilterItemFromSearch(event, filterType, itemUri, itemName) { // itemUri olarak al
+            event.preventDefault(); const mode = currentSettings[filterType + '_filter_mode']; const listType = mode;
+            if (!confirm(`'${itemName}' öğesini ${filterType} ${listType} listesine eklemek istiyor musunuz?`)) { return; }
             console.log(`Adding '${itemUri}' to ${filterType} ${listType} list from search...`);
-
-            $.ajax({
-                url: '/api/add-to-list', type: 'POST', contentType: 'application/json',
-                data: JSON.stringify({ filter_type: filterType, list_type: listType, item: itemUri }),
+            $.ajax({ url: '/api/add-to-list', type: 'POST', contentType: 'application/json', data: JSON.stringify({ filter_type: filterType, list_type: listType, item: itemUri }), // itemUri gönderiliyor
                 success: function(data) {
                     if (data.success) {
                         showFlashMessage(data.message || `'${itemName}' listeye eklendi.`, 'success');
                         currentSettings[filterType + '_' + listType] = data.updated_list || currentSettings[filterType + '_' + listType];
-                        // Cache'i güncelle (sadece artist için)
-                        if (filterType === 'artist') {
-                           spotifyNameCache[itemUri] = itemName;
-                        }
+                        spotifyNameCache[itemUri] = itemName; // Cache'i güncelle
                         renderFilterList(filterType);
-                        $(`#${filterType}-search-results`).html('');
-                        $(`#${filterType}-search-input`).val('');
-                    } else {
-                        showFlashMessage('Hata: ' + (data.error || 'Ekleme başarısız.'), 'danger');
-                    }
+                        $(`#${filterType}-search-results`).html(''); $(`#${filterType}-search-input`).val('');
+                    } else { showFlashMessage('Hata: ' + (data.error || 'Ekleme başarısız.'), 'danger'); }
                 },
-                error: function(xhr) {
-                    let errorMsg = 'Listeye eklenirken sunucu hatası.';
-                    try { if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; } } catch(e){}
-                    showFlashMessage(`Hata: ${errorMsg}`, 'danger');
-                }
+                error: function(xhr) { let errorMsg = 'Listeye eklenirken sunucu hatası.'; try { if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; } } catch(e){} showFlashMessage(`Hata: ${errorMsg}`, 'danger'); }
             });
         }
         function searchGenres() {
@@ -938,103 +715,43 @@
             const typeText = itemType === 'track' ? 'Şarkıyı' : 'Sanatçıyı';
             // ID'nin URI formatında olduğundan emin ol
             const itemUri = identifier.startsWith(`spotify:${itemType}:`) ? identifier : `spotify:${itemType}:${identifier}`;
-            
-            // Şarkı adını veya sanatçı adını bul
-            let displayName = spotifyNameCache[itemUri];
-            if (!displayName) {
-                // Eğer cache'de yoksa, DOM'dan almaya çalış
-                const card = buttonElement.closest('.list-group-item');
-                if (card) {
-                    const nameElement = card.querySelector('strong');
-                    const artistElement = card.querySelector('small');
-                    if (nameElement && artistElement) {
-                        displayName = `${nameElement.textContent} - ${artistElement.textContent}`;
-                    }
-                }
-            }
-            
-            if (!confirm(`${typeText} (${displayName || itemUri}) kara listeye eklemek istediğinizden emin misiniz?`)) {
-                return;
-            }
-            
+            if (!confirm(`${typeText} (${spotifyNameCache[itemUri] || itemUri}) kara listeye eklemek istediğinizden emin misiniz?`)) { return; } // İsim göster
             console.log(`Quick blocking ${itemType}: ${itemUri}`);
             setButtonLoading(buttonElement, true);
-            
-            $.ajax({
-                url: '/api/block',
-                type: 'POST',
-                contentType: 'application/json',
-                data: JSON.stringify({ type: itemType, identifier: itemUri }),
+            $.ajax({ url: '/api/block', type: 'POST', contentType: 'application/json', data: JSON.stringify({ type: itemType, identifier: itemUri }), // itemUri gönderiliyor
                 success: function(data) {
                     if (data.success) {
                         showFlashMessage(data.message || 'Öğe başarıyla kara listeye eklendi.', 'success');
-                        const listKey = itemType + '_blacklist'; // Sadece artist blacklist
+                        const listKey = itemType + '_blacklist';
                         if (!currentSettings[listKey]) currentSettings[listKey] = [];
                         if (!currentSettings[listKey].includes(itemUri)) {
-                            currentSettings[listKey].push(itemUri);
-                            currentSettings[listKey].sort();
-                            if (currentSettings[itemType + '_filter_mode'] === 'blacklist') {
-                                renderFilterList(itemType);
-                            }
+                            currentSettings[listKey].push(itemUri); currentSettings[listKey].sort();
+                            if (currentSettings[itemType + '_filter_mode'] === 'blacklist') { renderFilterList(itemType); }
                         }
-                        // Eğer şarkı engellendiyse ve kuyruktaysa, kuyruktan da kaldır
-                        if (itemType === 'track') {
-                            const removeForm = buttonElement.closest('.list-group-item').querySelector('form');
-                            if (removeForm) {
-                                removeForm.submit();
-                            }
-                        }
-                    } else {
-                        showFlashMessage('Hata: ' + (data.error || 'Engelleme başarısız.'), 'danger');
-                    }
+                    } else { showFlashMessage('Hata: ' + (data.error || 'Engelleme başarısız.'), 'danger'); }
                 },
-                error: function(xhr) {
-                    let errorMsg = 'Engelleme sırasında sunucu hatası.';
-                    try {
-                        if (xhr.responseJSON && xhr.responseJSON.error) {
-                            errorMsg = xhr.responseJSON.error;
-                        }
-                    } catch(e) {}
-                    showFlashMessage(`Hata: ${errorMsg}`, 'danger');
-                },
-                complete: function() {
-                    setButtonLoading(buttonElement, false);
-                }
+                error: function(xhr) { let errorMsg = 'Engelleme sırasında sunucu hatası.'; try { if(xhr.responseJSON && xhr.responseJSON.error){ errorMsg = xhr.responseJSON.error; } } catch(e){} showFlashMessage(`Hata: ${errorMsg}`, 'danger'); },
+                complete: function() { setButtonLoading(buttonElement, false); }
             });
         }
 
         // --- Sayfa Yüklendiğinde Çalışacak Kod ---
         $(document).ready(function() {
-            refreshAudioSinkList(); 
-            refreshBluetoothList(0);
-            loadBlockedTracks(); // Engellenmiş şarkıları yükle
+            refreshAudioSinkList(); refreshBluetoothList(0);
             const initialArtistIds = [...(currentSettings.artist_blacklist || []), ...(currentSettings.artist_whitelist || [])];
             const initialTrackIds = [...(currentSettings.track_blacklist || []), ...(currentSettings.track_whitelist || [])];
             const allIdsToFetch = { artist: [...new Set(initialArtistIds)], track: [...new Set(initialTrackIds)] };
             const fetchPromises = [];
-            // Sadece artist için detayları getir
-            if (allIdsToFetch.artist.length > 0) {
-                 console.log(`Pre-fetching details for artist IDs:`, allIdsToFetch.artist);
-                 fetchPromises.push(
-                     $.ajax({
-                         url: '/api/spotify/details', type: 'POST', contentType: 'application/json',
-                         data: JSON.stringify({ ids: allIdsToFetch.artist, type: 'artist' }) // type: 'artist'
-                     }).done(function(data) {
-                         if (data.success && data.details) { $.extend(spotifyNameCache, data.details); }
-                     }).fail(function(xhr) { console.error(`Error pre-fetching artist details:`, xhr); })
-                 );
-             }
-
-            // Tüm (sadece artist) detaylar geldikten sonra listeleri render et
-            $.when.apply($, fetchPromises).always(function() {
-                console.log("Initial name cache loaded:", spotifyNameCache);
-                renderAllFilterLists(); // renderAllFilterLists artık sadece genre ve artist için çalışacak
-            });
-
-            const scanDurationTextElement = document.getElementById('scan-duration-text');
-            if (scanDurationTextElement) {
-                scanDurationTextElement.textContent = '{{ BLUETOOTH_SCAN_DURATION | default(12) }}';
+            for (const type in allIdsToFetch) {
+                const ids = allIdsToFetch[type];
+                if (ids.length > 0) {
+                    console.log(`Pre-fetching details for ${type} IDs:`, ids);
+                    fetchPromises.push( $.ajax({ url: '/api/spotify/details', type: 'POST', contentType: 'application/json', data: JSON.stringify({ ids: ids, type: type }) }).done(function(data) { if (data.success && data.details) { $.extend(spotifyNameCache, data.details); } }).fail(function(xhr) { console.error(`Error pre-fetching ${type} details:`, xhr); }) );
+                }
             }
+            $.when.apply($, fetchPromises).always(function() { console.log("Initial name cache loaded:", spotifyNameCache); renderAllFilterLists(); });
+            const scanDurationTextElement = document.getElementById('scan-duration-text');
+            if (scanDurationTextElement) { scanDurationTextElement.textContent = '{{ BLUETOOTH_SCAN_DURATION | default(12) }}'; }
         });
 
         function renderBlockedTracksList() {
@@ -1098,6 +815,7 @@
                         <tr>
                             <td>${escapeHTML(trackName)}</td>
                             <td>${escapeHTML(artistName)}</td>
+                            <td><small class="text-muted">${escapeHTML(trackId)}</small></td>
                             <td>
                                 <button class="btn btn-sm btn-outline-danger remove-blocked-track" data-track-id="${escapeHTML(trackId)}">
                                     <i class="fas fa-trash"></i> Kaldır
@@ -1190,32 +908,6 @@
             const div = document.createElement('div');
             div.appendChild(document.createTextNode(str));
             return div.innerHTML;
-        }
-        function loadBlockedTracks() {
-            $.getJSON('/get-blocked-tracks', function(response) {
-                if (response.success && Array.isArray(response.blocked_tracks)) {
-                    let tbody = $('#blocked-tracks-list');
-                    tbody.empty();
-                    response.blocked_tracks.forEach(track => {
-                        const row = `
-                            <tr>
-                                <td>${track.name}</td>
-                                <td>${track.artist}</td>
-                                <td>
-                                    <form method="POST" action="/remove-blocked-track" style="display:inline;">
-                                        <input type="hidden" name="track_uri" value="${track.uri}">
-                                        <button type="submit" class="btn btn-sm btn-danger"><i class="fas fa-trash"></i> Kaldır</button>
-                                    </form>
-                                </td>
-                            </tr>`;
-                        tbody.append(row);
-                    });
-                } else {
-                    $('#blocked-tracks-list').html('<tr><td colspan="3" class="text-muted text-center">Engellenmiş şarkı bulunamadı.</td></tr>');
-                }
-            }).fail(function() {
-                $('#blocked-tracks-list').html('<tr><td colspan="3" class="text-danger text-center">Engellenmiş şarkılar alınamadı.</td></tr>');
-            });
         }
     </script>
 
