@@ -88,6 +88,9 @@
     </div>
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 3b94088bfe038549908848c0a93d49069274f022
     <div class="w-full max-w-2xl mx-auto"> <!-- This div is to match the main container's width and centering -->
         <div id="lastfm-suggestion-section" class="my-8 p-6 bg-pink-50 dark:bg-pink-900/30 rounded-lg shadow-md" style="display: none;">
             <h2 class="text-2xl font-semibold mb-4 text-pink-700 dark:text-pink-300">Sana Özel Öneri!</h2>
@@ -98,9 +101,12 @@
         </div>
     </div>
 
+<<<<<<< HEAD
 =======
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 >>>>>>> main
+=======
+>>>>>>> 3b94088bfe038549908848c0a93d49069274f022
     <script>
         // Şarkı ekleme
         document.getElementById('addSongForm').addEventListener('submit', async (e) => {
@@ -349,6 +355,7 @@ function fetchLastFmSuggestion() {
             }
         }
 
+<<<<<<< HEAD
         async function next() {
             try {
                 await fetch('/api/next', { method: 'POST' });
@@ -368,6 +375,140 @@ function fetchLastFmSuggestion() {
         // Sayfa yüklendiğinde çalma listesini güncelle
         updateQueue();
 >>>>>>> main
+=======
+// (Existing JavaScript code in templates/index.html should be above this)
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Check if the addToQueue function is available, which is crucial for the suggestion button
+    if (typeof addToQueue === 'function') {
+        fetchSuggestion(); // Updated function name
+    } else {
+        console.error('addToQueue function is not defined. Suggestion "Add to Queue" button will not work.'); // Generic message
+        const suggestionStatus = document.getElementById('lastfm-suggestion-status');
+        // Attempt to display error in the suggestion section if elements exist
+        if (suggestionStatus) {
+             suggestionStatus.textContent = 'Sayfa hatası nedeniyle öneri özelliği şu anda kullanılamıyor.';
+             const suggestionSection = document.getElementById('lastfm-suggestion-section');
+             if (suggestionSection) suggestionSection.style.display = 'block'; // Show section to display the error
+        }
+    }
+});
+
+function fetchSuggestion() { // Renamed function
+    const suggestionSection = document.getElementById('lastfm-suggestion-section');
+    const suggestionContent = document.getElementById('lastfm-suggestion-content');
+    const suggestionStatus = document.getElementById('lastfm-suggestion-status');
+
+    if (!suggestionSection || !suggestionContent || !suggestionStatus) {
+        console.error('Required HTML elements for suggestion are missing. Cannot display suggestion.'); // Generic message
+        return;
+    }
+
+    suggestionStatus.textContent = 'Öneri yükleniyor...'; // Initial loading message
+
+    fetch('/api/suggestion') // Updated API endpoint
+        .then(response => {
+            if (!response.ok) {
+                // Handle HTTP errors (like 401/403 for auth, or other server errors)
+                let errorMsg = 'Öneri alınırken bir sunucu hatası oluştu (' + response.status + ').';
+                if (response.status === 401 || response.status === 403) {
+                    // Message can be kept generic or updated if backend provides more specific info for this new endpoint
+                    errorMsg = 'Önerileri görmek için Spotify\'a bağlı olmanız gerekebilir.';
+                }
+                console.warn('Suggestion API error:', response.status, response.statusText); // Generic message
+                suggestionStatus.textContent = errorMsg;
+                if (suggestionSection) suggestionSection.style.display = 'block'; // Show section to display status
+                return null; // Indicates failure to the next .then()
+            }
+            const contentType = response.headers.get("content-type");
+            if (contentType && contentType.indexOf("application/json") !== -1) {
+                return response.json();
+            } else {
+                console.warn('Suggestion API: Response was not JSON. Possible auth redirect or server issue.'); // Generic message
+                suggestionStatus.textContent = 'Öneriler için Spotify bağlantısı gerekiyor olabilir veya sunucu yanıtı hatalı.'; // Generic message
+                if (suggestionSection) suggestionSection.style.display = 'block'; // Show section to display status
+                return null; // Indicates failure
+            }
+        })
+        .then(data => {
+            if (!data) { // If previous .then returned null due to an error
+                // suggestionStatus should already be set by the previous block
+                // Ensure section is visible if it wasn't already
+                if (suggestionSection && suggestionSection.style.display === 'none') {
+                    suggestionSection.style.display = 'block';
+                }
+                // Clear content if it was previously filled
+                if (suggestionContent) suggestionContent.innerHTML = '';
+                return;
+            }
+
+            if (data.success && data.suggestion) {
+                const suggestion = data.suggestion;
+                if (!suggestion.id || !suggestion.name || !suggestion.artist) {
+                    console.error('Suggestion data from API is incomplete:', suggestion);
+                    suggestionStatus.textContent = 'Alınan öneri verisi eksik veya hatalı.';
+                    suggestionContent.innerHTML = ''; // Clear previous content
+                    if (suggestionSection) suggestionSection.style.display = 'block';
+                    return;
+                }
+
+                const imageUrl = suggestion.image_url || `https://placehold.co/64x64/f8bbd0/4a148c?text=${encodeURIComponent(suggestion.name.substring(0,1))}`;
+                const fallbackImageUrl = 'https://placehold.co/64x64/fecaca/991b1b?text=H';
+
+                suggestionContent.innerHTML = `
+                    <div class="flex items-center space-x-4">
+                        <img class="w-16 h-16 rounded object-cover flex-shrink-0 border border-pink-200 dark:border-pink-700" src="${imageUrl}" alt="${suggestion.name}" onerror="this.onerror=null; this.src='${fallbackImageUrl}';">
+                        <div class="flex-grow min-w-0">
+                            <h3 class="font-semibold text-lg text-pink-800 dark:text-pink-200 truncate" title="${suggestion.name}">${suggestion.name}</h3>
+                            <p class="text-pink-600 dark:text-pink-400 text-sm truncate" title="${suggestion.artist}">${suggestion.artist}</p>
+                        </div>
+                        <button class="lastfm-suggestion-add bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 dark:from-pink-600 dark:to-rose-600 dark:hover:from-pink-500 dark:hover:to-rose-500 text-white font-medium py-2 px-4 rounded-md text-sm whitespace-nowrap flex-shrink-0 shadow-sm hover:shadow-md transform hover:-translate-y-0.5" data-id="${suggestion.id}">
+                            Kuyruğa Ekle
+                        </button>
+                    </div>
+                `;
+                if (suggestionSection) suggestionSection.style.display = 'block';
+                suggestionStatus.textContent = data.message || 'İşte sana özel bir şarkı!'; // Success message
+
+                const addButton = suggestionContent.querySelector('.lastfm-suggestion-add');
+                if (addButton) {
+                    addButton.addEventListener('click', function() {
+                        // addToQueue is expected to be globally available from the main script in index.html
+                        if (typeof addToQueue === 'function') {
+                            addToQueue(this.getAttribute('data-id'), this);
+                        } else {
+                            // This case should ideally be caught by the DOMContentLoaded check, but as a fallback:
+                            console.error('addToQueue function is not available for suggestion button.');
+                            // Use the global showStatus if available, otherwise update local status
+                            if (typeof showStatus === 'function') {
+                                showStatus('Şarkı ekleme özelliği şu anda çalışmıyor.', 'error');
+                            } else {
+                                suggestionStatus.textContent = 'Hata: Şarkı ekleme işlevi bulunamadı.';
+                            }
+                        }
+                    });
+                }
+            } else {
+                // API returned success:false or no suggestion
+                suggestionStatus.textContent = data.message || 'Şu an için bir öneri bulunamadı.';
+                suggestionContent.innerHTML = ''; // Clear any previous suggestion
+                if (suggestionSection) suggestionSection.style.display = 'block'; // Keep section visible for the message
+            }
+        })
+        .catch(error => {
+            // This catch is for network errors or errors thrown from .then blocks (e.g. JSON parsing)
+            console.error('Error in fetchSuggestion promise chain:', error); // Updated function name in log
+            if (suggestionStatus) suggestionStatus.textContent = 'Öneriler yüklenirken bir ağ veya istemci hatası oluştu.';
+            if (suggestionContent) suggestionContent.innerHTML = '';
+            if (suggestionSection) suggestionSection.style.display = 'block'; // Keep section visible for the error message
+        });
+}
+
+// Note: The `showStatus` function (assumed to be globally available from existing script in index.html)
+// is used for general status messages by `addToQueue`. The `lastfm-suggestion-status` div
+// is specifically for messages related to the suggestion loading process itself.
+// `addToQueue(trackId, buttonElement)` is also assumed to be globally available.
+>>>>>>> 3b94088bfe038549908848c0a93d49069274f022
     </script>
 </body>
 </html>
