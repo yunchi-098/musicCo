@@ -1,15 +1,10 @@
 {
     "max_queue_length": 20,
-<<<<<<< HEAD
     "max_user_requests": 5,
-=======
-    "max_user_requests": 280,
->>>>>>> main
     "active_device_id": "b06b5f6028e43ecb92fcc3fab13d047329692ebe",
     "genre_filter_mode": "blacklist",
     "artist_filter_mode": "blacklist",
     "song_filter_mode": "blacklist",
-<<<<<<< HEAD
     "genre_blacklist": [
         "pop",
         "turkish pop"
@@ -23,12 +18,4 @@
     ],
     "track_whitelist": [],
     "track_filter_mode": "blacklist"
-=======
-    "genre_blacklist": [],
-    "genre_whitelist": [],
-    "artist_blacklist": [],
-    "artist_whitelist": [],
-    "track_blacklist": [],
-    "track_whitelist": []
->>>>>>> main
 }
