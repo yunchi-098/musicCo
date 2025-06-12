@@ -1,63 +1,97 @@
 <!DOCTYPE html>
-<html>
+<html lang="tr">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sıra - Mekan Müzik</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        /* ... (Mevcut stiller) ... */
+        body {
+            background-color: #121212;
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
         .currently-playing {
-            margin-bottom: 20px;
+            background-color: #1DB954;
             padding: 15px;
-            border: 1px solid #ddd;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .queue-item {
+            background-color: #3e3e3e;
             border-radius: 5px;
-            background-color: #f0fdf4; /* Yeşilimsi arka plan */
-            display: flex;
-            align-items: center;
-            border-left: 5px solid #1DB954; /* Sol kenar vurgusu */
+            padding: 10px;
+            margin-bottom: 5px;
         }
-        .currently-playing img {
-            width: 50px;
-            height: 50px;
-            margin-right: 15px;
-            border-radius: 3px;
+        .album-art {
+            width: 60px;
+            height: 60px;
+            border-radius: 5px;
             object-fit: cover;
-        }
-        .currently-playing div {
-            flex-grow: 1;
-        }
-        .currently-playing p {
-            margin: 0;
-            color: #555;
         }
     </style>
 </head>
 <body>
-    <h1>Şarkı Kuyruğu</h1>
-
-    <div class="currently-playing">
-        {# Backend'den gelen 'currently_playing_info' değişkenini kontrol et #}
-        {% if currently_playing_info %}
-            {# Albüm kapağı varsa göster #}
-            {% if currently_playing_info.image_url %}
-            <img src="{{ currently_playing_info.image_url }}" alt="Albüm Kapağı">
-            {% else %}
-            <div style="width: 50px; height: 50px; margin-right: 15px; background-color: #e9ecef; display: flex; align-items: center; justify-content: center; border-radius: 3px;">
-                 <span style="color: #6c757d;">?</span> </div>
-            {% endif %}
-            <div>
-                <strong style="color: #15803d;">Şu An Çalıyor:</strong> {{ currently_playing_info.name }}<br>
-                <small><em>{{ currently_playing_info.artist }}</em></small>
+    <div class="container py-4">
+        <!-- *** YENİ: Son Çalınan Şarkı (JS tarafından okunacak gizli bölüm) *** -->
+        <div id="recently-played-track">
+            {% if recently_played_info %}
+            <div class="recently-played-item" style="display: none;">
+                <img src="{{ recently_played_info.image_url }}" class="album-art" alt="Album Art">
+                <div class="info">
+                     <h5 class="mb-1">{{ recently_played_info.name }}</h5>
+                     <p class="mb-0">{{ recently_played_info.artist }}</p>
+                </div>
             </div>
-        {% else %}
-            {# Bilgi yoksa mesaj göster #}
-            <p>Şu anda aktif bir şarkı çalınmıyor.</p>
-        {% endif %}
-    </div>
-    {% if queue %}
-    <table>
-        </table>
-    {% else %}
-    <p>Şu anda kuyrukta şarkı yok.</p>
-    {% endif %}
+            {% endif %}
+        </div>
 
-    <p><a href="/">Ana Sayfaya Dön</a></p>
+        <!-- Şu An Çalan -->
+        <div id="current-track">
+            {% if currently_playing_info %}
+            <div class="currently-playing">
+                <div class="d-flex align-items-center">
+                    <img src="{{ currently_playing_info.image_url }}" class="album-art me-3" alt="Album Art">
+                    <div>
+                        <h5 class="mb-1">{{ currently_playing_info.name }}</h5>
+                        <p class="mb-0">{{ currently_playing_info.artist }}</p>
+                        <small class="text-white-50">
+                            {% if currently_playing_info.is_playing %}
+                            <i class="fas fa-play me-1"></i>Çalıyor
+                            {% else %}
+                            <i class="fas fa-pause me-1"></i>Duraklatıldı
+                            {% endif %}
+                        </small>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>Şu anda çalan şarkı yok.
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Sıra -->
+        <div id="queue-list">
+            {% if queue %}
+                {% for song in queue %}
+                <div class="queue-item d-flex align-items-center">
+                    <!-- *** GÜNCELLEME: song.image_url artık app.py tarafından sağlanıyor *** -->
+                    <img src="{{ song.image_url or 'https://placehold.co/60x60/3e3e3e/FFFFFF?text=♪' }}" class="album-art me-3" alt="Album Art" onerror="this.src='https://placehold.co/60x60/3e3e3e/FFFFFF?text=♪'">
+                    <div>
+                        <div class="fw-bold">{{ song.name }}</div>
+                        <div class="text-muted">{{ song.artist }}</div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>Sırada şarkı yok.
+                </div>
+            {% endif %}
+        </div>
+    </div>
 </body>
 </html>

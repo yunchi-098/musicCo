@@ -3,512 +3,465 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Müzik Çalar</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>MusicStream - Müzik Akış Platformu</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Spline+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #38e07b;
+            --secondary-color: #1DB954;
+            --background-dark: #121212;
+            --background-light: #181818;
+            --text-primary: #FFFFFF;
+            --text-secondary: #b3b3b3;
+            --card-background: #282828;
+        }
+
+        body {
+            background-color: var(--background-dark);
+            color: var(--text-primary);
+            font-family: 'Spline Sans', sans-serif;
+            min-height: 100vh;
+        }
+
+        .navbar-brand {
+            font-weight: 700;
+            font-size: 1.5rem;
+        }
+
+        .player-card {
+            background-color: var(--card-background);
+            padding: 1.5rem;
+            border-radius: 1rem;
+            text-align: center;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .player-card.current {
+            background-color: var(--card-background);
+            transform: scale(1.05);
+            box-shadow: 0 0 0 3px var(--primary-color), 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        .player-card.adjacent {
+            opacity: 0.6;
+            transform: scale(0.95);
+        }
+
+        .player-album-art-large {
+            width: 160px;
+            height: 160px;
+            border-radius: 1rem;
+            object-fit: cover;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.4);
+        }
+
+        .player-album-art-small {
+            width: 100px;
+            height: 100px;
+            border-radius: 0.75rem;
+            object-fit: cover;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
+        .player-title-large {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-top: 1rem;
+            color: var(--text-primary);
+        }
+
+        .player-artist-large {
+            font-size: 1rem;
+            color: var(--text-secondary);
+        }
+        
+        .player-title-small {
+            font-size: 1rem;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+        
+        .player-artist-small {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .progress-bar-container {
+            width: 100%;
+            margin-top: 1rem;
+            background-color: rgba(255,255,255,0.1);
+            border-radius: 99px;
+            height: 6px;
+        }
+
+        .progress-bar-fill {
+            background-color: var(--primary-color);
+            height: 6px;
+            border-radius: 99px;
+            transition: width 0.5s ease;
+        }
+        
+        .search-section {
+            background-color: var(--background-light);
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+        }
+
+        .search-input-wrapper {
+            position: relative;
+            max-width: 500px;
+            margin: auto;
+        }
+        
+        .search-input-icon {
+            position: absolute;
+            left: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-secondary);
+        }
+
+        .search-input {
+            background-color: var(--card-background);
+            border: 1px solid var(--card-background);
+            color: var(--text-primary);
+            padding: 0.8rem 1rem 0.8rem 3rem;
+            border-radius: 99px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .search-input::placeholder {
+            color: var(--text-secondary);
+        }
+
+        .search-input:focus {
+            background-color: var(--card-background);
+            color: var(--text-primary);
+            box-shadow: 0 0 0 2px var(--primary-color);
+            border-color: var(--primary-color);
+        }
+        
+        .btn-custom-primary {
+            background-color: var(--primary-color);
+            color: #000;
+            border: none;
+            padding: 0.8rem 1.5rem;
+            border-radius: 99px;
+            font-weight: 700;
+            transition: all 0.3s ease;
+        }
+
+        .btn-custom-primary:hover {
+            background-color: var(--secondary-color);
+            color: #000;
+            transform: scale(1.05);
+        }
+
+        .song-item {
+            background: var(--card-background);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 1px solid transparent;
+        }
+
+        .song-item:hover {
+            background: #3a3a3a;
+            border-color: var(--primary-color);
+            transform: translateY(-2px);
+        }
+        
+        .album-art {
+            width: 50px;
+            height: 50px;
+            border-radius: 8px;
+            object-fit: cover;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
 </head>
-<body class="bg-light">
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark mb-5">
         <div class="container">
-            <a class="navbar-brand" href="/">Müzik Çalar</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('admin_login') }}">Yönetici Girişi</a>
-                    </li>
-                </ul>
-            </div>
+            <a class="navbar-brand" href="/">
+                QuBeat
+            </a>
         </div>
     </nav>
 
-    <div class="container mt-4">
-        <div class="row">
-            <div class="col-md-8">
-                <div class="card">
-                    <div class="card-header">
-                        <h4>Şarkı Ekle</h4>
-                    </div>
-                    <div class="card-body">
-                        <form id="addSongForm">
-                            <div class="mb-3">
-                                <label for="songUrl" class="form-label">Spotify Şarkı URL'si</label>
-                                <input type="text" class="form-control" id="songUrl" required>
-                            </div>
-                            <button type="submit" class="btn btn-primary">Ekle</button>
-                        </form>
-                    </div>
-                </div>
+    <div class="container">
+        <!-- Müzik Çalar Başlık -->
+        <section class="text-center mb-5">
+            <h2 class="h1 fw-bold mb-2">Müzik Çalar</h2>
+            <p style="color: var(--text-secondary);">En sevdiğin şarkıları keşfet, listene ekle ve dinlemeye başla.</p>
+        </section>
 
-                <div class="card mt-4">
-                    <div class="card-header">
-                        <h4>Çalma Listesi</h4>
-                    </div>
-                    <div class="card-body">
-                        <div id="queueList" class="list-group">
-                            <!-- Şarkı listesi buraya gelecek -->
-                        </div>
-                    </div>
+        <!-- Müzik Çalar Kartları -->
+        <div class="row justify-content-center align-items-center mb-5 gx-md-4 gx-lg-5">
+            <!-- Önceki Şarkı -->
+            <div class="col-md-3 d-none d-md-block">
+                <div id="previous-track-container" class="player-card adjacent">
+                    <div class="spinner-border text-light" role="status"><span class="visually-hidden">Yükleniyor...</span></div>
                 </div>
             </div>
 
-            <div class="col-md-4">
-                <div class="card">
-                    <div class="card-header">
-                        <h4>Kontroller</h4>
-                    </div>
-                    <div class="card-body">
-                        <div class="d-grid gap-2">
-                            <button class="btn btn-primary" onclick="play()">
-                                <i class="fas fa-play"></i> Oynat
-                            </button>
-                            <button class="btn btn-secondary" onclick="pause()">
-                                <i class="fas fa-pause"></i> Duraklat
-                            </button>
-                            <button class="btn btn-info" onclick="resume()">
-                                <i class="fas fa-play"></i> Devam Et
-                            </button>
-                            <button class="btn btn-warning" onclick="next()">
-                                <i class="fas fa-forward"></i> Sonraki
-                            </button>
-                            <button class="btn btn-warning" onclick="previous()">
-                                <i class="fas fa-backward"></i> Önceki
-                            </button>
-                        </div>
-                        <div class="mt-3">
-                            <label for="volume" class="form-label">Ses Seviyesi</label>
-                            <input type="range" class="form-range" id="volume" min="0" max="100" value="50">
-                        </div>
-                    </div>
+            <!-- Şu An Çalan Şarkı -->
+            <div class="col-12 col-md-5 mb-4 mb-md-0">
+                <div id="current-track-container" class="player-card current">
+                    <div class="spinner-border text-light" role="status"><span class="visually-hidden">Yükleniyor...</span></div>
                 </div>
             </div>
+
+            <!-- Sıradaki Şarkı -->
+            <div class="col-md-3 d-none d-md-block">
+                 <div id="next-in-queue-container" class="player-card adjacent">
+                     <div class="spinner-border text-light" role="status"><span class="visually-hidden">Yükleniyor...</span></div>
+                 </div>
+            </div>
+        </div>
+
+        <!-- Arama Bölümü -->
+        <div class="search-section text-center mt-5">
+            <h4 class="fw-bold mb-4">Listene Yeni Şarkılar Ekle</h4>
+            <div class="search-input-wrapper mb-3">
+                <i class="fas fa-search search-input-icon"></i>
+                <input type="text" id="search-input" class="form-control search-input" placeholder="Şarkı veya sanatçı adı girin...">
+            </div>
+             <button class="btn btn-custom-primary" type="button" id="search-button">
+                Ara
+            </button>
+            <div id="search-results" class="mt-4 text-start" style="max-width: 600px; margin: auto;"></div>
         </div>
     </div>
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 3b94088bfe038549908848c0a93d49069274f022
-    <div class="w-full max-w-2xl mx-auto"> <!-- This div is to match the main container's width and centering -->
-        <div id="lastfm-suggestion-section" class="my-8 p-6 bg-pink-50 dark:bg-pink-900/30 rounded-lg shadow-md" style="display: none;">
-            <h2 class="text-2xl font-semibold mb-4 text-pink-700 dark:text-pink-300">Sana Özel Öneri!</h2>
-            <div id="lastfm-suggestion-content">
-                <!-- Suggestion will be loaded here by JavaScript -->
-            </div>
-            <div id="lastfm-suggestion-status" class="text-sm text-gray-600 dark:text-gray-400 mt-2"></div>
-        </div>
-    </div>
-
-<<<<<<< HEAD
-=======
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
->>>>>>> main
-=======
->>>>>>> 3b94088bfe038549908848c0a93d49069274f022
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Şarkı ekleme
-        document.getElementById('addSongForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const songUrl = document.getElementById('songUrl').value;
-            
-            try {
-                const response = await fetch('/api/queue/add', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: `track_uri=${encodeURIComponent(songUrl)}`
+        /**
+         * Oyuncu verilerini periyodik olarak günceller.
+         */
+        function setupAutoRefresh() {
+            updatePlayerData();
+            setInterval(updatePlayerData, 10000);
+        }
+
+        /**
+         * Tüm oyuncu kartlarını tek bir fetch isteği ile günceller.
+         */
+        function updatePlayerData() {
+            console.log("Oyuncu verileri güncelleniyor...");
+            fetch('/queue')
+                .then(response => {
+                    if (!response.ok) throw new Error('Ağ yanıtı sorunlu.');
+                    return response.text();
+                })
+                .then(html => {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    
+                    updatePreviousTrackCard(doc);
+                    updateCurrentTrackCard(doc);
+                    updateNextInQueueCard(doc);
+                })
+                .catch(error => {
+                    console.error('Oyuncu verisi güncellenirken hata oluştu:', error);
+                    document.getElementById('previous-track-container').innerHTML = '<p class="text-danger">Veri yüklenemedi.</p>';
+                    document.getElementById('current-track-container').innerHTML = '<p class="text-danger">Veri yüklenemedi.</p>';
+                    document.getElementById('next-in-queue-container').innerHTML = '<p class="text-danger">Sıra yüklenemedi.</p>';
                 });
+        }
+
+        /**
+         * 'Önceki Şarkı' kartını DOM'dan alınan verilerle günceller.
+         * @param {Document} doc - Ayrıştırılmış HTML dokümanı.
+         */
+        function updatePreviousTrackCard(doc) {
+            const previousTrackNode = doc.querySelector('#recently-played-track .recently-played-item');
+            const previousTrackContainer = document.getElementById('previous-track-container');
+
+            if (previousTrackNode) {
+                const image = previousTrackNode.querySelector('.album-art')?.src || 'https://placehold.co/100x100/181818/b3b3b3?text=?';
+                const title = previousTrackNode.querySelector('h5')?.textContent.trim() || 'Bilinmiyor';
+                const artist = previousTrackNode.querySelector('p')?.textContent.trim() || 'Bilinmiyor';
+
+                previousTrackContainer.innerHTML = `
+                    <img src="${image}" onerror="this.onerror=null; this.src='https://placehold.co/100x100/181818/b3b3b3?text=?';" class="player-album-art-small mb-3" alt="Önceki Şarkı Albüm Kapağı">
+                    <h3 class="player-title-small">${title}</h3>
+                    <p class="player-artist-small">${artist}</p>
+                `;
+            } else {
+                previousTrackContainer.innerHTML = `
+                    <img src="https://placehold.co/100x100/181818/b3b3b3?text=?" class="player-album-art-small mb-3" alt="Önceki Şarkı Albüm Kapağı">
+                    <h3 class="player-title-small">Önceki Şarkı</h3>
+                    <p class="player-artist-small">Veri Yok</p>
+                `;
+            }
+        }
+
+        /**
+         * 'Şu An Çalan' kartını DOM'dan alınan verilerle günceller.
+         * @param {Document} doc - Ayrıştırılmış HTML dokümanı.
+         */
+        function updateCurrentTrackCard(doc) {
+            const currentTrackNode = doc.querySelector('#current-track .currently-playing');
+            const currentTrackContainer = document.getElementById('current-track-container');
+
+            if (currentTrackNode) {
+                const image = currentTrackNode.querySelector('.album-art')?.src || 'https://placehold.co/160x160/181818/FFFFFF?text=♪';
+                const title = currentTrackNode.querySelector('h5')?.textContent.trim() || 'Bilinmiyor';
+                const artist = currentTrackNode.querySelector('p')?.textContent.trim() || 'Bilinmiyor';
+                const isPlaying = currentTrackNode.textContent.includes('Çalıyor');
                 
-                const data = await response.json();
-                if (data.success) {
-                    alert('Şarkı eklendi!');
-                    document.getElementById('songUrl').value = '';
-                    updateQueue();
-                } else {
-                    alert(data.error || 'Bir hata oluştu!');
+                currentTrackContainer.innerHTML = `
+                    <img src="${image}" onerror="this.onerror=null; this.src='https://placehold.co/160x160/181818/FFFFFF?text=♪';" class="player-album-art-large mb-3" alt="Şu An Çalan Albüm Kapağı">
+                    <h3 class="player-title-large">${title}</h3>
+                    <p class="player-artist-large">${artist}</p>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar-fill" style="width: ${isPlaying ? '60%' : '0%'}"></div>
+                    </div>
+                `;
+            } else {
+                 currentTrackContainer.innerHTML = `
+                    <img src="https://placehold.co/160x160/181818/FFFFFF?text=♪" class="player-album-art-large mb-3" alt="Albüm Kapağı">
+                    <h3 class="player-title-large">Şarkı Çalmıyor</h3>
+                    <p class="player-artist-large">Liste boş veya duraklatıldı.</p>
+                     <div class="progress-bar-container">
+                        <div class="progress-bar-fill" style="width: 0%"></div>
+                    </div>
+                `;
+            }
+        }
+
+        /**
+         * 'Sıradaki Şarkı' kartını DOM'dan alınan verilerle günceller.
+         * @param {Document} doc - Ayrıştırılmış HTML dokümanı.
+         */
+        function updateNextInQueueCard(doc) {
+            const nextItem = doc.querySelector('#queue-list .queue-item');
+            const nextInQueueContainer = document.getElementById('next-in-queue-container');
+
+            if (nextItem) {
+                const image = nextItem.querySelector('.album-art')?.src || 'https://placehold.co/100x100/282828/b3b3b3?text=Sırada';
+                const title = nextItem.querySelector('.fw-bold')?.textContent.trim() || 'Bilinmiyor';
+                const artist = nextItem.querySelector('.text-muted')?.textContent.trim() || 'Bilinmiyor';
+
+                nextInQueueContainer.innerHTML = `
+                    <img src="${image}" onerror="this.onerror=null; this.src='https://placehold.co/100x100/181818/b3b3b3?text=♪';" class="player-album-art-small mb-3" alt="Sıradaki Şarkı Albüm Kapağı">
+                    <h3 class="player-title-small">${title}</h3>
+                    <p class="player-artist-small">${artist}</p>
+                `;
+            } else {
+                nextInQueueContainer.innerHTML = `
+                    <img src="https://placehold.co/100x100/181818/b3b3b3?text=♪" class="player-album-art-small mb-3" alt="Albüm Kapağı">
+                    <h3 class="player-title-small">Sırada Şarkı Yok</h3>
+                    <p class="player-artist-small">Listeye yeni bir şarkı ekle.</p>
+                `;
+            }
+        }
+
+        /**
+         * Spotify'da şarkı arar ve sonuçları görüntüler.
+         */
+        function searchSongs() {
+            const query = document.getElementById('search-input').value.trim();
+            if (!query) return;
+
+            const searchResults = document.getElementById('search-results');
+            searchResults.innerHTML = '<div class="d-flex justify-content-center"><div class="spinner-border text-light" role="status"><span class="visually-hidden">Aranıyor...</span></div></div>';
+
+            fetch('/search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `search_query=${encodeURIComponent(query)}&type=track`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    searchResults.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                    return;
                 }
-            } catch (error) {
-                alert('Bir hata oluştu!');
-            }
-        });
 
-        // Ses seviyesi kontrolü
-        document.getElementById('volume').addEventListener('change', async (e) => {
-            const volume = e.target.value;
-            try {
-                await fetch('/api/volume', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: `volume=${volume}`
-                });
-            } catch (error) {
-                alert('Ses seviyesi ayarlanamadı!');
-            }
-        });
+                if (!data.results || data.results.length === 0) {
+                    searchResults.innerHTML = '<div class="alert alert-info mt-3" style="background-color: rgba(255,255,255,0.1); color: white; border: none;">Sonuç bulunamadı.</div>';
+                    return;
+                }
 
-        // Çalma listesini güncelle
-        async function updateQueue() {
-            try {
-                const response = await fetch('/api/queue');
-                const data = await response.json();
-                const queueList = document.getElementById('queueList');
-                queueList.innerHTML = '';
-                
-                data.queue.forEach((track, index) => {
-                    const item = document.createElement('div');
-                    item.className = 'list-group-item d-flex justify-content-between align-items-center';
-                    item.innerHTML = `
-                        <span>${track}</span>
-                        <button class="btn btn-danger btn-sm" onclick="removeFromQueue(${index})">
-                            <i class="fas fa-trash"></i>
-                        </button>
+                let html = '';
+                data.results.forEach(song => {
+                    const safeUri = song.uri.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                    html += `
+                        <div class="song-item d-flex align-items-center" onclick="addToQueue('${safeUri}')" style="animation: fadeIn 0.5s ease-out;">
+                            <img src="${song.image || 'https://placehold.co/50x50/181818/FFFFFF?text=♪'}" class="album-art me-3" alt="Album Art" onerror="this.onerror=null; this.src='https://placehold.co/50x50/181818/FFFFFF?text=♪'">
+                            <div>
+                                <div class="fw-bold">${song.name}</div>
+                                <div style="color: var(--text-secondary); font-size: 0.9rem;">${song.artist}</div>
+                            </div>
+                        </div>
                     `;
-                    queueList.appendChild(item);
                 });
-            } catch (error) {
-                console.error('Çalma listesi güncellenemedi:', error);
-            }
+                searchResults.innerHTML = html;
+            })
+            .catch(error => {
+                console.error('Arama hatası:', error);
+                searchResults.innerHTML = '<div class="alert alert-danger">Arama sırasında bir hata oluştu.</div>';
+            });
         }
 
-        // Şarkıyı listeden kaldır
-        async function removeFromQueue(index) {
-            try {
-                const response = await fetch('/api/queue/remove', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: `index=${index}`
-                });
-                
-                const data = await response.json();
-                if (data.success) {
-                    updateQueue();
+        /**
+         * Belirtilen şarkıyı kuyruğa eklemek için sunucuya istek gönderir.
+         * @param {string} uri - Eklenecek şarkının Spotify URI'si.
+         */
+        function addToQueue(uri) {
+            fetch('/add-to-queue', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ track_id: uri })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(`Hata: ${data.error}`);
                 } else {
-                    alert(data.error || 'Şarkı kaldırılamadı!');
+                    alert(data.message);
+                    updatePlayerData();
                 }
-            } catch (error) {
-                alert('Bir hata oluştu!');
-            }
+            })
+            .catch(error => {
+                console.error('Kuyruğa ekleme hatası:', error);
+                alert('Şarkı eklenirken bir hata oluştu.');
+            });
         }
 
-        // Kontrol fonksiyonları
-        async function play() {
-            try {
-                await fetch('/api/play', { method: 'POST' });
-            } catch (error) {
-                alert('Şarkı oynatılamadı!');
+        // --- Event Listeners ---
+        document.getElementById('search-button').addEventListener('click', searchSongs);
+        document.getElementById('search-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                searchSongs();
             }
-        }
-
-<<<<<<< HEAD
-// (Existing JavaScript code in templates/index.html should be above this)
-
-document.addEventListener('DOMContentLoaded', function() {
-    // Check if the addToQueue function is available, which is crucial for the suggestion button
-    if (typeof addToQueue === 'function') {
-        fetchLastFmSuggestion();
-    } else {
-        console.error('addToQueue function is not defined. Last.fm suggestion "Add to Queue" button will not work.');
-        const suggestionStatus = document.getElementById('lastfm-suggestion-status');
-        // Attempt to display error in the suggestion section if elements exist
-        if (suggestionStatus) {
-             suggestionStatus.textContent = 'Sayfa hatası nedeniyle öneri özelliği şu anda kullanılamıyor.';
-             const suggestionSection = document.getElementById('lastfm-suggestion-section');
-             if (suggestionSection) suggestionSection.style.display = 'block'; // Show section to display the error
-        }
-    }
-});
-
-function fetchLastFmSuggestion() {
-    const suggestionSection = document.getElementById('lastfm-suggestion-section');
-    const suggestionContent = document.getElementById('lastfm-suggestion-content');
-    const suggestionStatus = document.getElementById('lastfm-suggestion-status');
-
-    if (!suggestionSection || !suggestionContent || !suggestionStatus) {
-        console.error('Required HTML elements for Last.fm suggestion are missing. Cannot display suggestion.');
-        return;
-    }
-
-    suggestionStatus.textContent = 'Öneri yükleniyor...'; // Initial loading message
-
-    fetch('/api/lastfm-suggestion')
-        .then(response => {
-            if (!response.ok) {
-                // Handle HTTP errors (like 401/403 for auth, or other server errors)
-                let errorMsg = 'Öneri alınırken bir sunucu hatası oluştu (' + response.status + ').';
-                if (response.status === 401 || response.status === 403) {
-                    errorMsg = 'Önerileri görmek için Spotify\'a bağlı olmanız ve Last.fm bağlantınızın olması gerekebilir.';
-                }
-                console.warn('Last.fm suggestion API error:', response.status, response.statusText);
-                suggestionStatus.textContent = errorMsg;
-                if (suggestionSection) suggestionSection.style.display = 'block'; // Show section to display status
-                return null; // Indicates failure to the next .then()
-            }
-            const contentType = response.headers.get("content-type");
-            if (contentType && contentType.indexOf("application/json") !== -1) {
-                return response.json();
-            } else {
-                console.warn('Last.fm suggestion: Response was not JSON. Possible auth redirect or server issue.');
-                suggestionStatus.textContent = 'Öneriler için Spotify/Last.fm bağlantısı gerekiyor olabilir veya sunucu yanıtı hatalı.';
-                if (suggestionSection) suggestionSection.style.display = 'block'; // Show section to display status
-                return null; // Indicates failure
-            }
-        })
-        .then(data => {
-            if (!data) { // If previous .then returned null due to an error
-                // suggestionStatus should already be set by the previous block
-                // Ensure section is visible if it wasn't already
-                if (suggestionSection && suggestionSection.style.display === 'none') {
-                    suggestionSection.style.display = 'block';
-                }
-                // Clear content if it was previously filled
-                if (suggestionContent) suggestionContent.innerHTML = '';
-                return;
-            }
-
-            if (data.success && data.suggestion) {
-                const suggestion = data.suggestion;
-                if (!suggestion.id || !suggestion.name || !suggestion.artist) {
-                    console.error('Suggestion data from API is incomplete:', suggestion);
-                    suggestionStatus.textContent = 'Alınan öneri verisi eksik veya hatalı.';
-                    suggestionContent.innerHTML = ''; // Clear previous content
-                    if (suggestionSection) suggestionSection.style.display = 'block';
-                    return;
-                }
-
-                const imageUrl = suggestion.image_url || `https://placehold.co/64x64/f8bbd0/4a148c?text=${encodeURIComponent(suggestion.name.substring(0,1))}`;
-                const fallbackImageUrl = 'https://placehold.co/64x64/fecaca/991b1b?text=H';
-
-                suggestionContent.innerHTML = `
-                    <div class="flex items-center space-x-4">
-                        <img class="w-16 h-16 rounded object-cover flex-shrink-0 border border-pink-200 dark:border-pink-700" src="${imageUrl}" alt="${suggestion.name}" onerror="this.onerror=null; this.src='${fallbackImageUrl}';">
-                        <div class="flex-grow min-w-0">
-                            <h3 class="font-semibold text-lg text-pink-800 dark:text-pink-200 truncate" title="${suggestion.name}">${suggestion.name}</h3>
-                            <p class="text-pink-600 dark:text-pink-400 text-sm truncate" title="${suggestion.artist}">${suggestion.artist}</p>
-                        </div>
-                        <button class="lastfm-suggestion-add bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 dark:from-pink-600 dark:to-rose-600 dark:hover:from-pink-500 dark:hover:to-rose-500 text-white font-medium py-2 px-4 rounded-md text-sm whitespace-nowrap flex-shrink-0 shadow-sm hover:shadow-md transform hover:-translate-y-0.5" data-id="${suggestion.id}">
-                            Kuyruğa Ekle
-                        </button>
-                    </div>
-                `;
-                if (suggestionSection) suggestionSection.style.display = 'block';
-                suggestionStatus.textContent = data.message || 'İşte sana özel bir şarkı!'; // Success message
-
-                const addButton = suggestionContent.querySelector('.lastfm-suggestion-add');
-                if (addButton) {
-                    addButton.addEventListener('click', function() {
-                        // addToQueue is expected to be globally available from the main script in index.html
-                        if (typeof addToQueue === 'function') {
-                            addToQueue(this.getAttribute('data-id'), this);
-                        } else {
-                            // This case should ideally be caught by the DOMContentLoaded check, but as a fallback:
-                            console.error('addToQueue function is not available for suggestion button.');
-                            // Use the global showStatus if available, otherwise update local status
-                            if (typeof showStatus === 'function') {
-                                showStatus('Şarkı ekleme özelliği şu anda çalışmıyor.', 'error');
-                            } else {
-                                suggestionStatus.textContent = 'Hata: Şarkı ekleme işlevi bulunamadı.';
-                            }
-                        }
-                    });
-                }
-            } else {
-                // API returned success:false or no suggestion
-                suggestionStatus.textContent = data.message || 'Şu an için bir öneri bulunamadı.';
-                suggestionContent.innerHTML = ''; // Clear any previous suggestion
-                if (suggestionSection) suggestionSection.style.display = 'block'; // Keep section visible for the message
-            }
-        })
-        .catch(error => {
-            // This catch is for network errors or errors thrown from .then blocks (e.g. JSON parsing)
-            console.error('Error in fetchLastFmSuggestion promise chain:', error);
-            if (suggestionStatus) suggestionStatus.textContent = 'Öneriler yüklenirken bir ağ veya istemci hatası oluştu.';
-            if (suggestionContent) suggestionContent.innerHTML = '';
-            if (suggestionSection) suggestionSection.style.display = 'block'; // Keep section visible for the error message
         });
-}
 
-// Note: The `showStatus` function (assumed to be globally available from existing script in index.html)
-// is used for general status messages by `addToQueue`. The `lastfm-suggestion-status` div
-// is specifically for messages related to the suggestion loading process itself.
-// `addToQueue(trackId, buttonElement)` is also assumed to be globally available.
-=======
-        async function pause() {
-            try {
-                await fetch('/api/pause', { method: 'POST' });
-            } catch (error) {
-                alert('Şarkı duraklatılamadı!');
-            }
-        }
-
-        async function resume() {
-            try {
-                await fetch('/api/resume', { method: 'POST' });
-            } catch (error) {
-                alert('Şarkı devam ettirilemedi!');
-            }
-        }
-
-<<<<<<< HEAD
-        async function next() {
-            try {
-                await fetch('/api/next', { method: 'POST' });
-            } catch (error) {
-                alert('Sonraki şarkıya geçilemedi!');
-            }
-        }
-
-        async function previous() {
-            try {
-                await fetch('/api/previous', { method: 'POST' });
-            } catch (error) {
-                alert('Önceki şarkıya geçilemedi!');
-            }
-        }
-
-        // Sayfa yüklendiğinde çalma listesini güncelle
-        updateQueue();
->>>>>>> main
-=======
-// (Existing JavaScript code in templates/index.html should be above this)
-
-document.addEventListener('DOMContentLoaded', function() {
-    // Check if the addToQueue function is available, which is crucial for the suggestion button
-    if (typeof addToQueue === 'function') {
-        fetchSuggestion(); // Updated function name
-    } else {
-        console.error('addToQueue function is not defined. Suggestion "Add to Queue" button will not work.'); // Generic message
-        const suggestionStatus = document.getElementById('lastfm-suggestion-status');
-        // Attempt to display error in the suggestion section if elements exist
-        if (suggestionStatus) {
-             suggestionStatus.textContent = 'Sayfa hatası nedeniyle öneri özelliği şu anda kullanılamıyor.';
-             const suggestionSection = document.getElementById('lastfm-suggestion-section');
-             if (suggestionSection) suggestionSection.style.display = 'block'; // Show section to display the error
-        }
-    }
-});
-
-function fetchSuggestion() { // Renamed function
-    const suggestionSection = document.getElementById('lastfm-suggestion-section');
-    const suggestionContent = document.getElementById('lastfm-suggestion-content');
-    const suggestionStatus = document.getElementById('lastfm-suggestion-status');
-
-    if (!suggestionSection || !suggestionContent || !suggestionStatus) {
-        console.error('Required HTML elements for suggestion are missing. Cannot display suggestion.'); // Generic message
-        return;
-    }
-
-    suggestionStatus.textContent = 'Öneri yükleniyor...'; // Initial loading message
-
-    fetch('/api/suggestion') // Updated API endpoint
-        .then(response => {
-            if (!response.ok) {
-                // Handle HTTP errors (like 401/403 for auth, or other server errors)
-                let errorMsg = 'Öneri alınırken bir sunucu hatası oluştu (' + response.status + ').';
-                if (response.status === 401 || response.status === 403) {
-                    // Message can be kept generic or updated if backend provides more specific info for this new endpoint
-                    errorMsg = 'Önerileri görmek için Spotify\'a bağlı olmanız gerekebilir.';
-                }
-                console.warn('Suggestion API error:', response.status, response.statusText); // Generic message
-                suggestionStatus.textContent = errorMsg;
-                if (suggestionSection) suggestionSection.style.display = 'block'; // Show section to display status
-                return null; // Indicates failure to the next .then()
-            }
-            const contentType = response.headers.get("content-type");
-            if (contentType && contentType.indexOf("application/json") !== -1) {
-                return response.json();
-            } else {
-                console.warn('Suggestion API: Response was not JSON. Possible auth redirect or server issue.'); // Generic message
-                suggestionStatus.textContent = 'Öneriler için Spotify bağlantısı gerekiyor olabilir veya sunucu yanıtı hatalı.'; // Generic message
-                if (suggestionSection) suggestionSection.style.display = 'block'; // Show section to display status
-                return null; // Indicates failure
-            }
-        })
-        .then(data => {
-            if (!data) { // If previous .then returned null due to an error
-                // suggestionStatus should already be set by the previous block
-                // Ensure section is visible if it wasn't already
-                if (suggestionSection && suggestionSection.style.display === 'none') {
-                    suggestionSection.style.display = 'block';
-                }
-                // Clear content if it was previously filled
-                if (suggestionContent) suggestionContent.innerHTML = '';
-                return;
-            }
-
-            if (data.success && data.suggestion) {
-                const suggestion = data.suggestion;
-                if (!suggestion.id || !suggestion.name || !suggestion.artist) {
-                    console.error('Suggestion data from API is incomplete:', suggestion);
-                    suggestionStatus.textContent = 'Alınan öneri verisi eksik veya hatalı.';
-                    suggestionContent.innerHTML = ''; // Clear previous content
-                    if (suggestionSection) suggestionSection.style.display = 'block';
-                    return;
-                }
-
-                const imageUrl = suggestion.image_url || `https://placehold.co/64x64/f8bbd0/4a148c?text=${encodeURIComponent(suggestion.name.substring(0,1))}`;
-                const fallbackImageUrl = 'https://placehold.co/64x64/fecaca/991b1b?text=H';
-
-                suggestionContent.innerHTML = `
-                    <div class="flex items-center space-x-4">
-                        <img class="w-16 h-16 rounded object-cover flex-shrink-0 border border-pink-200 dark:border-pink-700" src="${imageUrl}" alt="${suggestion.name}" onerror="this.onerror=null; this.src='${fallbackImageUrl}';">
-                        <div class="flex-grow min-w-0">
-                            <h3 class="font-semibold text-lg text-pink-800 dark:text-pink-200 truncate" title="${suggestion.name}">${suggestion.name}</h3>
-                            <p class="text-pink-600 dark:text-pink-400 text-sm truncate" title="${suggestion.artist}">${suggestion.artist}</p>
-                        </div>
-                        <button class="lastfm-suggestion-add bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 dark:from-pink-600 dark:to-rose-600 dark:hover:from-pink-500 dark:hover:to-rose-500 text-white font-medium py-2 px-4 rounded-md text-sm whitespace-nowrap flex-shrink-0 shadow-sm hover:shadow-md transform hover:-translate-y-0.5" data-id="${suggestion.id}">
-                            Kuyruğa Ekle
-                        </button>
-                    </div>
-                `;
-                if (suggestionSection) suggestionSection.style.display = 'block';
-                suggestionStatus.textContent = data.message || 'İşte sana özel bir şarkı!'; // Success message
-
-                const addButton = suggestionContent.querySelector('.lastfm-suggestion-add');
-                if (addButton) {
-                    addButton.addEventListener('click', function() {
-                        // addToQueue is expected to be globally available from the main script in index.html
-                        if (typeof addToQueue === 'function') {
-                            addToQueue(this.getAttribute('data-id'), this);
-                        } else {
-                            // This case should ideally be caught by the DOMContentLoaded check, but as a fallback:
-                            console.error('addToQueue function is not available for suggestion button.');
-                            // Use the global showStatus if available, otherwise update local status
-                            if (typeof showStatus === 'function') {
-                                showStatus('Şarkı ekleme özelliği şu anda çalışmıyor.', 'error');
-                            } else {
-                                suggestionStatus.textContent = 'Hata: Şarkı ekleme işlevi bulunamadı.';
-                            }
-                        }
-                    });
-                }
-            } else {
-                // API returned success:false or no suggestion
-                suggestionStatus.textContent = data.message || 'Şu an için bir öneri bulunamadı.';
-                suggestionContent.innerHTML = ''; // Clear any previous suggestion
-                if (suggestionSection) suggestionSection.style.display = 'block'; // Keep section visible for the message
-            }
-        })
-        .catch(error => {
-            // This catch is for network errors or errors thrown from .then blocks (e.g. JSON parsing)
-            console.error('Error in fetchSuggestion promise chain:', error); // Updated function name in log
-            if (suggestionStatus) suggestionStatus.textContent = 'Öneriler yüklenirken bir ağ veya istemci hatası oluştu.';
-            if (suggestionContent) suggestionContent.innerHTML = '';
-            if (suggestionSection) suggestionSection.style.display = 'block'; // Keep section visible for the error message
+        // --- İlk Yükleme ---
+        document.addEventListener('DOMContentLoaded', function() {
+            setupAutoRefresh();
         });
-}
-
-// Note: The `showStatus` function (assumed to be globally available from existing script in index.html)
-// is used for general status messages by `addToQueue`. The `lastfm-suggestion-status` div
-// is specifically for messages related to the suggestion loading process itself.
-// `addToQueue(trackId, buttonElement)` is also assumed to be globally available.
->>>>>>> 3b94088bfe038549908848c0a93d49069274f022
     </script>
 </body>
 </html>

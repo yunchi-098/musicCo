@@ -977,11 +977,17 @@ def add_song():
 
         artists = song_info.get('artists');
         artist_uris = [_ensure_spotify_uri(a.get('id'), 'artist') for a in artists if a.get('id')]
+        
+        # *** GÜNCELLEME: Albüm kapağı URL'sini ekle ***
+        images = song_info.get('album', {}).get('images', [])
+        image_url = images[0].get('url') if images else None
+
         song_queue.append({
-            'id': track_uri, # URI olarak ekle
+            'id': track_uri,
             'name': song_info.get('name', '?'),
             'artist': ', '.join([a.get('name') for a in artists]),
-            'artist_ids': artist_uris, # URI listesi
+            'artist_ids': artist_uris,
+            'image_url': image_url,  # <-- EKLENDİ
             'added_by': 'admin',
             'added_at': time.time()
         })
@@ -1003,34 +1009,28 @@ def add_to_queue():
     global settings, song_queue, user_requests
     if not request.is_json: return jsonify({'error': 'Geçersiz format.'}), 400
     data = request.get_json();
-    # Frontend'den gelen ID'yi al (sadece ID veya URI olabilir)
     track_identifier = data.get('track_id')
     logger.info(f"Kuyruğa ekleme isteği: identifier={track_identifier}")
     if not track_identifier: return jsonify({'error': 'Eksik ID.'}), 400
 
-    # Gelen ID'yi URI formatına çevir
     track_uri = _ensure_spotify_uri(track_identifier, 'track')
     if not track_uri:
         logger.error(f"Kullanıcı ekleme: Geçersiz ID formatı: {track_identifier}")
         return jsonify({'error': 'Geçersiz şarkı ID formatı.'}), 400
 
-    # Kuyruk limiti kontrolü
     if len(song_queue) >= settings.get('max_queue_length', 20): logger.warning("Kuyruk dolu."); return jsonify({'error': 'Kuyruk dolu.'}), 429
 
-    # Kullanıcı istek limiti kontrolü
     user_ip = request.remote_addr; max_requests = settings.get('max_user_requests', 5)
     if user_requests.get(user_ip, 0) >= max_requests: logger.warning(f"Limit aşıldı: {user_ip}"); return jsonify({'error': f'İstek limitiniz ({max_requests}) doldu.'}), 429
 
     spotify = get_spotify_client()
     if not spotify: logger.error("Ekleme: Spotify istemcisi yok."); return jsonify({'error': 'Spotify bağlantısı yok.'}), 503
 
-    # Filtreleri URI ile kontrol et
     is_allowed, reason = check_song_filters(track_uri, spotify)
     if not is_allowed:
         logger.info(f"Reddedildi ({reason}): {track_uri}")
-        return jsonify({'error': reason}), 403 # 403 Forbidden
+        return jsonify({'error': reason}), 403
 
-    # Filtrelerden geçtiyse şarkı bilgilerini tekrar al (güvenlik için) ve kuyruğa ekle
     try:
         song_info = spotify.track(track_uri, market='TR')
         if not song_info: return jsonify({'error': 'Şarkı bilgisi alınamadı (tekrar kontrol).'}), 500
@@ -1039,18 +1039,23 @@ def add_to_queue():
         artist_uris = [_ensure_spotify_uri(a.get('id'), 'artist') for a in artists if a.get('id')]
         artist_names = [a.get('name') for a in artists]
 
+        # *** GÜNCELLEME: Albüm kapağı URL'sini ekle ***
+        images = song_info.get('album', {}).get('images', [])
+        image_url = images[0].get('url') if images else None
+
         logger.info(f"Filtrelerden geçti: {song_name} ({track_uri})")
-        update_time_profile(track_uri, spotify) # Zaman profiline ekle
+        update_time_profile(track_uri, spotify)
 
         song_queue.append({
-            'id': track_uri, # URI olarak ekle
+            'id': track_uri,
             'name': song_name,
             'artist': ', '.join(artist_names),
-            'artist_ids': artist_uris, # URI listesi
+            'artist_ids': artist_uris,
+            'image_url': image_url, # <-- EKLENDİ
             'added_by': user_ip,
             'added_at': time.time()
         })
-        user_requests[user_ip] = user_requests.get(user_ip, 0) + 1 # Kullanıcı limitini artır
+        user_requests[user_ip] = user_requests.get(user_ip, 0) + 1
         logger.info(f"Şarkı eklendi (Kullanıcı: {user_ip}): {song_name}. Kuyruk: {len(song_queue)}")
         return jsonify({'success': True, 'message': f"'{song_name}' kuyruğa eklendi!"})
 
@@ -1068,7 +1073,6 @@ def add_to_queue():
 def remove_song(song_id_str):
     """Admin tarafından kuyruktan şarkı kaldırma."""
     global song_queue;
-    # Gelen ID'yi URI'ye çevir
     song_uri_to_remove = _ensure_spotify_uri(song_id_str, 'track')
     if not song_uri_to_remove:
         flash(f"Geçersiz şarkı ID formatı: {song_id_str}", "danger")
@@ -1076,7 +1080,6 @@ def remove_song(song_id_str):
 
     logger.debug(f"Kuyruktan kaldırılacak URI: {song_uri_to_remove}")
     original_length = len(song_queue)
-    # Kuyruktaki şarkıları URI ile karşılaştırarak kaldır
     song_queue = [song for song in song_queue if song.get('id') != song_uri_to_remove]
     if len(song_queue) < original_length:
         logger.info(f"Şarkı kaldırıldı (Admin): URI={song_uri_to_remove}")
@@ -1098,10 +1101,35 @@ def view_queue():
     """Kullanıcılar için şarkı kuyruğunu gösterir (Filtrelenmiş)."""
     global spotify_client, song_queue
     currently_playing_info = None
+    recently_played_info = None  # <-- EKLENDİ
     filtered_queue = []
     spotify = get_spotify_client()
 
     if spotify:
+        # *** GÜNCELLEME: Son çalınan şarkıyı al ***
+        try:
+            recent_tracks = spotify.current_user_recently_played(limit=1)
+            if recent_tracks and recent_tracks.get('items'):
+                item = recent_tracks['items'][0]['track']
+                track_uri = item.get('uri')
+                if track_uri and track_uri.startswith('spotify:track:'):
+                    is_allowed, _ = check_song_filters(track_uri, spotify)
+                    if is_allowed:
+                        track_name = item.get('name')
+                        artists = item.get('artists', [])
+                        artist_name = ', '.join([a.get('name') for a in artists])
+                        images = item.get('album', {}).get('images', [])
+                        image_url = images[-1].get('url') if images else None # En küçük resmi al
+                        artist_uris = [_ensure_spotify_uri(a.get('id'), 'artist') for a in artists if a.get('id')]
+                        recently_played_info = {
+                            'id': track_uri, 'name': track_name, 'artist': artist_name,
+                            'artist_ids': artist_uris, 'image_url': image_url
+                        }
+                        logger.debug(f"Son Çalınan (Kuyruk): {track_name}")
+        except Exception as e:
+            logger.error(f"Son çalınan şarkı alınırken hata: {e}", exc_info=True)
+
+
         # Şu an çalanı al
         try:
             playback = spotify.current_playback(additional_types='track,episode', market='TR')
@@ -1110,7 +1138,6 @@ def view_queue():
                 track_uri = item.get('uri')
                 if track_uri and track_uri.startswith('spotify:track:'):
                     is_allowed, _ = check_song_filters(track_uri, spotify)
-                    # Sadece izin verilen şarkı gösterilsin
                     if is_allowed:
                         track_name = item.get('name'); artists = item.get('artists', [])
                         artist_name = ', '.join([a.get('name') for a in artists]); images = item.get('album', {}).get('images', [])
@@ -1135,7 +1162,6 @@ def view_queue():
             if song_uri and song_uri.startswith('spotify:track:'):
                 is_allowed, _ = check_song_filters(song_uri, spotify)
                 if is_allowed:
-                    # Sanatçı ID'lerinin URI olduğundan emin ol
                     if 'artist_ids' in song and isinstance(song['artist_ids'], list):
                          song['artist_ids'] = [_ensure_spotify_uri(aid, 'artist') for aid in song['artist_ids']]
                     filtered_queue.append(song)
@@ -1144,7 +1170,13 @@ def view_queue():
             else:
                  logger.warning(f"Kuyruk Sayfası: Kuyrukta geçersiz şarkı formatı: {song}")
 
-    return render_template('queue.html', queue=filtered_queue, currently_playing_info=currently_playing_info)
+    return render_template(
+        'queue.html', 
+        queue=filtered_queue, 
+        currently_playing_info=currently_playing_info,
+        recently_played_info=recently_played_info  # <-- EKLENDİ
+    )
+
 
 @app.route('/api/queue')
 def api_get_queue():
