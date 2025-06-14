@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Oturum Süresi Doldu - QuBeat</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Font Awesome Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            background-color: #0a0a0a;
+            color: #FFFFFF;
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-zinc-950 text-white">
+
+    <div class="min-h-screen flex flex-col items-center justify-center text-center p-4 sm:p-6 lg:p-8">
+        
+        <div class="bg-zinc-900/50 border border-white/10 rounded-3xl p-8 lg:p-12 max-w-md w-full">
+            <i class="fas fa-mug-hot fa-3x text-yellow-400 mb-6"></i>
+            <h1 class="text-3xl font-bold mb-4">Görünüşe göre kafeden ayrıldınız!</h1>
+            <p class="text-zinc-400 mb-8">
+                Oturumunuzun süresi doldu çünkü 30 dakikadır aktif değildiniz. Müziğe devam etmek için lütfen tekrar giriş yapın.
+            </p>
+            <a href="{{ url_for('index') }}" class="bg-green-500 text-black font-bold py-3 px-8 rounded-full hover:bg-green-400 transform hover:scale-105 transition-all duration-300 inline-block">
+                Ana Sayfaya Dön
+            </a>
+        </div>
+        
+        <footer class="w-full max-w-5xl mx-auto mt-10 text-center text-zinc-500 text-sm">
+            <p>&copy; 2024 QuBeat. Tüm Hakları Saklıdır.</p>
+        </footer>
+    </div>
+
+</body>
+</html>

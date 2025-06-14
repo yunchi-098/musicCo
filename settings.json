@@ -1,24 +1,20 @@
 {
     "max_queue_length": 20,
     "max_user_requests": 5,
-    "active_device_id": "b06b5f6028e43ecb92fcc3fab13d047329692ebe",
+    "active_device_id": null,
     "genre_filter_mode": "blacklist",
     "artist_filter_mode": "blacklist",
     "song_filter_mode": "blacklist",
     "genre_blacklist": [
-        "pop",
-        "turkish pop"
+        "pop"
     ],
     "genre_whitelist": [],
     "artist_blacklist": [
         "spotify:artist:32d21ZV2sLX2sGdjefVMJg"
     ],
     "artist_whitelist": [],
-    "track_blacklist": [
-        "spotify:track:0Gwa8plXjCipPYTp4rLOo8",
-        "spotify:track:2zN40CUuOiq4dEpCYwnPqQ",
-        "spotify:track:5xcj1M6o7hZNrTC51riksy"
-    ],
+    "track_blacklist": [],
     "track_whitelist": [],
+    "active_playlist_uri": "spotify:playlist:4zrldlBX4DEM7VeK6ay3Nn",
     "track_filter_mode": "blacklist"
 }

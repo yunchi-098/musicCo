@@ -3,463 +3,434 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MusicStream - Müzik Akış Platformu</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <title>QuBeat - Yenilenen Müzik Deneyimi</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Font Awesome Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Spline+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+
     <style>
+        /* Custom Stiller ve Renk Paleti */
         :root {
-            --primary-color: #38e07b;
-            --secondary-color: #1DB954;
-            --background-dark: #121212;
+            --primary-color: #22c55e; /* Yeşil */
+            --background-dark: #0a0a0a;
             --background-light: #181818;
+            --card-background: #1f1f1f;
             --text-primary: #FFFFFF;
-            --text-secondary: #b3b3b3;
-            --card-background: #282828;
+            --text-secondary: #a3a3a3;
+            --border-color: #2f2f2f;
         }
 
         body {
             background-color: var(--background-dark);
             color: var(--text-primary);
-            font-family: 'Spline Sans', sans-serif;
-            min-height: 100vh;
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
         }
 
-        .navbar-brand {
-            font-weight: 700;
-            font-size: 1.5rem;
+        /* Arka plana bulanık albüm kapağı efekti için */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: var(--bg-image);
+            background-size: cover;
+            background-position: center;
+            filter: blur(50px) brightness(0.4);
+            opacity: 0;
+            transition: opacity 1s ease-in-out;
+            z-index: -1;
+            transform: scale(1.1);
         }
 
-        .player-card {
-            background-color: var(--card-background);
-            padding: 1.5rem;
-            border-radius: 1rem;
-            text-align: center;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-            transition: all 0.3s ease;
-            height: 100%;
+        /* Dinamik olarak arkaplanı göstermek için */
+        body.has-bg::before {
+            opacity: 1;
+        }
+        
+        /* Toast Bildirim Stilleri */
+        #toast-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
             display: flex;
             flex-direction: column;
-            justify-content: center;
+            gap: 10px;
+        }
+
+        .toast {
+            display: flex;
             align-items: center;
-        }
-
-        .player-card.current {
-            background-color: var(--card-background);
-            transform: scale(1.05);
-            box-shadow: 0 0 0 3px var(--primary-color), 0 10px 30px rgba(0,0,0,0.5);
-        }
-
-        .player-card.adjacent {
-            opacity: 0.6;
-            transform: scale(0.95);
-        }
-
-        .player-album-art-large {
-            width: 160px;
-            height: 160px;
-            border-radius: 1rem;
-            object-fit: cover;
-            box-shadow: 0 8px 16px rgba(0,0,0,0.4);
-        }
-
-        .player-album-art-small {
-            width: 100px;
-            height: 100px;
-            border-radius: 0.75rem;
-            object-fit: cover;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        }
-
-        .player-title-large {
-            font-size: 1.5rem;
-            font-weight: 700;
-            margin-top: 1rem;
-            color: var(--text-primary);
-        }
-
-        .player-artist-large {
-            font-size: 1rem;
-            color: var(--text-secondary);
-        }
-        
-        .player-title-small {
-            font-size: 1rem;
-            font-weight: 500;
-            color: var(--text-primary);
-        }
-        
-        .player-artist-small {
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-        }
-
-        .progress-bar-container {
-            width: 100%;
-            margin-top: 1rem;
-            background-color: rgba(255,255,255,0.1);
-            border-radius: 99px;
-            height: 6px;
-        }
-
-        .progress-bar-fill {
-            background-color: var(--primary-color);
-            height: 6px;
-            border-radius: 99px;
-            transition: width 0.5s ease;
-        }
-        
-        .search-section {
-            background-color: var(--background-light);
-            padding: 2rem;
-            border-radius: 1rem;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-        }
-
-        .search-input-wrapper {
-            position: relative;
-            max-width: 500px;
-            margin: auto;
-        }
-        
-        .search-input-icon {
-            position: absolute;
-            left: 20px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: var(--text-secondary);
-        }
-
-        .search-input {
-            background-color: var(--card-background);
-            border: 1px solid var(--card-background);
-            color: var(--text-primary);
-            padding: 0.8rem 1rem 0.8rem 3rem;
-            border-radius: 99px;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-        }
-
-        .search-input::placeholder {
-            color: var(--text-secondary);
-        }
-
-        .search-input:focus {
+            gap: 12px;
             background-color: var(--card-background);
             color: var(--text-primary);
-            box-shadow: 0 0 0 2px var(--primary-color);
-            border-color: var(--primary-color);
-        }
-        
-        .btn-custom-primary {
-            background-color: var(--primary-color);
-            color: #000;
-            border: none;
-            padding: 0.8rem 1.5rem;
-            border-radius: 99px;
-            font-weight: 700;
-            transition: all 0.3s ease;
+            padding: 12px 20px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            transform: translateX(120%);
+            transition: transform 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+            opacity: 0;
         }
 
-        .btn-custom-primary:hover {
-            background-color: var(--secondary-color);
-            color: #000;
-            transform: scale(1.05);
+        .toast.show {
+            transform: translateX(0);
+            opacity: 1;
         }
 
-        .song-item {
-            background: var(--card-background);
-            border-radius: 10px;
-            padding: 15px;
-            margin-bottom: 12px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border: 1px solid transparent;
+        .toast.success .toast-icon {
+            color: var(--primary-color);
         }
 
-        .song-item:hover {
-            background: #3a3a3a;
-            border-color: var(--primary-color);
-            transform: translateY(-2px);
+        .toast.error .toast-icon {
+            color: #ef4444; /* Kırmızı */
         }
         
-        .album-art {
-            width: 50px;
-            height: 50px;
-            border-radius: 8px;
-            object-fit: cover;
-        }
-        
+        /* Arama sonuçları için animasyon */
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
+
+        .song-item-animation {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+        
+        /* Spinner için */
+        .spinner {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            padding: 1.1px;
+            background: conic-gradient(#0000 10%, var(--primary-color)) content-box;
+            -webkit-mask:
+                repeating-conic-gradient(#0000 0deg, #000 1deg 20deg, #0000 21deg 36deg),
+                radial-gradient(farthest-side, #0000 calc(100% - 9px), #000 calc(100% - 8px));
+            -webkit-mask-composite: destination-in;
+            mask-composite: intersect;
+            animation: l4 1s infinite steps(10);
+        }
+        @keyframes l4 {
+            to {
+                transform: rotate(1turn)
+            }
+        }
     </style>
 </head>
-<body>
-    <nav class="navbar navbar-expand-lg navbar-dark mb-5">
-        <div class="container">
-            <a class="navbar-brand" href="/">
-                QuBeat
-            </a>
-        </div>
-    </nav>
+<body class="bg-zinc-950 text-white">
 
-    <div class="container">
-        <!-- Müzik Çalar Başlık -->
-        <section class="text-center mb-5">
-            <h2 class="h1 fw-bold mb-2">Müzik Çalar</h2>
-            <p style="color: var(--text-secondary);">En sevdiğin şarkıları keşfet, listene ekle ve dinlemeye başla.</p>
-        </section>
+    <!-- Toast Bildirimleri için Konteyner -->
+    <div id="toast-container"></div>
 
-        <!-- Müzik Çalar Kartları -->
-        <div class="row justify-content-center align-items-center mb-5 gx-md-4 gx-lg-5">
-            <!-- Önceki Şarkı -->
-            <div class="col-md-3 d-none d-md-block">
-                <div id="previous-track-container" class="player-card adjacent">
-                    <div class="spinner-border text-light" role="status"><span class="visually-hidden">Yükleniyor...</span></div>
+    <div class="min-h-screen flex flex-col items-center p-4 sm:p-6 lg:p-8">
+        
+        <header class="w-full max-w-5xl mx-auto mb-8">
+            <h1 class="text-3xl font-bold text-center flex items-center justify-center gap-3">
+                <img src="logo.svg" alt="QuBeat Logosu" class="w-8 h-8">
+                <span>QuBeat</span>
+            </h1>
+        </header>
+
+        <main class="w-full max-w-5xl mx-auto flex-grow">
+            
+            <!-- Müzik Çalar Alanı -->
+            <div class="grid grid-cols-12 gap-4 lg:gap-6 items-center mb-10">
+                
+                <!-- Önceki Şarkı -->
+                <div class="col-span-3 transition-all duration-500 ease-in-out">
+                    <div id="previous-track-container" class="bg-black/20 backdrop-blur-md border border-white/10 rounded-2xl p-4 h-full flex flex-col items-center justify-center text-center opacity-60 hover:opacity-100 transition-opacity">
+                        <div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Yükleniyor...</span></div>
+                    </div>
+                </div>
+
+                <!-- Şu An Çalan Şarkı -->
+                <div class="col-span-6 transition-all duration-500 ease-in-out">
+                    <div id="current-track-container" class="bg-black/30 backdrop-blur-lg border border-white/10 rounded-3xl p-6 h-full flex flex-col items-center justify-center text-center shadow-2xl shadow-green-500/10">
+                         <div class="spinner" role="status"><span class="visually-hidden">Yükleniyor...</span></div>
+                    </div>
+                </div>
+
+                <!-- Sıradaki Şarkı -->
+                <div class="col-span-3 transition-all duration-500 ease-in-out">
+                     <div id="next-in-queue-container" class="bg-black/20 backdrop-blur-md border border-white/10 rounded-2xl p-4 h-full flex flex-col items-center justify-center text-center opacity-60 hover:opacity-100 transition-opacity">
+                         <div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Yükleniyor...</span></div>
+                     </div>
                 </div>
             </div>
 
-            <!-- Şu An Çalan Şarkı -->
-            <div class="col-12 col-md-5 mb-4 mb-md-0">
-                <div id="current-track-container" class="player-card current">
-                    <div class="spinner-border text-light" role="status"><span class="visually-hidden">Yükleniyor...</span></div>
+            <!-- Arama Bölümü -->
+            <div class="bg-zinc-900/50 border border-white/10 rounded-3xl p-6 lg:p-8 text-center mt-10 backdrop-blur-sm">
+                <h2 class="text-2xl font-bold mb-4">Listene Yeni Şarkılar Ekle</h2>
+                <div class="relative max-w-lg mx-auto mb-4">
+                    <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500"></i>
+                    <input type="text" id="search-input" class="w-full bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-500 text-base rounded-full py-3 pl-12 pr-4 focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all" placeholder="Şarkı veya sanatçı ara...">
+                </div>
+                 <button id="search-button" class="bg-green-500 text-black font-bold py-3 px-8 rounded-full hover:bg-green-400 transform hover:scale-105 transition-all duration-300">
+                    <i class="fas fa-search mr-2"></i>Ara
+                </button>
+                
+                <div id="search-results" class="mt-6 text-left max-w-xl mx-auto grid grid-cols-1 gap-3">
+                    <!-- Arama sonuçları buraya gelecek -->
                 </div>
             </div>
-
-            <!-- Sıradaki Şarkı -->
-            <div class="col-md-3 d-none d-md-block">
-                 <div id="next-in-queue-container" class="player-card adjacent">
-                     <div class="spinner-border text-light" role="status"><span class="visually-hidden">Yükleniyor...</span></div>
-                 </div>
-            </div>
-        </div>
-
-        <!-- Arama Bölümü -->
-        <div class="search-section text-center mt-5">
-            <h4 class="fw-bold mb-4">Listene Yeni Şarkılar Ekle</h4>
-            <div class="search-input-wrapper mb-3">
-                <i class="fas fa-search search-input-icon"></i>
-                <input type="text" id="search-input" class="form-control search-input" placeholder="Şarkı veya sanatçı adı girin...">
-            </div>
-             <button class="btn btn-custom-primary" type="button" id="search-button">
-                Ara
-            </button>
-            <div id="search-results" class="mt-4 text-start" style="max-width: 600px; margin: auto;"></div>
-        </div>
+        </main>
+        
+        <footer class="w-full max-w-5xl mx-auto mt-10 text-center text-zinc-500 text-sm">
+            <p>&copy; 2024 QuBeat. Tüm Hakları Saklıdır.</p>
+        </footer>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        /**
-         * Oyuncu verilerini periyodik olarak günceller.
-         */
-        function setupAutoRefresh() {
-            updatePlayerData();
-            setInterval(updatePlayerData, 10000);
-        }
+        document.addEventListener('DOMContentLoaded', function() {
 
-        /**
-         * Tüm oyuncu kartlarını tek bir fetch isteği ile günceller.
-         */
-        function updatePlayerData() {
-            console.log("Oyuncu verileri güncelleniyor...");
-            fetch('/queue')
-                .then(response => {
-                    if (!response.ok) throw new Error('Ağ yanıtı sorunlu.');
-                    return response.text();
+            const prevContainer = document.getElementById('previous-track-container');
+            const currentContainer = document.getElementById('current-track-container');
+            const nextContainer = document.getElementById('next-in-queue-container');
+            const searchInput = document.getElementById('search-input');
+            const searchButton = document.getElementById('search-button');
+            const searchResults = document.getElementById('search-results');
+            
+            const placeholderSmall = `
+                <div class="flex flex-col items-center justify-center h-full w-full">
+                    <div class="w-16 h-16 bg-zinc-800 rounded-lg flex items-center justify-center mb-2">
+                        <i class="fas fa-music text-zinc-600"></i>
+                    </div>
+                    <div class="h-4 bg-zinc-800 rounded-full w-20 mb-1.5"></div>
+                    <div class="h-3 bg-zinc-800 rounded-full w-12"></div>
+                </div>`;
+            
+            const placeholderLarge = `
+                <div class="flex flex-col items-center justify-center h-full w-full">
+                     <div class="w-32 h-32 md:w-40 md:h-40 bg-zinc-800 rounded-2xl flex items-center justify-center mb-4">
+                         <i class="fas fa-compact-disc text-zinc-600 text-4xl fa-spin"></i>
+                     </div>
+                     <div class="h-6 bg-zinc-800 rounded-full w-48 mb-2"></div>
+                     <div class="h-4 bg-zinc-800 rounded-full w-32"></div>
+                </div>`;
+
+            /**
+             * Toast bildirimlerini yönetir.
+             * @param {string} message - Gösterilecek mesaj.
+             * @param {string} type - 'success' veya 'error'.
+             */
+            function showToast(message, type = 'success') {
+                const toastContainer = document.getElementById('toast-container');
+                const toast = document.createElement('div');
+                toast.className = `toast ${type}`;
+                
+                const iconClass = type === 'success' ? 'fa-solid fa-circle-check' : 'fa-solid fa-circle-xmark';
+
+                toast.innerHTML = `
+                    <i class="${iconClass} toast-icon text-xl"></i>
+                    <span class="font-medium">${message}</span>
+                `;
+
+                toastContainer.appendChild(toast);
+
+                // Toast'ı göster
+                setTimeout(() => {
+                    toast.classList.add('show');
+                }, 100);
+
+                // Toast'ı gizle ve kaldır
+                setTimeout(() => {
+                    toast.classList.remove('show');
+                    toast.addEventListener('transitionend', () => toast.remove());
+                }, 4000);
+            }
+
+            /**
+             * Müzik çalar verilerini periyodik olarak günceller.
+             */
+            function setupAutoRefresh() {
+                updatePlayerData();
+                setInterval(updatePlayerData, 10000); // 10 saniyede bir güncelle
+            }
+
+            /**
+             * Sunucudan verileri çekerek tüm kartları günceller.
+             */
+            function updatePlayerData() {
+                fetch('/queue')
+                    .then(response => {
+                        if (!response.ok) throw new Error('Ağ yanıtı sorunluydu.');
+                        return response.text();
+                    })
+                    .then(html => {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(html, 'text/html');
+                        
+                        updateCard(doc, '#recently-played-track .recently-played-item', prevContainer, 'small', { title: 'Önceki Şarkı', artist: 'Veri Yok' });
+                        updateCard(doc, '#current-track .currently-playing', currentContainer, 'large', { title: 'Şarkı Çalmıyor', artist: 'Liste boş veya duraklatıldı.' });
+                        updateCard(doc, '#queue-list .queue-item', nextContainer, 'small', { title: 'Sırada Şarkı Yok', artist: 'Listeye yeni şarkı ekle.' });
+                    })
+                    .catch(error => {
+                        console.error('Oyuncu verisi güncellenirken hata oluştu:', error);
+                        prevContainer.innerHTML = '<p class="text-red-500 text-xs">Veri yüklenemedi.</p>';
+                        currentContainer.innerHTML = '<p class="text-red-500">Veri yüklenemedi.</p>';
+                        nextContainer.innerHTML = '<p class="text-red-500 text-xs">Sıra yüklenemedi.</p>';
+                    });
+            }
+
+            /**
+             * Belirli bir kartı gelen HTML verisiyle günceller.
+             * @param {Document} doc - Ayrıştırılmış HTML dokümanı.
+             * @param {string} selector - Verinin alınacağı CSS seçicisi.
+             * @param {HTMLElement} container - Güncellenecek olan HTML elementi.
+             * @param {string} size - Kartın boyutu ('large' veya 'small').
+             * @param {object} defaultText - Veri bulunamadığında gösterilecek varsayılan metinler.
+             */
+            function updateCard(doc, selector, container, size, defaultText) {
+                const node = doc.querySelector(selector);
+                let image, title, artist;
+
+                if (node) {
+                    image = node.querySelector('.album-art')?.src || getDefaultImage(size);
+                    title = node.querySelector('h5, .fw-bold')?.textContent.trim() || defaultText.title;
+                    artist = node.querySelector('p, .text-muted')?.textContent.trim() || defaultText.artist;
+                } else {
+                    image = getDefaultImage(size);
+                    title = defaultText.title;
+                    artist = defaultText.artist;
+                }
+                
+                container.innerHTML = generateCardHTML(image, title, artist, size);
+
+                // Eğer ana kart güncelleniyorsa, arka planı da güncelle
+                if (size === 'large' && node) {
+                    document.body.style.setProperty('--bg-image', `url(${image})`);
+                    document.body.classList.add('has-bg');
+                } else if (size === 'large' && !node) {
+                     document.body.classList.remove('has-bg');
+                }
+            }
+            
+            /**
+             * Boyuta göre varsayılan resim URL'si döner.
+             * @param {string} size - 'large' veya 'small'.
+             */
+            function getDefaultImage(size) {
+                const dimensions = size === 'large' ? '160x160' : '100x100';
+                return `https://placehold.co/${dimensions}/181818/a3a3a3?text=♪`;
+            }
+
+            /**
+             * Kartlar için HTML içeriği oluşturur.
+             */
+            function generateCardHTML(image, title, artist, size) {
+                const imgSizeClass = size === 'large' ? 'w-32 h-32 md:w-40 md:h-40' : 'w-20 h-20';
+                const imgRadius = size === 'large' ? 'rounded-2xl' : 'rounded-lg';
+                const titleClass = size === 'large' ? 'text-xl md:text-2xl font-bold' : 'text-base font-semibold';
+                const artistClass = size === 'large' ? 'text-sm md:text-base text-zinc-400' : 'text-xs text-zinc-500';
+
+                return `
+                    <img src="${image}" onerror="this.onerror=null; this.src='${getDefaultImage(size)}';" class="${imgSizeClass} ${imgRadius} object-cover mb-4 shadow-lg" alt="Albüm Kapağı">
+                    <h3 class="w-full truncate ${titleClass}">${title}</h3>
+                    <p class="w-full truncate ${artistClass}">${artist}</p>
+                `;
+            }
+
+            /**
+             * Spotify'da şarkı arar ve sonuçları görüntüler.
+             */
+            function searchSongs() {
+                const query = searchInput.value.trim();
+                if (!query) return;
+
+                searchResults.innerHTML = '<div class="flex justify-center"><div class="spinner-border text-green-500" role="status"></div></div>';
+
+                fetch('/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `search_query=${encodeURIComponent(query)}&type=track`
                 })
-                .then(html => {
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
-                    
-                    updatePreviousTrackCard(doc);
-                    updateCurrentTrackCard(doc);
-                    updateNextInQueueCard(doc);
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        searchResults.innerHTML = `<div class="bg-red-900/50 text-red-300 border border-red-800 rounded-lg p-3 text-center">${data.error}</div>`;
+                        return;
+                    }
+
+                    if (!data.results || data.results.length === 0) {
+                        searchResults.innerHTML = '<div class="bg-zinc-800/50 text-zinc-400 rounded-lg p-3 text-center">Sonuç bulunamadı.</div>';
+                        return;
+                    }
+
+                    let html = '';
+                    data.results.forEach(song => {
+                        const safeUri = song.uri.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                        html += `
+                            <div class="song-item-animation flex items-center gap-4 bg-zinc-800/50 p-3 rounded-xl hover:bg-zinc-700/70 cursor-pointer transition-colors duration-200" onclick="addToQueue('${safeUri}', '${song.name.replace(/'/g, "\\'")}')">
+                                <img src="${song.image || getDefaultImage('small')}" class="w-12 h-12 rounded-md object-cover" alt="Albüm Kapağı">
+                                <div class="flex-grow overflow-hidden">
+                                    <div class="font-bold text-white truncate">${song.name}</div>
+                                    <div class="text-sm text-zinc-400 truncate">${song.artist}</div>
+                                </div>
+                                <i class="fas fa-plus text-zinc-500 group-hover:text-green-500 transition-colors"></i>
+                            </div>
+                        `;
+                    });
+                    searchResults.innerHTML = html;
                 })
                 .catch(error => {
-                    console.error('Oyuncu verisi güncellenirken hata oluştu:', error);
-                    document.getElementById('previous-track-container').innerHTML = '<p class="text-danger">Veri yüklenemedi.</p>';
-                    document.getElementById('current-track-container').innerHTML = '<p class="text-danger">Veri yüklenemedi.</p>';
-                    document.getElementById('next-in-queue-container').innerHTML = '<p class="text-danger">Sıra yüklenemedi.</p>';
+                    console.error('Arama hatası:', error);
+                    searchResults.innerHTML = '<div class="bg-red-900/50 text-red-300 border border-red-800 rounded-lg p-3 text-center">Arama sırasında bir hata oluştu.</div>';
                 });
-        }
-
-        /**
-         * 'Önceki Şarkı' kartını DOM'dan alınan verilerle günceller.
-         * @param {Document} doc - Ayrıştırılmış HTML dokümanı.
-         */
-        function updatePreviousTrackCard(doc) {
-            const previousTrackNode = doc.querySelector('#recently-played-track .recently-played-item');
-            const previousTrackContainer = document.getElementById('previous-track-container');
-
-            if (previousTrackNode) {
-                const image = previousTrackNode.querySelector('.album-art')?.src || 'https://placehold.co/100x100/181818/b3b3b3?text=?';
-                const title = previousTrackNode.querySelector('h5')?.textContent.trim() || 'Bilinmiyor';
-                const artist = previousTrackNode.querySelector('p')?.textContent.trim() || 'Bilinmiyor';
-
-                previousTrackContainer.innerHTML = `
-                    <img src="${image}" onerror="this.onerror=null; this.src='https://placehold.co/100x100/181818/b3b3b3?text=?';" class="player-album-art-small mb-3" alt="Önceki Şarkı Albüm Kapağı">
-                    <h3 class="player-title-small">${title}</h3>
-                    <p class="player-artist-small">${artist}</p>
-                `;
-            } else {
-                previousTrackContainer.innerHTML = `
-                    <img src="https://placehold.co/100x100/181818/b3b3b3?text=?" class="player-album-art-small mb-3" alt="Önceki Şarkı Albüm Kapağı">
-                    <h3 class="player-title-small">Önceki Şarkı</h3>
-                    <p class="player-artist-small">Veri Yok</p>
-                `;
             }
-        }
 
-        /**
-         * 'Şu An Çalan' kartını DOM'dan alınan verilerle günceller.
-         * @param {Document} doc - Ayrıştırılmış HTML dokümanı.
-         */
-        function updateCurrentTrackCard(doc) {
-            const currentTrackNode = doc.querySelector('#current-track .currently-playing');
-            const currentTrackContainer = document.getElementById('current-track-container');
-
-            if (currentTrackNode) {
-                const image = currentTrackNode.querySelector('.album-art')?.src || 'https://placehold.co/160x160/181818/FFFFFF?text=♪';
-                const title = currentTrackNode.querySelector('h5')?.textContent.trim() || 'Bilinmiyor';
-                const artist = currentTrackNode.querySelector('p')?.textContent.trim() || 'Bilinmiyor';
-                const isPlaying = currentTrackNode.textContent.includes('Çalıyor');
+            /**
+             * Belirtilen şarkıyı kuyruğa ekler.
+             * @param {string} uri - Eklenecek şarkının Spotify URI'si.
+             * @param {string} songName - Şarkının adı (bildirim için).
+             */
+            window.addToQueue = function(uri, songName) {
+                showToast(`'${songName}' listeye ekleniyor...`, 'info');
                 
-                currentTrackContainer.innerHTML = `
-                    <img src="${image}" onerror="this.onerror=null; this.src='https://placehold.co/160x160/181818/FFFFFF?text=♪';" class="player-album-art-large mb-3" alt="Şu An Çalan Albüm Kapağı">
-                    <h3 class="player-title-large">${title}</h3>
-                    <p class="player-artist-large">${artist}</p>
-                    <div class="progress-bar-container">
-                        <div class="progress-bar-fill" style="width: ${isPlaying ? '60%' : '0%'}"></div>
-                    </div>
-                `;
-            } else {
-                 currentTrackContainer.innerHTML = `
-                    <img src="https://placehold.co/160x160/181818/FFFFFF?text=♪" class="player-album-art-large mb-3" alt="Albüm Kapağı">
-                    <h3 class="player-title-large">Şarkı Çalmıyor</h3>
-                    <p class="player-artist-large">Liste boş veya duraklatıldı.</p>
-                     <div class="progress-bar-container">
-                        <div class="progress-bar-fill" style="width: 0%"></div>
-                    </div>
-                `;
-            }
-        }
-
-        /**
-         * 'Sıradaki Şarkı' kartını DOM'dan alınan verilerle günceller.
-         * @param {Document} doc - Ayrıştırılmış HTML dokümanı.
-         */
-        function updateNextInQueueCard(doc) {
-            const nextItem = doc.querySelector('#queue-list .queue-item');
-            const nextInQueueContainer = document.getElementById('next-in-queue-container');
-
-            if (nextItem) {
-                const image = nextItem.querySelector('.album-art')?.src || 'https://placehold.co/100x100/282828/b3b3b3?text=Sırada';
-                const title = nextItem.querySelector('.fw-bold')?.textContent.trim() || 'Bilinmiyor';
-                const artist = nextItem.querySelector('.text-muted')?.textContent.trim() || 'Bilinmiyor';
-
-                nextInQueueContainer.innerHTML = `
-                    <img src="${image}" onerror="this.onerror=null; this.src='https://placehold.co/100x100/181818/b3b3b3?text=♪';" class="player-album-art-small mb-3" alt="Sıradaki Şarkı Albüm Kapağı">
-                    <h3 class="player-title-small">${title}</h3>
-                    <p class="player-artist-small">${artist}</p>
-                `;
-            } else {
-                nextInQueueContainer.innerHTML = `
-                    <img src="https://placehold.co/100x100/181818/b3b3b3?text=♪" class="player-album-art-small mb-3" alt="Albüm Kapağı">
-                    <h3 class="player-title-small">Sırada Şarkı Yok</h3>
-                    <p class="player-artist-small">Listeye yeni bir şarkı ekle.</p>
-                `;
-            }
-        }
-
-        /**
-         * Spotify'da şarkı arar ve sonuçları görüntüler.
-         */
-        function searchSongs() {
-            const query = document.getElementById('search-input').value.trim();
-            if (!query) return;
-
-            const searchResults = document.getElementById('search-results');
-            searchResults.innerHTML = '<div class="d-flex justify-content-center"><div class="spinner-border text-light" role="status"><span class="visually-hidden">Aranıyor...</span></div></div>';
-
-            fetch('/search', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `search_query=${encodeURIComponent(query)}&type=track`
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    searchResults.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
-                    return;
-                }
-
-                if (!data.results || data.results.length === 0) {
-                    searchResults.innerHTML = '<div class="alert alert-info mt-3" style="background-color: rgba(255,255,255,0.1); color: white; border: none;">Sonuç bulunamadı.</div>';
-                    return;
-                }
-
-                let html = '';
-                data.results.forEach(song => {
-                    const safeUri = song.uri.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-                    html += `
-                        <div class="song-item d-flex align-items-center" onclick="addToQueue('${safeUri}')" style="animation: fadeIn 0.5s ease-out;">
-                            <img src="${song.image || 'https://placehold.co/50x50/181818/FFFFFF?text=♪'}" class="album-art me-3" alt="Album Art" onerror="this.onerror=null; this.src='https://placehold.co/50x50/181818/FFFFFF?text=♪'">
-                            <div>
-                                <div class="fw-bold">${song.name}</div>
-                                <div style="color: var(--text-secondary); font-size: 0.9rem;">${song.artist}</div>
-                            </div>
-                        </div>
-                    `;
+                fetch('/add-to-queue', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ track_id: uri })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        showToast(`Hata: ${data.error}`, 'error');
+                    } else {
+                        showToast(data.message || `'${songName}' listeye eklendi!`, 'success');
+                        // 1 saniye sonra verileri anında güncelle
+                        setTimeout(updatePlayerData, 1000);
+                    }
+                })
+                .catch(error => {
+                    console.error('Kuyruğa ekleme hatası:', error);
+                    showToast('Şarkı eklenirken bir hata oluştu.', 'error');
                 });
-                searchResults.innerHTML = html;
-            })
-            .catch(error => {
-                console.error('Arama hatası:', error);
-                searchResults.innerHTML = '<div class="alert alert-danger">Arama sırasında bir hata oluştu.</div>';
-            });
-        }
-
-        /**
-         * Belirtilen şarkıyı kuyruğa eklemek için sunucuya istek gönderir.
-         * @param {string} uri - Eklenecek şarkının Spotify URI'si.
-         */
-        function addToQueue(uri) {
-            fetch('/add-to-queue', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ track_id: uri })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    alert(`Hata: ${data.error}`);
-                } else {
-                    alert(data.message);
-                    updatePlayerData();
-                }
-            })
-            .catch(error => {
-                console.error('Kuyruğa ekleme hatası:', error);
-                alert('Şarkı eklenirken bir hata oluştu.');
-            });
-        }
-
-        // --- Event Listeners ---
-        document.getElementById('search-button').addEventListener('click', searchSongs);
-        document.getElementById('search-input').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                searchSongs();
             }
-        });
 
-        // --- İlk Yükleme ---
-        document.addEventListener('DOMContentLoaded', function() {
+            // --- Event Listeners ---
+            searchButton.addEventListener('click', searchSongs);
+            searchInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    searchSongs();
+                }
+            });
+
+            // --- İlk Yükleme ---
+            prevContainer.innerHTML = placeholderSmall;
+            currentContainer.innerHTML = placeholderLarge;
+            nextContainer.innerHTML = placeholderSmall;
             setupAutoRefresh();
         });
     </script>
