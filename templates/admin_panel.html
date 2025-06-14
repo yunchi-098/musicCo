@@ -6,6 +6,7 @@
     <title>Mekan Müzik Yönetim Paneli</title>
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    
     <!-- Leaflet.js Harita Kütüphanesi -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
@@ -13,6 +14,11 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
      crossorigin=""></script>
+
+    <!-- YENİ: Leaflet-Geosearch Arama Eklentisi -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-geosearch@3.11.0/dist/geosearch.css" />
+    <script src="https://unpkg.com/leaflet-geosearch@3.11.0/dist/geosearch.umd.js"></script>
+
     <style>
         :root {
             --spotify-green: #1DB954;
@@ -173,6 +179,15 @@
             margin-bottom: 1rem; 
             cursor: grab;
         }
+        /* YENİ: Arama çubuğu stili */
+        .geosearch.geosearch-bar {
+            border: 1px solid #ced4da !important;
+            box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25) !important;
+        }
+        .leaflet-geosearch-bar .results {
+            z-index: 1001; /* Arama sonuçlarının harita üzerinde görünmesi için */
+        }
+
 
         /* --- Diğer Yardımcı Stiller --- */
         .btn svg, .btn i { margin-right: 0.35em; }
@@ -187,6 +202,7 @@
 <body>
     <div class="container-fluid py-4 px-lg-5">
         
+        <!-- Tüm sayfa içeriği (mevcut haliyle kalacak) -->
         <div class="main-header d-flex justify-content-between align-items-center">
             <h1 class="h2">Mekan Müzik Yönetim Paneli</h1>
             <div>
@@ -364,7 +380,7 @@
             </div>
         </div>
 
-        <!-- YENİ ENTEGRE EDİLMİŞ AYARLAR BÖLÜMÜ -->
+        <!-- ENTEGRE EDİLMİŞ AYARLAR BÖLÜMÜ -->
         <h3 class="section-title">Filtreler, Konum ve Genel Ayarlar</h3>
         <form method="POST" action="{{ url_for('update_settings') }}">
             <div class="row mb-4">
@@ -372,11 +388,11 @@
                 <div class="col-lg-8 mb-4">
                     <div class="card h-100">
                         <div class="card-header d-flex justify-content-between align-items-center">
-                            <span><i class="fas fa-map-marked-alt mr-2 text-info"></i>Konum Ayarları</span>
+                            <span><i class="fas fa-map-marked-alt mr-2 text-info"></i>Konum Ayarları ve Arama</span>
                             <button type="button" class="btn btn-sm btn-outline-secondary" onclick="goToMyLocation()"><i class="fas fa-location-arrow"></i> Mevcut Konumuma Git</button>
                         </div>
                         <div class="card-body">
-                            <p class="text-muted small">Mekanın konumunu ayarlamak için haritaya tıklayın veya işaretçiyi sürükleyin.</p>
+                            <p class="text-muted small">Adres arayın, haritaya tıklayın veya işaretçiyi sürükleyerek mekanın konumunu ayarlayın.</p>
                             <div id="map"></div>
                             <div class="row">
                                 <div class="col-md-4 form-group">
@@ -592,26 +608,49 @@
         
         // --- Sayfa Yüklendiğinde Çalışacak Kodlar ---
         document.addEventListener('DOMContentLoaded', function() {
-            // Harita Başlatma
+            // <!-- GÜNCELLENDİ: Harita Başlatma ve Arama Özelliği -->
             const latInput = document.getElementById('cafe_latitude');
             const lonInput = document.getElementById('cafe_longitude');
             const radiusInput = document.getElementById('max_distance_meters');
             const initialLat = parseFloat(latInput.value) || 41.015137; // Varsayılan İstanbul
             const initialLon = parseFloat(lonInput.value) || 28.979530; // Varsayılan İstanbul
             const map = L.map('map').setView([initialLat, initialLon], 16);
+            
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             }).addTo(map);
+
             const marker = L.marker([initialLat, initialLon], { draggable: true }).addTo(map);
             let circle = L.circle([initialLat, initialLon], {
                 color: 'blue', fillColor: '#3498db', fillOpacity: 0.2, radius: parseInt(radiusInput.value, 10) || 500
             }).addTo(map);
+
             function updateUI(lat, lng, rad) {
                 latInput.value = lat.toFixed(6);
                 lonInput.value = lng.toFixed(6);
                 circle.setLatLng([lat, lng]);
                 if(rad) circle.setRadius(rad);
             }
+
+            // Arama kontrolünü ekle
+            const searchControl = new GeoSearch.GeoSearchControl({
+                provider: new GeoSearch.OpenStreetMapProvider(),
+                style: 'bar',
+                showMarker: false, // Kendi marker'ımızı kullanıyoruz
+                autoClose: true,
+                keepResult: true,
+                searchLabel: 'Adres veya yer arayın...',
+            });
+            map.addControl(searchControl);
+
+            // Arama sonucu bulunduğunda tetiklenecek olay
+            map.on('geosearch/showlocation', function (result) {
+                const lat = result.location.y;
+                const lng = result.location.x;
+                marker.setLatLng([lat, lng]); // Marker'ı yeni konuma taşı
+                updateUI(lat, lng); // Inputları ve daireyi güncelle
+            });
+
             marker.on('dragend', () => updateUI(marker.getLatLng().lat, marker.getLatLng().lng));
             map.on('click', (e) => { marker.setLatLng(e.latlng); updateUI(e.latlng.lat, e.latlng.lng); });
             radiusInput.addEventListener('input', () => {
@@ -677,6 +716,8 @@
             $.when.apply($, fetchPromises).always(() => renderAllFilterLists());
         });
 
+        // --- Geri kalan tüm JavaScript fonksiyonları (renderFilterList, quickBlockItem, checkPort vb.) olduğu gibi kalacak ---
+        // Kısaltmak adına buraya tekrar eklemiyorum.
         // --- Listeleri Render Etme Fonksiyonları ---
         function renderAudioSinkList(sinks, defaultSinkName) {
             const listElement = $('#audio-sinks-list'); listElement.empty();
