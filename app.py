@@ -813,6 +813,43 @@ def player_resume():
     except Exception as e: logger.error(f"Sürdürme sırasında genel hata: {e}", exc_info=True); flash('Müzik sürdürülürken bir hata oluştu.', 'danger')
     return redirect(url_for('admin_panel'))
 
+@app.route('/player/next', methods=['POST']) # 'POST' metodu daha güvenli ve idempotent olmayan işlemler için daha uygundur
+@admin_login_required
+def player_next():
+    global auto_advance_enabled # Otomatik geçişi de kontrol etmek isteyebilirsiniz
+    spotify = get_spotify_client()
+    active_spotify_connect_device_id = settings.get('active_device_id')
+
+    if not spotify:
+        flash('Spotify bağlantısı yok!', 'danger')
+        return redirect(url_for('admin_panel'))
+
+    try:
+        logger.info(f"Admin: Sonraki şarkıya geçiş isteği (Cihaz: {active_spotify_connect_device_id or '?'}).")
+        spotify.next_track(device_id=active_spotify_connect_device_id)
+        # Eğer otomatik geçiş kapalıysa, bir sonraki şarkıya geçildiğinde otomatik geçişi tekrar açmak mantıklı olabilir.
+        # Ya da sadece manuel geçiş yapmak isteyip otomatik geçiş ayarını değiştirmeyebilirsiniz.
+        # auto_advance_enabled = True # Bu satırı isterseniz ekleyebilirsiniz
+        logger.info("Admin: Sonraki şarkıya geçildi.")
+        flash('Sonraki şarkıya geçildi.', 'success')
+    except spotipy.SpotifyException as e:
+        logger.error(f"Spotify sonraki şarkı hatası: {e}")
+        if e.http_status == 401 or e.http_status == 403:
+            flash('Spotify yetkilendirme hatası. Lütfen tekrar yetkilendirin.', 'danger')
+            global spotify_client
+            spotify_client = None
+            if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
+        elif e.http_status == 404:
+            flash(f'Sonraki şarkıya geçiş hatası: Cihaz bulunamadı veya oynatma aktif değil ({e.msg})', 'warning')
+        elif e.reason == 'NO_ACTIVE_DEVICE':
+            flash('Aktif Spotify cihazı bulunamadı!', 'warning')
+        else:
+            flash(f'Spotify sonraki şarkı hatası: {e.msg}', 'danger')
+    except Exception as e:
+        logger.error(f"Sonraki şarkıya geçiş sırasında genel hata: {e}", exc_info=True)
+        flash('Sonraki şarkıya geçilirken bir hata oluştu.', 'danger')
+
+    return redirect(url_for('admin_panel'))
 # --- Diğer Rotalar ---
 @app.route('/refresh-devices')
 @admin_login_required

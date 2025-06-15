@@ -275,6 +275,9 @@
                                 </form>
                                 {% endif %}
                             </div>
+                            <form action="{{ url_for('player_next') }}" method="POST" class="d-block mt-2">
+                                <button type="submit" class="btn btn-info btn-block"><i class="fas fa-step-forward"></i> Sonraki Şarkı</button>
+                            </form>
                         {% else %}
                             <div class="text-center py-4">
                                 <i class="fas fa-info-circle fa-2x text-muted mb-2"></i>
@@ -387,7 +390,7 @@
         <div class="row mb-4">
             <div class="col-12 mb-4">
                 <div class="card">
-                    <a href="#locationCollapseContent" data-toggle="collapse" role="button" aria-expanded="true" aria-controls="locationCollapseContent" class="text-decoration-none text-dark">
+                    <a href="#locationCollapseContent" data-toggle="collapse" role="button" aria-expanded="false" aria-controls="locationCollapseContent" class="text-decoration-none text-dark">
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <span>
                                 <i class="fas fa-map-marked-alt mr-2 text-info"></i>Konum Ayarları ve Arama
