@@ -421,38 +421,41 @@ def admin_login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# YENİ: Kafe'de kalma süresi (dakika)
-SESSION_TIMEOUT_MINUTES = 30 # Varsayılan 30 dakika olarak ayarlandı
+SESSION_TIMEOUT_MINUTES = 30 
 
-# YENİ: Konum Doğrulama Decorator'ı
 def location_required(f):
+    """
+    Kullanıcının konumunu doğrulamadan bir sayfaya erişmesini engelleyen decorator.
+    Doğrulama yoksa veya süresi dolmuşsa, kullanıcıyı doğrulama sayfasına yönlendirir.
+    """
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # Admin girişi yapılmışsa konumu kontrol etme, doğrudan erişime izin ver
+        # Yönetici giriş yapmışsa konum kontrolünü atla
         if session.get('admin_logged_in'):
             return f(*args, **kwargs)
 
-        # Konum bilgisi session'da kayıtlı mı?
         location_verified_at = session.get('location_verified_at')
         is_verified = False
 
         if location_verified_at:
             try:
-                # Doğrulama zamanını datetime objesine çevir
+                # Doğrulama zamanını string'den datetime objesine çevir
                 verified_time = datetime.fromisoformat(location_verified_at)
-                # Geçerlilik süresi doldu mu kontrol et
+                # Sürenin dolup dolmadığını kontrol et
                 if datetime.now() < verified_time + timedelta(minutes=SESSION_TIMEOUT_MINUTES):
                     is_verified = True
                 else:
-                    logger.info("Oturum zaman aşımına uğradı, konum doğrulaması gerekiyor.")
-                    flash("Oturum süreniz doldu, lütfen konumunuzu tekrar doğrulayın.", "warning")
-            except ValueError:
-                logger.warning("Geçersiz location_verified_at formatı, tekrar doğrulama.")
+                    logger.info("Konum doğrulama oturumunun süresi doldu.")
+            except (ValueError, TypeError):
+                logger.warning("Session'daki 'location_verified_at' formatı geçersiz.")
                 is_verified = False
 
         if not is_verified:
-            logger.info(f"Konum doğrulanmadı veya zaman aşımına uğradı. Kullanıcı {request.remote_addr} yönlendiriliyor.")
+            logger.info(f"Kullanıcı {request.remote_addr} için konum doğrulaması gerekli. Yönlendiriliyor...")
+            # Kullanıcıyı konum doğrulama sayfasına yönlendir
             return redirect(url_for('verify_location'))
+        
+        # Konum doğrulanmışsa, istenen sayfayı göster
         return f(*args, **kwargs)
     return decorated_function
 
@@ -739,28 +742,51 @@ def admin_panel():
 # --- Konum Kontrol Rotaları ---
 @app.route('/verify-location')
 def verify_location():
+    """Kullanıcıya konumunu doğrulatacağı HTML sayfasını gösterir."""
     return render_template('verify_location.html')
 
 @app.route('/api/verify-location', methods=['POST'])
 def api_verify_location():
+    """
+    Kullanıcının tarayıcısından gelen konum verisini işler, mesafeyi hesaplar
+    ve doğrulama sonucunu JSON olarak döndürür.
+    """
     data = request.get_json()
     if not data or 'latitude' not in data or 'longitude' not in data:
-        return jsonify({'success': False, 'error': 'Eksik konum verisi.'}), 400
+        return jsonify({'success': False, 'error': 'Eksik konum verisi gönderildi.'}), 400
     
-    user_lat, user_lon = data['latitude'], data['longitude']
-    cafe_lat = settings.get('cafe_latitude')
-    cafe_lon = settings.get('cafe_longitude')
+    try:
+        user_lat = float(data['latitude'])
+        user_lon = float(data['longitude'])
+        
+        # Ayarlardan mekanın konumunu ve izin verilen mesafeyi al
+        cafe_lat = settings.get('cafe_latitude')
+        cafe_lon = settings.get('cafe_longitude')
+        max_distance = settings.get('max_distance_meters', 100) # Varsayılan 100 metre
 
-    if cafe_lat is None or cafe_lon is None:
-        return jsonify({'success': False, 'error': 'Mekan konumu ayarlanmamış.'}), 500
+        if cafe_lat is None or cafe_lon is None:
+            logger.error("Mekan konumu (enlem/boylam) yönetici panelinden ayarlanmamış.")
+            return jsonify({'success': False, 'error': 'Mekan konumu henüz ayarlanmamış.'}), 500
 
-    distance = haversine(user_lon, user_lat, cafe_lon, cafe_lat)
-    if distance <= settings.get('max_distance_meters', 100):
-        session['location_verified_at'] = datetime.now().isoformat()
-        session.permanent = True
-        return jsonify({'success': True, 'redirect_url': url_for('index')})
-    else:
-        return jsonify({'success': False, 'error': f'Mekanda değilsiniz. Uzaklık: {int(distance)} metre.'}), 403
+        # Mesafeyi hesapla
+        distance = haversine(user_lon, user_lat, cafe_lon, cafe_lat)
+        
+        if distance <= max_distance:
+            # Kullanıcı mekanın içinde, oturumu doğrula ve yönlendirme URL'si gönder
+            session['location_verified_at'] = datetime.now().isoformat()
+            logger.info(f"Konum doğrulandı. Kullanıcı {request.remote_addr}, Mesafe: {distance:.2f}m")
+            return jsonify({'success': True, 'redirect_url': url_for('index')})
+        else:
+            # Kullanıcı mekanın dışında
+            logger.warning(f"Konum doğrulanamadı. Kullanıcı {request.remote_addr} çok uzakta. Mesafe: {distance:.2f}m")
+            return jsonify({'success': False, 'error': f'Mekanın içinde değilsiniz (Mesafe: {int(distance)} metre).'}), 403
+
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'error': 'Geçersiz konum verisi formatı.'}), 400
+    except Exception as e:
+        logger.error(f"Konum doğrulama sırasında sunucu hatası: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Doğrulama sırasında bir sunucu hatası oluştu.'}), 500
+
 
 @app.route('/api/set-location-config', methods=['POST'])
 @admin_login_required
