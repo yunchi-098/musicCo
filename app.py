@@ -22,7 +22,7 @@ from math import radians, cos, sin, asin, sqrt
 SPOTIFY_CLIENT_ID = '332e5f2c9fe44d9b9ef19c49d0caeb78' # ÖRNEK - DEĞİŞTİR
 SPOTIFY_CLIENT_SECRET = 'bbb19ad9c7d04d738f61cd0bd4f47426' # ÖRNEK - DEĞİŞTİR
 # !!! BU URI'NIN SPOTIFY DEVELOPER DASHBOARD'DAKİ REDIRECT URI İLE AYNI OLDUĞUNDAN EMİN OLUN !!!
-SPOTIFY_REDIRECT_URI = 'http://192.168.36.186:8080/callback' # ÖRNEK - DEĞİŞTİR
+SPOTIFY_REDIRECT_URI = 'http://auth.qubeat.xyz/callback' # ÖRNEK - DEĞİŞTİR
 SPOTIFY_SCOPE = 'user-read-playback-state user-read-private user-modify-playback-state playlist-read-private user-read-currently-playing user-read-recently-played'
 
 TOKEN_FILE = 'spotify_token.json'
