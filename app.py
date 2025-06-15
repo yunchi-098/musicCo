@@ -421,6 +421,41 @@ def admin_login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+# YENİ: Kafe'de kalma süresi (dakika)
+SESSION_TIMEOUT_MINUTES = 30 # Varsayılan 30 dakika olarak ayarlandı
+
+# YENİ: Konum Doğrulama Decorator'ı
+def location_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Admin girişi yapılmışsa konumu kontrol etme, doğrudan erişime izin ver
+        if session.get('admin_logged_in'):
+            return f(*args, **kwargs)
+
+        # Konum bilgisi session'da kayıtlı mı?
+        location_verified_at = session.get('location_verified_at')
+        is_verified = False
+
+        if location_verified_at:
+            try:
+                # Doğrulama zamanını datetime objesine çevir
+                verified_time = datetime.fromisoformat(location_verified_at)
+                # Geçerlilik süresi doldu mu kontrol et
+                if datetime.now() < verified_time + timedelta(minutes=SESSION_TIMEOUT_MINUTES):
+                    is_verified = True
+                else:
+                    logger.info("Oturum zaman aşımına uğradı, konum doğrulaması gerekiyor.")
+                    flash("Oturum süreniz doldu, lütfen konumunuzu tekrar doğrulayın.", "warning")
+            except ValueError:
+                logger.warning("Geçersiz location_verified_at formatı, tekrar doğrulama.")
+                is_verified = False
+
+        if not is_verified:
+            logger.info(f"Konum doğrulanmadı veya zaman aşımına uğradı. Kullanıcı {request.remote_addr} yönlendiriliyor.")
+            return redirect(url_for('verify_location'))
+        return f(*args, **kwargs)
+    return decorated_function
+
 # DEĞİŞİKLİK: Zaman profili ve öneri fonksiyonları kaldırıldı.
 # def get_current_time_profile(): ... (KALDIRILDI)
 # def update_time_profile(track_uri, spotify): ... (KALDIRILDI)
@@ -548,6 +583,7 @@ def check_song_filters(track_uri, spotify_client):
 # --- Flask Rotaları ---
 
 @app.route('/')
+@location_required
 def index():
     """Ana sayfayı gösterir."""
     return render_template('index.html', allowed_genres=ALLOWED_GENRES)

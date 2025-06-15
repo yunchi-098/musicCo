@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Konum Doğrulama - QuBeat</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            background-color: #0a0a0a;
+            color: #FFFFFF;
+            font-family: 'Inter', sans-serif;
+        }
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 3px solid #ffffff40;
+            border-top-color: #fff;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+<body class="bg-zinc-950 text-white">
+
+    <div class="min-h-screen flex flex-col items-center justify-center text-center p-4 sm:p-6 lg:p-8">
+        
+        <div class="bg-zinc-900/50 border border-white/10 rounded-3xl p-8 lg:p-12 max-w-md w-full">
+            <i class="fas fa-map-marker-alt fa-3x text-green-500 mb-6"></i>
+            <h1 class="text-3xl font-bold mb-4">Mekana Hoş Geldiniz!</h1>
+            <p class="text-zinc-400 mb-8">
+                Uygulamayı kullanmaya başlamak için lütfen mekanın içinde olduğunuzu doğrulayın. Bu işlem için tarayıcınızın konum servislerine erişim izni vermeniz gerekmektedir.
+            </p>
+            
+            <div id="message-area" class="text-red-400 mb-6"></div>
+
+            <button id="verify-button" class="bg-green-500 text-black font-bold py-3 px-8 rounded-full hover:bg-green-400 transform hover:scale-105 transition-all duration-300 inline-flex items-center justify-center w-64">
+                <span id="button-text">Konumumu Doğrula</span>
+                <div id="button-spinner" class="spinner" style="display: none;"></div>
+            </button>
+        </div>
+        
+        <footer class="w-full max-w-5xl mx-auto mt-10 text-center text-zinc-500 text-sm">
+            <p>&copy; 2024 QuBeat. Tüm Hakları Saklıdır.</p>
+        </footer>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const verifyButton = document.getElementById('verify-button');
+            const messageArea = document.getElementById('message-area');
+            const buttonText = document.getElementById('button-text');
+            const buttonSpinner = document.getElementById('button-spinner');
+
+            verifyButton.addEventListener('click', () => {
+                // Butonu yükleme durumuna getir
+                buttonText.style.display = 'none';
+                buttonSpinner.style.display = 'block';
+                verifyButton.disabled = true;
+                messageArea.textContent = 'Konumunuz alınıyor, lütfen bekleyin...';
+
+                if (!navigator.geolocation) {
+                    messageArea.textContent = 'Tarayıcınız konum servisini desteklemiyor.';
+                    resetButton();
+                    return;
+                }
+
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const { latitude, longitude } = position.coords;
+                        messageArea.textContent = 'Konum alındı, doğrulanıyor...';
+                        verifyLocationOnServer(latitude, longitude);
+                    },
+                    (error) => {
+                        let errorMessage;
+                        switch(error.code) {
+                            case error.PERMISSION_DENIED:
+                                errorMessage = "Konum erişimine izin vermediniz. Lütfen tarayıcı ayarlarından izin verin.";
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                errorMessage = "Konum bilgisi alınamadı.";
+                                break;
+                            case error.TIMEOUT:
+                                errorMessage = "Konum bilgisi alma işlemi zaman aşımına uğradı.";
+                                break;
+                            default:
+                                errorMessage = "Bilinmeyen bir hata oluştu.";
+                                break;
+                        }
+                        messageArea.textContent = errorMessage;
+                        resetButton();
+                    }
+                );
+            });
+
+            function verifyLocationOnServer(latitude, longitude) {
+                fetch('/api/verify-location', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ latitude, longitude }),
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        messageArea.textContent = 'Doğrulama başarılı! Yönlendiriliyorsunuz...';
+                        window.location.href = data.redirect_url;
+                    } else {
+                        messageArea.textContent = `Hata: ${data.error || 'Konum doğrulanamadı.'}`;
+                        resetButton();
+                    }
+                })
+                .catch(error => {
+                    console.error('Doğrulama hatası:', error);
+                    messageArea.textContent = 'Sunucuyla iletişim kurarken bir hata oluştu.';
+                    resetButton();
+                });
+            }
+
+            function resetButton() {
+                buttonText.style.display = 'block';
+                buttonSpinner.style.display = 'none';
+                verifyButton.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
