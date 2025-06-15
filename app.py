@@ -57,30 +57,6 @@ def haversine(lon1, lat1, lon2, lat2):
     r = 6371000 # Dünyanın yarıçapı (metre)
     return c * r
 
-@app.route('/verify-location')
-def verify_location():
-    return render_template('verify_location.html')
-
-@app.route('/api/verify-location', methods=['POST'])
-def api_verify_location():
-    data = request.get_json()
-    if not data or 'latitude' not in data or 'longitude' not in data:
-        return jsonify({'success': False, 'error': 'Eksik konum verisi.'}), 400
-    
-    user_lat, user_lon = data['latitude'], data['longitude']
-    cafe_lat = settings.get('cafe_latitude')
-    cafe_lon = settings.get('cafe_longitude')
-
-    if cafe_lat is None or cafe_lon is None:
-        return jsonify({'success': False, 'error': 'Mekan konumu ayarlanmamış.'}), 500
-
-    distance = haversine(user_lon, user_lat, cafe_lon, cafe_lat)
-    if distance <= settings.get('max_distance_meters', 100):
-        session['location_verified_at'] = datetime.now().isoformat()
-        session.permanent = True
-        return jsonify({'success': True, 'redirect_url': url_for('index')})
-    else:
-        return jsonify({'success': False, 'error': f'Mekanda değilsiniz. Uzaklık: {int(distance)} metre.'}), 403
 
 # --- BİTİŞ: Yeni Konum Mantığı ---
 
@@ -724,6 +700,73 @@ def admin_panel():
         active_playlist_uri=settings.get('active_playlist_uri')
     )
 
+# --- Konum Kontrol Rotaları ---
+@app.route('/verify-location')
+def verify_location():
+    return render_template('verify_location.html')
+
+@app.route('/api/verify-location', methods=['POST'])
+def api_verify_location():
+    data = request.get_json()
+    if not data or 'latitude' not in data or 'longitude' not in data:
+        return jsonify({'success': False, 'error': 'Eksik konum verisi.'}), 400
+    
+    user_lat, user_lon = data['latitude'], data['longitude']
+    cafe_lat = settings.get('cafe_latitude')
+    cafe_lon = settings.get('cafe_longitude')
+
+    if cafe_lat is None or cafe_lon is None:
+        return jsonify({'success': False, 'error': 'Mekan konumu ayarlanmamış.'}), 500
+
+    distance = haversine(user_lon, user_lat, cafe_lon, cafe_lat)
+    if distance <= settings.get('max_distance_meters', 100):
+        session['location_verified_at'] = datetime.now().isoformat()
+        session.permanent = True
+        return jsonify({'success': True, 'redirect_url': url_for('index')})
+    else:
+        return jsonify({'success': False, 'error': f'Mekanda değilsiniz. Uzaklık: {int(distance)} metre.'}), 403
+
+@app.route('/api/set-location-config', methods=['POST'])
+@admin_login_required
+def api_set_location_config():
+    """
+    API: Konum (enlem/boylam) ve maksimum mesafe ayarlarını anında günceller.
+    """
+    global settings
+    if not request.is_json:
+        return jsonify({'success': False, 'error': 'JSON isteği gerekli'}), 400
+    
+    data = request.get_json()
+    lat = data.get('cafe_latitude')
+    lon = data.get('cafe_longitude')
+    dist = data.get('max_distance_meters')
+    
+    # Gelen verilerin temel kontrolü
+    if lat is None or lon is None or dist is None:
+        return jsonify({'success': False, 'error': 'Eksik veri: latitude, longitude ve distance gerekli.'}), 400
+
+    try:
+        # Veri tiplerini doğrula ve dönüştür
+        lat_f = float(lat)
+        lon_f = float(lon)
+        dist_i = int(dist)
+        
+        current_settings = load_settings()
+        current_settings['cafe_latitude'] = lat_f
+        current_settings['cafe_longitude'] = lon_f
+        current_settings['max_distance_meters'] = dist_i
+        
+        save_settings(current_settings)
+        settings = current_settings # Global ayarları da anında güncelle
+        
+        logger.info(f"API: Konum ayarları güncellendi -> Lat: {lat_f}, Lon: {lon_f}, Dist: {dist_i}m")
+        return jsonify({'success': True, 'message': 'Konum ayarları kaydedildi.'})
+    except (ValueError, TypeError) as e:
+        logger.error(f"Konum ayarı hatası - geçersiz veri tipi: {e}")
+        return jsonify({'success': False, 'error': 'Geçersiz veri formatı.'}), 400
+    except Exception as e:
+        logger.error(f"Konum ayarları kaydedilirken hata: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Ayarlar kaydedilirken bir hata oluştu.'}), 500
 # --- Çalma Kontrol Rotaları ---
 @app.route('/player/pause')
 @admin_login_required

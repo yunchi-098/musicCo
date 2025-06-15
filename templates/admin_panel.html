@@ -382,19 +382,25 @@
 
         <!-- ENTEGRE EDİLMİŞ AYARLAR BÖLÜMÜ -->
         <h3 class="section-title">Filtreler, Konum ve Genel Ayarlar</h3>
-        <form method="POST" action="{{ url_for('update_settings') }}">
-            <div class="row mb-4">
-                <!-- Konum Ayarları Kartı -->
-                <div class="col-lg-8 mb-4">
-                    <div class="card h-100">
+
+        <!-- YENİ YAPI: Konum Ayarları Kartı (Katlanabilir ve Form Dışında) -->
+        <div class="row mb-4">
+            <div class="col-12 mb-4">
+                <div class="card">
+                    <a href="#locationCollapseContent" data-toggle="collapse" role="button" aria-expanded="true" aria-controls="locationCollapseContent" class="text-decoration-none text-dark">
                         <div class="card-header d-flex justify-content-between align-items-center">
-                            <span><i class="fas fa-map-marked-alt mr-2 text-info"></i>Konum Ayarları ve Arama</span>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="goToMyLocation()"><i class="fas fa-location-arrow"></i> Mevcut Konumuma Git</button>
+                            <span>
+                                <i class="fas fa-map-marked-alt mr-2 text-info"></i>Konum Ayarları ve Arama
+                                <i class="fas fa-chevron-down ml-2 small"></i>
+                            </span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="event.stopPropagation(); goToMyLocation()"><i class="fas fa-location-arrow"></i> Mevcut Konumuma Git</button>
                         </div>
+                    </a>
+                    <div class="collapse show" id="locationCollapseContent">
                         <div class="card-body">
-                            <p class="text-muted small">Adres arayın, haritaya tıklayın veya işaretçiyi sürükleyerek mekanın konumunu ayarlayın.</p>
+                            <p class="text-muted small">Adres arayın, haritaya tıklayın veya işaretçiyi sürükleyerek mekanın konumunu ayarlayın. Değişiklikleriniz otomatik olarak kaydedilir.</p>
                             <div id="map"></div>
-                            <div class="row">
+                            <div class="row mt-3">
                                 <div class="col-md-4 form-group">
                                     <label for="cafe_latitude">Enlem (Latitude)</label>
                                     <input type="number" step="any" id="cafe_latitude" name="cafe_latitude" value="{{ settings.cafe_latitude }}" class="form-control" required readonly>
@@ -411,47 +417,52 @@
                         </div>
                     </div>
                 </div>
-                <!-- Genel Ayarlar ve Filtre Modları Kartı -->
-                <div class="col-lg-4 mb-4">
-                     <div class="card h-100">
-                         <div class="card-header"><i class="fas fa-cogs mr-2 text-warning"></i>Genel Ayarlar ve Filtreler</div>
-                         <div class="card-body d-flex flex-column">
-                             <div class="form-group">
-                                 <label for="max_queue_length">Maks. Kuyruk Uzunluğu</label>
-                                 <input type="number" id="max_queue_length" name="max_queue_length" value="{{ settings.max_queue_length }}" class="form-control" min="1" required>
-                             </div>
-                             <div class="form-group">
-                                 <label for="max_user_requests">Kullanıcı Başına Maks. İstek</label>
-                                 <input type="number" id="max_user_requests" name="max_user_requests" value="{{ settings.max_user_requests }}" class="form-control" min="1" required>
-                             </div>
-                             <hr>
-                             <label class="d-block"><strong>Tür Filtresi:</strong></label>
-                             <div class="custom-control custom-radio custom-control-inline">
-                                 <input type="radio" id="genre_mode_blacklist" name="genre_filter_mode" value="blacklist" class="custom-control-input" {% if settings.genre_filter_mode == 'blacklist' %}checked{% endif %}>
-                                 <label class="custom-control-label" for="genre_mode_blacklist">Kara Liste</label>
-                             </div>
-                             <div class="custom-control custom-radio custom-control-inline">
-                                 <input type="radio" id="genre_mode_whitelist" name="genre_filter_mode" value="whitelist" class="custom-control-input" {% if settings.genre_filter_mode == 'whitelist' %}checked{% endif %}>
-                                 <label class="custom-control-label" for="genre_mode_whitelist">Beyaz Liste</label>
-                             </div>
-                             <div class="mt-3">
-                                 <label class="d-block"><strong>Sanatçı Filtresi:</strong></label>
-                                 <div class="custom-control custom-radio custom-control-inline">
-                                     <input type="radio" id="artist_mode_blacklist" name="artist_filter_mode" value="blacklist" class="custom-control-input" {% if settings.artist_filter_mode == 'blacklist' %}checked{% endif %}>
-                                     <label class="custom-control-label" for="artist_mode_blacklist">Kara Liste</label>
-                                 </div>
-                                 <div class="custom-control custom-radio custom-control-inline">
-                                     <input type="radio" id="artist_mode_whitelist" name="artist_filter_mode" value="whitelist" class="custom-control-input" {% if settings.artist_filter_mode == 'whitelist' %}checked{% endif %}>
-                                     <label class="custom-control-label" for="artist_mode_whitelist">Beyaz Liste</label>
-                                 </div>
-                             </div>
-                         </div>
-                     </div>
-                </div>
             </div>
-            <div class="row">
-                <div class="col-12 text-center mb-4">
-                    <button type="submit" class="btn btn-lg btn-primary"><i class="fas fa-save"></i> Tüm Ayarları Kaydet</button>
+        </div>
+
+
+        <!-- Genel Ayarlar ve Filtre Modları (Artık kendi formunda) -->
+        <form method="POST" action="{{ url_for('update_settings') }}">
+            <div class="row mb-4">
+                <!-- Genel Ayarlar ve Filtre Modları Kartı -->
+                <div class="col-lg-6 offset-lg-3 mb-4">
+                    <div class="card h-100">
+                        <div class="card-header"><i class="fas fa-cogs mr-2 text-warning"></i>Genel Ayarlar ve Filtreler</div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label for="max_queue_length">Maks. Kuyruk Uzunluğu</label>
+                                <input type="number" id="max_queue_length" name="max_queue_length" value="{{ settings.max_queue_length }}" class="form-control" min="1" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="max_user_requests">Kullanıcı Başına Maks. İstek</label>
+                                <input type="number" id="max_user_requests" name="max_user_requests" value="{{ settings.max_user_requests }}" class="form-control" min="1" required>
+                            </div>
+                            <hr>
+                            <label class="d-block"><strong>Tür Filtresi:</strong></label>
+                            <div class="custom-control custom-radio custom-control-inline">
+                                <input type="radio" id="genre_mode_blacklist" name="genre_filter_mode" value="blacklist" class="custom-control-input" {% if settings.genre_filter_mode == 'blacklist' %}checked{% endif %}>
+                                <label class="custom-control-label" for="genre_mode_blacklist">Kara Liste</label>
+                            </div>
+                            <div class="custom-control custom-radio custom-control-inline">
+                                <input type="radio" id="genre_mode_whitelist" name="genre_filter_mode" value="whitelist" class="custom-control-input" {% if settings.genre_filter_mode == 'whitelist' %}checked{% endif %}>
+                                <label class="custom-control-label" for="genre_mode_whitelist">Beyaz Liste</label>
+                            </div>
+                            <div class="mt-3">
+                                <label class="d-block"><strong>Sanatçı Filtresi:</strong></label>
+                                <div class="custom-control custom-radio custom-control-inline">
+                                    <input type="radio" id="artist_mode_blacklist" name="artist_filter_mode" value="blacklist" class="custom-control-input" {% if settings.artist_filter_mode == 'blacklist' %}checked{% endif %}>
+                                    <label class="custom-control-label" for="artist_mode_blacklist">Kara Liste</label>
+                                </div>
+                                <div class="custom-control custom-radio custom-control-inline">
+                                    <input type="radio" id="artist_mode_whitelist" name="artist_filter_mode" value="whitelist" class="custom-control-input" {% if settings.artist_filter_mode == 'whitelist' %}checked{% endif %}>
+                                    <label class="custom-control-label" for="artist_mode_whitelist">Beyaz Liste</label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-footer text-center">
+                            <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Genel Ayarları Kaydet</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </form>
