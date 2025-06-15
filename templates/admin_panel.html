@@ -386,44 +386,6 @@
         <!-- ENTEGRE EDİLMİŞ AYARLAR BÖLÜMÜ -->
         <h3 class="section-title">Filtreler, Konum ve Genel Ayarlar</h3>
 
-        <!-- YENİ YAPI: Konum Ayarları Kartı (Katlanabilir ve Form Dışında) -->
-        <div class="row mb-4">
-            <div class="col-12 mb-4">
-                <div class="card">
-                    <a href="#locationCollapseContent" data-toggle="collapse" role="button" aria-expanded="false" aria-controls="locationCollapseContent" class="text-decoration-none text-dark">
-                        <div class="card-header d-flex justify-content-between align-items-center">
-                            <span>
-                                <i class="fas fa-map-marked-alt mr-2 text-info"></i>Konum Ayarları ve Arama
-                                <i class="fas fa-chevron-down ml-2 small"></i>
-                            </span>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="event.stopPropagation(); goToMyLocation()"><i class="fas fa-location-arrow"></i> Mevcut Konumuma Git</button>
-                        </div>
-                    </a>
-                    <div class="collapse show" id="locationCollapseContent">
-                        <div class="card-body">
-                            <p class="text-muted small">Adres arayın, haritaya tıklayın veya işaretçiyi sürükleyerek mekanın konumunu ayarlayın. Değişiklikleriniz otomatik olarak kaydedilir.</p>
-                            <div id="map"></div>
-                            <div class="row mt-3">
-                                <div class="col-md-4 form-group">
-                                    <label for="cafe_latitude">Enlem (Latitude)</label>
-                                    <input type="number" step="any" id="cafe_latitude" name="cafe_latitude" value="{{ settings.cafe_latitude }}" class="form-control" required readonly>
-                                </div>
-                                <div class="col-md-4 form-group">
-                                    <label for="cafe_longitude">Boylam (Longitude)</label>
-                                    <input type="number" step="any" id="cafe_longitude" name="cafe_longitude" value="{{ settings.cafe_longitude }}" class="form-control" required readonly>
-                                </div>
-                                <div class="col-md-4 form-group">
-                                    <label for="max_distance_meters">Maksimum Uzaklık (metre)</label>
-                                    <input type="number" id="max_distance_meters" name="max_distance_meters" value="{{ settings.max_distance_meters }}" class="form-control" min="10" required>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-
         <!-- Genel Ayarlar ve Filtre Modları (Artık kendi formunda) -->
         <form method="POST" action="{{ url_for('update_settings') }}">
             <div class="row mb-4">

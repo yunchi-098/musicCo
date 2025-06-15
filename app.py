@@ -586,7 +586,6 @@ def check_song_filters(track_uri, spotify_client):
 # --- Flask Rotaları ---
 
 @app.route('/')
-@location_required
 def index():
     """Ana sayfayı gösterir."""
     return render_template('index.html', allowed_genres=ALLOWED_GENRES)
@@ -739,7 +738,6 @@ def admin_panel():
         active_playlist_uri=settings.get('active_playlist_uri')
     )
 
-# --- Konum Kontrol Rotaları ---
 @app.route('/verify-location')
 def verify_location():
     """Kullanıcıya konumunu doğrulatacağı HTML sayfasını gösterir."""
