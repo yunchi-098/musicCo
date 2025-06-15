@@ -594,141 +594,209 @@
     <script>
         // --- Global Değişkenler ---
         let currentSettings = JSON.parse('{{ settings | tojson | safe }}');
-        let spotifyNameCache = {}; // ID -> Name eşleşmesi için cache
+    let spotifyNameCache = {}; // ID -> Name eşleşmesi için cache
+    let locationSaveTimer; // Konum kaydı için debounce zamanlayıcısı
 
-        // --- Yardımcı Fonksiyonlar ---
-        function showFlashMessage(message, category = 'info') {
-            const flashDiv = document.getElementById('flash-messages');
-            if (!flashDiv) return;
-            const alertHtml = `<div class="alert alert-${category} alert-dismissible fade show mt-2" role="alert">${message}<button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">×</span></button></div>`;
-            flashDiv.insertAdjacentHTML('afterbegin', alertHtml);
-            window.setTimeout(() => { const el = flashDiv.querySelector('.alert'); if (el) { try { $(el).alert('close'); } catch (e) { el.remove(); } } }, 7000);
+    // --- Yardımcı Fonksiyonlar ---
+    function showFlashMessage(message, category = 'info', duration = 7000) {
+        const flashDiv = document.getElementById('flash-messages');
+        if (!flashDiv) return;
+        const alertId = `flash-${Date.now()}`;
+        const alertHtml = `<div id="${alertId}" class="alert alert-${category} alert-dismissible fade show mt-2" role="alert">${message}<button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">×</span></button></div>`;
+        flashDiv.insertAdjacentHTML('afterbegin', alertHtml);
+        window.setTimeout(() => {
+            const el = document.getElementById(alertId);
+            if (el) { try { $(el).alert('close'); } catch (e) { el.remove(); } }
+        }, duration);
+    }
+    function showListLoading(elementId, message = "Yükleniyor...") { $(`#${elementId}`).html(`<p class="text-muted p-3 text-center"><span class="spinner-border spinner-border-sm mr-2" role="status" aria-hidden="true"></span>${message}</p>`); }
+    function setButtonLoading(buttonElement, isLoading) {
+        if (!buttonElement || typeof buttonElement.classList === 'undefined') { console.error("setButtonLoading called with invalid buttonElement:", buttonElement); return; }
+        if (isLoading) {
+            buttonElement.disabled = true; buttonElement.classList.add('btn-loading');
+            if (!buttonElement.dataset.originalHtml) { buttonElement.dataset.originalHtml = buttonElement.innerHTML; }
+            buttonElement.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> İşleniyor...';
+        } else {
+            buttonElement.disabled = false; buttonElement.classList.remove('btn-loading');
+            if (buttonElement.dataset.originalHtml) { buttonElement.innerHTML = buttonElement.dataset.originalHtml; delete buttonElement.dataset.originalHtml; }
         }
-        function showListLoading(elementId, message = "Yükleniyor...") { $(`#${elementId}`).html(`<p class="text-muted p-3 text-center"><span class="spinner-border spinner-border-sm mr-2" role="status" aria-hidden="true"></span>${message}</p>`); }
-        function setButtonLoading(buttonElement, isLoading) {
-            if (!buttonElement || typeof buttonElement.classList === 'undefined') { console.error("setButtonLoading called with invalid buttonElement:", buttonElement); return; }
-            if (isLoading) {
-                buttonElement.disabled = true; buttonElement.classList.add('btn-loading');
-                if (!buttonElement.dataset.originalHtml) { buttonElement.dataset.originalHtml = buttonElement.innerHTML; }
-                buttonElement.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> İşleniyor...';
-            } else {
-                buttonElement.disabled = false; buttonElement.classList.remove('btn-loading');
-                if (buttonElement.dataset.originalHtml) { buttonElement.innerHTML = buttonElement.dataset.originalHtml; delete buttonElement.dataset.originalHtml; }
-            }
-        }
-        
-        // --- Sayfa Yüklendiğinde Çalışacak Kodlar ---
-        document.addEventListener('DOMContentLoaded', function() {
-            // <!-- GÜNCELLENDİ: Harita Başlatma ve Arama Özelliği -->
-            const latInput = document.getElementById('cafe_latitude');
-            const lonInput = document.getElementById('cafe_longitude');
-            const radiusInput = document.getElementById('max_distance_meters');
-            const initialLat = parseFloat(latInput.value) || 41.015137; // Varsayılan İstanbul
-            const initialLon = parseFloat(lonInput.value) || 28.979530; // Varsayılan İstanbul
-            const map = L.map('map').setView([initialLat, initialLon], 16);
-            
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            }).addTo(map);
+    }
 
-            const marker = L.marker([initialLat, initialLon], { draggable: true }).addTo(map);
-            let circle = L.circle([initialLat, initialLon], {
-                color: 'blue', fillColor: '#3498db', fillOpacity: 0.2, radius: parseInt(radiusInput.value, 10) || 500
-            }).addTo(map);
+    // --- YENİ: Konum Ayarlarını Anında Kaydetme Fonksiyonu ---
+    function saveLocationSettings() {
+        clearTimeout(locationSaveTimer);
+        locationSaveTimer = setTimeout(() => {
+            const lat = document.getElementById('cafe_latitude').value;
+            const lon = document.getElementById('cafe_longitude').value;
+            const dist = document.getElementById('max_distance_meters').value;
 
-            function updateUI(lat, lng, rad) {
-                latInput.value = lat.toFixed(6);
-                lonInput.value = lng.toFixed(6);
-                circle.setLatLng([lat, lng]);
-                if(rad) circle.setRadius(rad);
-            }
-
-            // Arama kontrolünü ekle
-            const searchControl = new GeoSearch.GeoSearchControl({
-                provider: new GeoSearch.OpenStreetMapProvider(),
-                style: 'bar',
-                showMarker: false, // Kendi marker'ımızı kullanıyoruz
-                autoClose: true,
-                keepResult: true,
-                searchLabel: 'Adres veya yer arayın...',
-            });
-            map.addControl(searchControl);
-
-            // Arama sonucu bulunduğunda tetiklenecek olay
-            map.on('geosearch/showlocation', function (result) {
-                const lat = result.location.y;
-                const lng = result.location.x;
-                marker.setLatLng([lat, lng]); // Marker'ı yeni konuma taşı
-                updateUI(lat, lng); // Inputları ve daireyi güncelle
-            });
-
-            marker.on('dragend', () => updateUI(marker.getLatLng().lat, marker.getLatLng().lng));
-            map.on('click', (e) => { marker.setLatLng(e.latlng); updateUI(e.latlng.lat, e.latlng.lng); });
-            radiusInput.addEventListener('input', () => {
-                const newRadius = parseInt(radiusInput.value, 10);
-                if (!isNaN(newRadius) && newRadius > 0) circle.setRadius(newRadius);
-            });
-            window.goToMyLocation = () => map.locate({setView: true, maxZoom: 17});
-            map.on('locationfound', (e) => { marker.setLatLng(e.latlng); updateUI(e.latlng.lat, e.latlng.lng); });
-            map.on('locationerror', (e) => alert("Konum alınamadı: " + e.message));
-
-            // Playlist Seçimi
-            const playlistCards = document.querySelectorAll('.playlist-card');
-            playlistCards.forEach(card => {
-                card.addEventListener('click', function () {
-                    const clickedCard = this;
-                    const selectedUri = clickedCard.dataset.uri;
-                    let newActiveUri = selectedUri;
-
-                    if (clickedCard.classList.contains('selected')) {
-                        newActiveUri = ''; // Seçimi kaldır
-                    }
-                    
-                    fetch('{{ url_for("api_set_active_playlist") }}', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ playlist_uri: newActiveUri })
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            showFlashMessage(data.message, 'success');
-                            if (newActiveUri === '') {
-                                clickedCard.classList.remove('selected');
-                            } else {
-                                playlistCards.forEach(c => c.classList.remove('selected'));
-                                clickedCard.classList.add('selected');
-                            }
-                        } else {
-                            showFlashMessage(data.error || 'Bir hata oluştu.', 'danger');
-                        }
-                    })
-                    .catch(error => {
-                        console.error('API Hatası:', error);
-                        showFlashMessage('Ağ hatası, ayar kaydedilemedi.', 'danger');
-                    });
-                });
-            });
-
-            // Diğer Başlangıç Fonksiyonları
-            refreshAudioSinkList(); 
-            refreshBluetoothList(0);
-            
-            const allIdsToFetch = {
-                artist: [...new Set([...(currentSettings.artist_blacklist || []), ...(currentSettings.artist_whitelist || [])])],
-                track: [...new Set([...(currentSettings.track_blacklist || [])])] // Sadece kara liste için
-            };
-            const fetchPromises = Object.keys(allIdsToFetch).map(type => {
-                if (allIdsToFetch[type].length > 0) {
-                    return $.ajax({ url: '/api/spotify/details', type: 'POST', contentType: 'application/json', data: JSON.stringify({ ids: allIdsToFetch[type], type: type }) })
-                        .done(data => { if (data.success && data.details) $.extend(spotifyNameCache, data.details); });
+            fetch('{{ url_for("api_set_location_config") }}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    cafe_latitude: lat,
+                    cafe_longitude: lon,
+                    max_distance_meters: dist
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Sadece kısa bir "kaydedildi" mesajı gösterelim, sürekli büyük bir kutu çıkmasın.
+                    console.log('Konum kaydedildi:', data.message);
+                    showFlashMessage('<i class="fas fa-check-circle mr-2"></i>Konum ayarları kaydedildi.', 'success', 2500);
+                } else {
+                    showFlashMessage(data.error || 'Konum kaydedilirken bir hata oluştu.', 'danger');
                 }
-            }).filter(p => p);
-            $.when.apply($, fetchPromises).always(() => renderAllFilterLists());
+            })
+            .catch(error => {
+                console.error('Konum Kaydetme Hatası:', error);
+                showFlashMessage('Ağ hatası, konum ayarları kaydedilemedi.', 'danger');
+            });
+        }, 750); // Kullanıcı etkileşimi bittikten 750ms sonra kaydet
+    }
+    
+    // --- Sayfa Yüklendiğinde Çalışacak Kodlar ---
+    document.addEventListener('DOMContentLoaded', function() {
+        // Harita Başlatma
+        const latInput = document.getElementById('cafe_latitude');
+        const lonInput = document.getElementById('cafe_longitude');
+        const radiusInput = document.getElementById('max_distance_meters');
+        const initialLat = parseFloat(latInput.value) || 41.015137;
+        const initialLon = parseFloat(lonInput.value) || 28.979530;
+        const map = L.map('map').setView([initialLat, initialLon], 16);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        }).addTo(map);
+
+        // Harita yeniden boyutlandırıldığında (katlama açıldığında) düzgün görünmesini sağla
+        $('#locationCollapseContent').on('shown.bs.collapse', function () {
+            map.invalidateSize();
         });
 
-        // --- Geri kalan tüm JavaScript fonksiyonları (renderFilterList, quickBlockItem, checkPort vb.) olduğu gibi kalacak ---
-        // Kısaltmak adına buraya tekrar eklemiyorum.
+        const marker = L.marker([initialLat, initialLon], { draggable: true }).addTo(map);
+        let circle = L.circle([initialLat, initialLon], {
+            color: 'blue', fillColor: '#3498db', fillOpacity: 0.2, radius: parseInt(radiusInput.value, 10) || 500
+        }).addTo(map);
+
+        function updateUIAndSave(lat, lng, rad) {
+            latInput.value = lat.toFixed(6);
+            lonInput.value = lng.toFixed(6);
+            circle.setLatLng([lat, lng]);
+            if(rad) circle.setRadius(rad);
+            // Değişiklik olduğunda kaydetme fonksiyonunu çağır
+            saveLocationSettings();
+        }
+
+        const searchControl = new GeoSearch.GeoSearchControl({
+            provider: new GeoSearch.OpenStreetMapProvider(), style: 'bar', showMarker: false,
+            autoClose: true, keepResult: true, searchLabel: 'Adres veya yer arayın...',
+        });
+        map.addControl(searchControl);
+
+        map.on('geosearch/showlocation', function (result) {
+            const lat = result.location.y;
+            const lng = result.location.x;
+            marker.setLatLng([lat, lng]);
+            updateUIAndSave(lat, lng);
+        });
+
+        marker.on('dragend', () => updateUIAndSave(marker.getLatLng().lat, marker.getLatLng().lng));
+        map.on('click', (e) => { marker.setLatLng(e.latlng); updateUIAndSave(e.latlng.lat, e.latlng.lng); });
+        
+        // Mesafe inputu değiştiğinde kaydet
+        radiusInput.addEventListener('input', () => {
+            const newRadius = parseInt(radiusInput.value, 10);
+            if (!isNaN(newRadius) && newRadius > 0) {
+                circle.setRadius(newRadius);
+                saveLocationSettings();
+            }
+        });
+        
+        window.goToMyLocation = () => map.locate({setView: true, maxZoom: 17});
+        map.on('locationfound', (e) => { marker.setLatLng(e.latlng); updateUIAndSave(e.latlng.lat, e.latlng.lng); });
+        map.on('locationerror', (e) => alert("Konum alınamadı: " + e.message));
+
+        // Playlist Seçimi
+        const playlistCards = document.querySelectorAll('.playlist-card');
+        playlistCards.forEach(card => {
+            card.addEventListener('click', function () {
+                const clickedCard = this;
+                const selectedUri = clickedCard.dataset.uri;
+                let newActiveUri = selectedUri;
+                if (clickedCard.classList.contains('selected')) { newActiveUri = ''; }
+                
+                fetch('{{ url_for("api_set_active_playlist") }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ playlist_uri: newActiveUri })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showFlashMessage(data.message, 'success');
+                        if (newActiveUri === '') {
+                            clickedCard.classList.remove('selected');
+                        } else {
+                            playlistCards.forEach(c => c.classList.remove('selected'));
+                            clickedCard.classList.add('selected');
+                        }
+                    } else { showFlashMessage(data.error || 'Bir hata oluştu.', 'danger'); }
+                })
+                .catch(error => { console.error('API Hatası:', error); showFlashMessage('Ağ hatası, ayar kaydedilemedi.', 'danger'); });
+            });
+        });
+
+        // Diğer Başlangıç Fonksiyonları
+        refreshAudioSinkList(); 
+        refreshBluetoothList(0);
+        
+        const allIdsToFetch = {
+            artist: [...new Set([...(currentSettings.artist_blacklist || []), ...(currentSettings.artist_whitelist || [])])],
+            track: [...new Set([...(currentSettings.track_blacklist || [])])]
+        };
+        const fetchPromises = Object.keys(allIdsToFetch).map(type => {
+            if (allIdsToFetch[type].length > 0) {
+                return $.ajax({ url: '/api/spotify/details', type: 'POST', contentType: 'application/json', data: JSON.stringify({ ids: allIdsToFetch[type], type: type }) })
+                    .done(data => { if (data.success && data.details) $.extend(spotifyNameCache, data.details); });
+            }
+        }).filter(p => p);
+        $.when.apply($, fetchPromises).always(() => renderAllFilterLists());
+    });
+
+    // --- Geri kalan tüm JavaScript fonksiyonları (renderFilterList, quickBlockItem, checkPort vb.) buraya kopyalanacak ---
+    // Bu fonksiyonlar değişmediği için yeniden yazmıyorum, mevcut halini koruyun.
+    // ... (Önceki cevaptaki tüm diğer JS fonksiyonları burada olmalı) ...
+    // ÖRNEK:
+    function renderAudioSinkList(sinks, defaultSinkName) {
+        const listElement = $('#audio-sinks-list'); listElement.empty();
+        if (sinks && sinks.length > 0) {
+             sinks.forEach(sink => {
+                 let stateClass = ''; let isDefault = sink.name === defaultSinkName;
+                 if (isDefault) { stateClass = 'default-audio-sink'; }
+                 else if (sink.state === 'RUNNING') { stateClass = 'running-audio-sink'; }
+                 
+                 let stateBadge = `<span class="badge badge-secondary">${sink.state || 'Bilinmiyor'}</span>`;
+                 if(isDefault) stateBadge = `<span class="badge badge-primary">Varsayılan</span>`;
+                 else if(sink.state === 'RUNNING') stateBadge = `<span class="badge badge-success">Çalışıyor</span>`;
+
+                 let buttonHtml = !isDefault ? `<button onclick="setDefaultAudioSink(this, '${sink.index}')" class="btn btn-sm btn-outline-primary ml-2" style="white-space: nowrap;">Varsayılan Yap</button>` : '';
+                 
+                 const itemHtml = `
+                    <div class="device-list-item ${stateClass}">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div style="min-width: 0;">
+                                <strong class="d-block text-truncate" title="${sink.description}">${sink.description}</strong>
+                                <small class="text-muted d-block text-truncate" title="${sink.name}">Index: ${sink.index} ${stateBadge}</small>
+                            </div>
+                            ${buttonHtml}
+                        </div>
+                    </div>`;
+                 listElement.append(itemHtml);
+             });
+        } else { listElement.html('<p class="text-muted text-center p-4">Ses çıkış cihazı (sink) bulunamadı.</p>'); }
+     }
         // --- Listeleri Render Etme Fonksiyonları ---
         function renderAudioSinkList(sinks, defaultSinkName) {
             const listElement = $('#audio-sinks-list'); listElement.empty();
