@@ -69,8 +69,8 @@ def waf_middleware():
     # Güvenlik kuralları (Regex kalıpları)
     # Bu listeyi ihtiyaçlarınıza göre genişletebilirsiniz.
     rules = [
-        {'name': 'SQL_INJECTION_1', 'pattern': r"(\b(union|select|insert|drop|update|delete|from|where)\b)|(--|\' OR \'1\'=\'1\')"},
-        {'name': 'SQL_INJECTION_2', 'pattern': r"(\b(exec|execute|char|cast|convert)\b)"},
+        {'name': 'SQL_INJECTION_1', 'pattern': r"(\b(union|select|insert|drop|update|delete|from|where)\b.*?--|\' OR \'1\'=\'1\')"},
+        {'name': 'SQL_INJECTION_2', 'pattern': r"(\b(exec|execute|char|cast|convert)\b.*?--)"},
         {'name': 'XSS_SCRIPT_TAG', 'pattern': r"<script.*?>.*?</script>"},
         {'name': 'XSS_ON_EVENT', 'pattern': r"onerror=|onload=|onmouseover=|onclick="},
         {'name': 'PATH_TRAVERSAL', 'pattern': r"(\.\./|\.\.\\)"},
@@ -80,15 +80,13 @@ def waf_middleware():
 
     # İncelenecek veri kaynakları
     user_ip = request.remote_addr
-    path_and_query = request.full_path
+    path_and_query = request.path  # Sadece path'i al, query string'i alma
     user_agent = request.headers.get('User-Agent', '')
     
     # POST, PUT gibi isteklerin body'sini güvenli bir şekilde al
     body = ''
     if request.method in ['POST', 'PUT', 'PATCH']:
         try:
-            # request.get_data, isteğin body'sini ham olarak okur.
-            # Bu, route'un daha sonra request.form veya request.json'ı okumasını engellemez.
             body = request.get_data(as_text=True)
         except Exception as e:
             logger.warning(f"WAF: İstek body'si okunamadı. IP: {user_ip}, Hata: {e}")
