@@ -603,38 +603,7 @@
             }
         }
     
-        // --- Konum Ayarlarını Anında Kaydetme Fonksiyonu ---
-        function saveLocationSettings() {
-            clearTimeout(locationSaveTimer);
-            locationSaveTimer = setTimeout(() => {
-                const lat = document.getElementById('cafe_latitude').value;
-                const lon = document.getElementById('cafe_longitude').value;
-                const dist = document.getElementById('max_distance_meters').value;
-    
-                fetch('{{ url_for("api_set_location_config") }}', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        cafe_latitude: lat,
-                        cafe_longitude: lon,
-                        max_distance_meters: dist
-                    })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        console.log('Konum kaydedildi:', data.message);
-                        showFlashMessage('<i class="fas fa-check-circle mr-2"></i>Konum ayarları kaydedildi.', 'success', 2500);
-                    } else {
-                        showFlashMessage(data.error || 'Konum kaydedilirken bir hata oluştu.', 'danger');
-                    }
-                })
-                .catch(error => {
-                    console.error('Konum Kaydetme Hatası:', error);
-                    showFlashMessage('Ağ hatası, konum ayarları kaydedilemedi.', 'danger');
-                });
-            }, 750); // Kullanıcı etkileşimi bittikten 750ms sonra kaydet
-        }
+
         
         // --- Sayfa Yüklendiğinde Çalışacak Kodlar ---
         document.addEventListener('DOMContentLoaded', function() {
