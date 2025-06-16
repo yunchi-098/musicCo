@@ -19,7 +19,8 @@ from math import radians, cos, sin, asin, sqrt
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
-
+from flask_wtf.csrf import generate_csrf
+ 
 # --- Yapılandırılabilir Ayarlar ---
 # !!! BU BİLGİLERİ KENDİ SPOTIFY DEVELOPER BİLGİLERİNİZLE DEĞİŞTİRİN !!!
 SPOTIFY_CLIENT_ID = '332e5f2c9fe44d9b9ef19c49d0caeb78' # ÖRNEK - DEĞİŞTİR
@@ -671,7 +672,7 @@ def index():
 def admin():
     """Admin giriş sayfasını veya paneli gösterir."""
     if session.get('admin_logged_in'): return redirect(url_for('admin_panel'))
-    return render_template('admin.html')
+    return render_template('admin.html',csrf_token=generate_csrf())
 
 @app.route('/admin-login', methods=['POST'])
 @limiter.limit("3 per minute")
@@ -796,7 +797,6 @@ def admin_panel():
     else:
         spotify_authenticated = False; session['spotify_authenticated'] = False
         if not os.path.exists(TOKEN_FILE): flash("Spotify hesabınızı bağlamak için yetkilendirme yapın.", "info")
-
     return render_template(
         'admin_panel.html',
         settings=settings,
@@ -813,7 +813,8 @@ def admin_panel():
         paginated_playlists=paginated_playlists,
         page=page,
         total_pages=total_pages,
-        active_playlist_uri=settings.get('active_playlist_uri')
+        active_playlist_uri=settings.get('active_playlist_uri'),
+        csrf_token=generate_csrf()
     )
 
 # --- Çalma Kontrol Rotaları ---

@@ -315,7 +315,7 @@
                     </div>
                     <div class="card-footer">
                         <form method="POST" action="{{ url_for('add_song') }}">
-                            {{ form.csrf_token }}
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <input type="text" name="song_id" class="form-control" placeholder="Spotify Şarkı ID veya URL" required>
                             <div class="input-group-append"><button type="submit" class="btn btn-success"><i class="fas fa-plus"></i> Ekle</button></div>
                         </form>
@@ -342,7 +342,8 @@
                                             <small class="text-muted">{{ device.type|upper }} {% if device.is_restricted %}(Kısıtlı){% endif %} {% if device.volume_percent is not none %}- Ses: {{device.volume_percent}}%{% endif %}</small>
                                         </div>
                                         <form method="POST" action="{{ url_for('update_settings') }}">
-                                            {{ form.csrf_token }}
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
                                             <input type="hidden" name="active_spotify_connect_device_id" value="{{ device.id }}">
                                             <button type="submit" class="btn btn-sm {% if device.id == active_spotify_connect_device_id %}btn-success disabled{% else %}btn-outline-primary{% endif %}" {% if device.id == active_spotify_connect_device_id %}aria-disabled="true"{% endif %} style="white-space: nowrap;">
                                                 {% if device.id == active_spotify_connect_device_id %}Aktif{% else %}Seç{% endif %}
@@ -390,7 +391,8 @@
 
         <!-- Genel Ayarlar ve Filtre Modları (Artık kendi formunda) -->
         <form method="POST" action="{{ url_for('update_settings') }}">
-            {{ form.csrf_token }}
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
             <div class="row mb-4">
                 <!-- Genel Ayarlar ve Filtre Modları Kartı -->
                 <div class="col-lg-6 offset-lg-3 mb-4">
