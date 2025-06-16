@@ -22,8 +22,8 @@ from flask_wtf.csrf import CSRFProtect
 
 # --- Yapılandırılabilir Ayarlar ---
 # !!! BU BİLGİLERİ KENDİ SPOTIFY DEVELOPER BİLGİLERİNİZLE DEĞİŞTİRİN !!!
-SPOTIFY_CLIENT_ID =  os.environ.get('SPOTIFY_CLIENT_ID')# ÖRNEK - DEĞİŞTİR
-SPOTIFY_CLIENT_SECRET =  os.environ.get('SPOTIFY_CLIENT_SECRET')# ÖRNEK - DEĞİŞTİR
+SPOTIFY_CLIENT_ID =  str(os.environ.get('SPOTIFY_CLIENT_ID'))# ÖRNEK - DEĞİŞTİR
+SPOTIFY_CLIENT_SECRET = str(os.environ.get('SPOTIFY_CLIENT_SECRET'))# ÖRNEK - DEĞİŞTİR
 # !!! BU URI'NIN SPOTIFY DEVELOPER DASHBOARD'DAKİ REDIRECT URI İLE AYNI OLDUĞUNDAN EMİN OLUN !!!
 SPOTIFY_REDIRECT_URI = 'http://web-vds.tail1b3477.ts.net/callback' # ÖRNEK - DEĞİŞTİR
 SPOTIFY_SCOPE = 'user-read-playback-state user-read-private user-modify-playback-state playlist-read-private user-read-currently-playing user-read-recently-played'
@@ -1992,4 +1992,4 @@ if __name__ == '__main__':
     logger.info(f"Uygulama arayüzüne http://<SUNUCU_IP>:{port} adresinden erişilebilir.")
     logger.info(f"Admin paneline http://<SUNUCU_IP>:{port}/admin adresinden erişilebilir.")
 
-    app.run(host='0.0.0.0', port=8080, ssl_context=('cert.crt', 'cert.key'))
+    app.run(host='0.0.0.0', port=port, ssl_context=('cert.crt', 'cert.key'))
