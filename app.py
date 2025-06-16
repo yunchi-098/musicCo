@@ -674,7 +674,7 @@ def admin():
     return render_template('admin.html')
 
 @app.route('/admin-login', methods=['POST'])
-@limiter.limit("3/minute")
+@limiter.limit("3 per minute")
 def admin_login():
     """Admin giriş isteğini işler."""
     ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "mekan123") # Güvenli bir yerden alınmalı
