@@ -56,7 +56,7 @@
             {% endwith %}
             
             <form method="POST" action="{{ url_for('admin_login') }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token}}">
                 <div class="mb-3">
                     <label for="password" class="form-label">Şifre</label>
                     <input type="password" class="form-control" id="password" name="password" required>
