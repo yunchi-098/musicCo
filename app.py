@@ -16,11 +16,14 @@ import traceback # Hata ayıklama için eklendi
 import random # DEĞİŞİKLİK: Rastgele şarkı seçimi için eklendi
 import socket
 from math import radians, cos, sin, asin, sqrt 
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_wtf.csrf import CSRFProtect
 
 # --- Yapılandırılabilir Ayarlar ---
 # !!! BU BİLGİLERİ KENDİ SPOTIFY DEVELOPER BİLGİLERİNİZLE DEĞİŞTİRİN !!!
-SPOTIFY_CLIENT_ID = '332e5f2c9fe44d9b9ef19c49d0caeb78' # ÖRNEK - DEĞİŞTİR
-SPOTIFY_CLIENT_SECRET = 'bbb19ad9c7d04d738f61cd0bd4f47426' # ÖRNEK - DEĞİŞTİR
+SPOTIFY_CLIENT_ID =  os.environ.get('SPOTIFY_CLIENT_ID')# ÖRNEK - DEĞİŞTİR
+SPOTIFY_CLIENT_SECRET =  os.environ.get('SPOTIFY_CLIENT_SECRET')# ÖRNEK - DEĞİŞTİR
 # !!! BU URI'NIN SPOTIFY DEVELOPER DASHBOARD'DAKİ REDIRECT URI İLE AYNI OLDUĞUNDAN EMİN OLUN !!!
 SPOTIFY_REDIRECT_URI = 'http://web-vds.tail1b3477.ts.net/callback' # ÖRNEK - DEĞİŞTİR
 SPOTIFY_SCOPE = 'user-read-playback-state user-read-private user-modify-playback-state playlist-read-private user-read-currently-playing user-read-recently-played'
@@ -36,14 +39,84 @@ SESSION_TIMEOUT_MINUTES = 0.01 # YENİ: Kafe'de kalma süresi (dakika)
 
 # Logging ayarları
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(threadName)s - %(message)s', level=logging.DEBUG)
+# --- Güvenlik Olayları için Özel Logger ---
+waf_logger = logging.getLogger('WAF')
+waf_logger.setLevel(logging.WARNING)
+# Sadece güvenlik olaylarını 'security_events.log' dosyasına yaz
+waf_handler = logging.FileHandler('security_events.log')
+waf_formatter = logging.Formatter('%(asctime)s - %(levelname)s - IP: %(ip)s - Rule: %(rule)s - Path: %(path)s - Data: %(data)s')
+waf_handler.setFormatter(waf_formatter)
+waf_logger.addHandler(waf_handler)
+# ----------------------------------------
 logger = logging.getLogger(__name__)
 
 # --- Flask Uygulamasını Başlat ---
 app = Flask(__name__)
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'varsayilan_guvensiz_anahtar_lutfen_degistirin')
+app.secret_key = os.environ.get('FLASK_SECRET_KEY')
 app.jinja_env.globals['BLUETOOTH_SCAN_DURATION'] = BLUETOOTH_SCAN_DURATION
 app.jinja_env.globals['ALLOWED_GENRES'] = ALLOWED_GENRES
+limiter = Limiter(app, key_func=get_remote_address, default_limits=["200 per day", "50 per hour"])
+csrf = CSRFProtect(app)
 
+# --- WAF Benzeri Ara Katman (Middleware) ---
+@app.before_request
+def waf_middleware():
+    # Güvenlik kuralları (Regex kalıpları)
+    # Bu listeyi ihtiyaçlarınıza göre genişletebilirsiniz.
+    rules = [
+        {'name': 'SQL_INJECTION_1', 'pattern': r"(\b(union|select|insert|drop|update|delete|from|where)\b)|(--|\' OR \'1\'=\'1\')"},
+        {'name': 'SQL_INJECTION_2', 'pattern': r"(\b(exec|execute|char|cast|convert)\b)"},
+        {'name': 'XSS_SCRIPT_TAG', 'pattern': r"<script.*?>.*?</script>"},
+        {'name': 'XSS_ON_EVENT', 'pattern': r"onerror=|onload=|onmouseover=|onclick="},
+        {'name': 'PATH_TRAVERSAL', 'pattern': r"(\.\./|\.\.\\)"},
+        {'name': 'COMMAND_INJECTION', 'pattern': r"(\b(cat|ls|whoami|uname|id|pwd|wget|curl)\s)"},
+        {'name': 'MALICIOUS_USER_AGENT', 'pattern': r"(sqlmap|nmap|nikto|wpscan|nessus)"}
+    ]
+
+    # İncelenecek veri kaynakları
+    user_ip = request.remote_addr
+    path_and_query = request.full_path
+    user_agent = request.headers.get('User-Agent', '')
+    
+    # POST, PUT gibi isteklerin body'sini güvenli bir şekilde al
+    body = ''
+    if request.method in ['POST', 'PUT', 'PATCH']:
+        try:
+            # request.get_data, isteğin body'sini ham olarak okur.
+            # Bu, route'un daha sonra request.form veya request.json'ı okumasını engellemez.
+            body = request.get_data(as_text=True)
+        except Exception as e:
+            logger.warning(f"WAF: İstek body'si okunamadı. IP: {user_ip}, Hata: {e}")
+
+    # Kontrol edilecek tüm metinleri birleştir
+    data_to_check = {
+        'path': path_and_query,
+        'user_agent': user_agent,
+        'body': body
+    }
+
+    # Kuralları uygula
+    for rule in rules:
+        for source, data in data_to_check.items():
+            if data and re.search(rule['pattern'], data, re.IGNORECASE):
+                # Kural eşleşti! Saldırı girişimini engelle ve logla.
+                log_extra = {
+                    'ip': user_ip,
+                    'rule': rule['name'],
+                    'path': request.path,
+                    'data': f"Kaynak: {source}, Veri: {data[:200]}" # Verinin ilk 200 karakterini logla
+                }
+                waf_logger.warning("Potansiyel Saldırı Engellendi!", extra=log_extra)
+                
+                # İsteği 403 Forbidden hatası ile sonlandır
+                return jsonify({
+                    'success': False,
+                    'error': 'Forbidden',
+                    'message': 'İsteğiniz güvenlik politikalarımızı ihlal ettiği için reddedildi.'
+                }), 403
+
+    # Hiçbir kural eşleşmezse, isteğin normal şekilde devam etmesine izin ver
+    return None
 
 def haversine(lon1, lat1, lon2, lat2):
     """
@@ -597,6 +670,7 @@ def admin():
     return render_template('admin.html')
 
 @app.route('/admin-login', methods=['POST'])
+@limiter.limit("3/minute")
 def admin_login():
     """Admin giriş isteğini işler."""
     ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "mekan123") # Güvenli bir yerden alınmalı
@@ -738,97 +812,9 @@ def admin_panel():
         active_playlist_uri=settings.get('active_playlist_uri')
     )
 
-@app.route('/verify-location')
-def verify_location():
-    """Kullanıcıya konumunu doğrulatacağı HTML sayfasını gösterir."""
-    return render_template('verify_location.html')
-
-@app.route('/api/verify-location', methods=['POST'])
-def api_verify_location():
-    """
-    Kullanıcının tarayıcısından gelen konum verisini işler, mesafeyi hesaplar
-    ve doğrulama sonucunu JSON olarak döndürür.
-    """
-    data = request.get_json()
-    if not data or 'latitude' not in data or 'longitude' not in data:
-        return jsonify({'success': False, 'error': 'Eksik konum verisi gönderildi.'}), 400
-    
-    try:
-        user_lat = float(data['latitude'])
-        user_lon = float(data['longitude'])
-        
-        # Ayarlardan mekanın konumunu ve izin verilen mesafeyi al
-        cafe_lat = settings.get('cafe_latitude')
-        cafe_lon = settings.get('cafe_longitude')
-        max_distance = settings.get('max_distance_meters', 100) # Varsayılan 100 metre
-
-        if cafe_lat is None or cafe_lon is None:
-            logger.error("Mekan konumu (enlem/boylam) yönetici panelinden ayarlanmamış.")
-            return jsonify({'success': False, 'error': 'Mekan konumu henüz ayarlanmamış.'}), 500
-
-        # Mesafeyi hesapla
-        distance = haversine(user_lon, user_lat, cafe_lon, cafe_lat)
-        
-        if distance <= max_distance:
-            # Kullanıcı mekanın içinde, oturumu doğrula ve yönlendirme URL'si gönder
-            session['location_verified_at'] = datetime.now().isoformat()
-            logger.info(f"Konum doğrulandı. Kullanıcı {request.remote_addr}, Mesafe: {distance:.2f}m")
-            return jsonify({'success': True, 'redirect_url': url_for('index')})
-        else:
-            # Kullanıcı mekanın dışında
-            logger.warning(f"Konum doğrulanamadı. Kullanıcı {request.remote_addr} çok uzakta. Mesafe: {distance:.2f}m")
-            return jsonify({'success': False, 'error': f'Mekanın içinde değilsiniz (Mesafe: {int(distance)} metre).'}), 403
-
-    except (ValueError, TypeError):
-        return jsonify({'success': False, 'error': 'Geçersiz konum verisi formatı.'}), 400
-    except Exception as e:
-        logger.error(f"Konum doğrulama sırasında sunucu hatası: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Doğrulama sırasında bir sunucu hatası oluştu.'}), 500
-
-
-@app.route('/api/set-location-config', methods=['POST'])
-@admin_login_required
-def api_set_location_config():
-    """
-    API: Konum (enlem/boylam) ve maksimum mesafe ayarlarını anında günceller.
-    """
-    global settings
-    if not request.is_json:
-        return jsonify({'success': False, 'error': 'JSON isteği gerekli'}), 400
-    
-    data = request.get_json()
-    lat = data.get('cafe_latitude')
-    lon = data.get('cafe_longitude')
-    dist = data.get('max_distance_meters')
-    
-    # Gelen verilerin temel kontrolü
-    if lat is None or lon is None or dist is None:
-        return jsonify({'success': False, 'error': 'Eksik veri: latitude, longitude ve distance gerekli.'}), 400
-
-    try:
-        # Veri tiplerini doğrula ve dönüştür
-        lat_f = float(lat)
-        lon_f = float(lon)
-        dist_i = int(dist)
-        
-        current_settings = load_settings()
-        current_settings['cafe_latitude'] = lat_f
-        current_settings['cafe_longitude'] = lon_f
-        current_settings['max_distance_meters'] = dist_i
-        
-        save_settings(current_settings)
-        settings = current_settings # Global ayarları da anında güncelle
-        
-        logger.info(f"API: Konum ayarları güncellendi -> Lat: {lat_f}, Lon: {lon_f}, Dist: {dist_i}m")
-        return jsonify({'success': True, 'message': 'Konum ayarları kaydedildi.'})
-    except (ValueError, TypeError) as e:
-        logger.error(f"Konum ayarı hatası - geçersiz veri tipi: {e}")
-        return jsonify({'success': False, 'error': 'Geçersiz veri formatı.'}), 400
-    except Exception as e:
-        logger.error(f"Konum ayarları kaydedilirken hata: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Ayarlar kaydedilirken bir hata oluştu.'}), 500
 # --- Çalma Kontrol Rotaları ---
 @app.route('/player/pause')
+@limiter.limit("10/minute")
 @admin_login_required
 def player_pause():
     global auto_advance_enabled; spotify = get_spotify_client()
@@ -852,6 +838,7 @@ def player_pause():
 
 @app.route('/player/resume')
 @admin_login_required
+@limiter.limit("10/minute")
 def player_resume():
     global auto_advance_enabled; spotify = get_spotify_client()
     active_spotify_connect_device_id = settings.get('active_device_id')
@@ -875,6 +862,7 @@ def player_resume():
 
 @app.route('/player/next', methods=['POST']) # 'POST' metodu daha güvenli ve idempotent olmayan işlemler için daha uygundur
 @admin_login_required
+@limiter.limit("5/minute")
 def player_next():
     global auto_advance_enabled # Otomatik geçişi de kontrol etmek isteyebilirsiniz
     spotify = get_spotify_client()
@@ -913,6 +901,7 @@ def player_next():
 # --- Diğer Rotalar ---
 @app.route('/refresh-devices')
 @admin_login_required
+@limiter.limit("5/minute")
 def refresh_devices():
     spotify = get_spotify_client()
     if not spotify: flash('Spotify bağlantısı yok!', 'danger'); return redirect(url_for('admin_panel'))
@@ -1002,6 +991,7 @@ def callback():
 
 # GÜNCELLENDİ: /search endpoint'i filtrelemeyi uygular ve URI kullanır
 @app.route('/search', methods=['POST'])
+@limiter.limit("5/minute")
 def search():
     """Spotify'da arama yapar ve sonuçları aktif filtrelere göre süzer."""
     global settings
@@ -1105,6 +1095,7 @@ def search():
 
 @app.route('/add-song', methods=['POST'])
 @admin_login_required
+@limiter.limit("5/minute")
 def add_song():
     """Admin tarafından şarkı ekleme (Filtreleri atlar)."""
     global song_queue
@@ -1997,4 +1988,4 @@ if __name__ == '__main__':
     logger.info(f"Uygulama arayüzüne http://<SUNUCU_IP>:{port} adresinden erişilebilir.")
     logger.info(f"Admin paneline http://<SUNUCU_IP>:{port}/admin adresinden erişilebilir.")
 
-    app.run(host='0.0.0.0', port=port, debug=True, use_reloader=False)
+    app.run(host='0.0.0.0', port=80, ssl_context=('cert.crt', 'cert.key'))
