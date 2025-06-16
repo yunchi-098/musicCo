@@ -22,8 +22,8 @@ from flask_wtf.csrf import CSRFProtect
 
 # --- Yapılandırılabilir Ayarlar ---
 # !!! BU BİLGİLERİ KENDİ SPOTIFY DEVELOPER BİLGİLERİNİZLE DEĞİŞTİRİN !!!
-SPOTIFY_CLIENT_ID = os.environ.get('SPOTIFY_CLIENT_ID')# ÖRNEK - DEĞİŞTİR
-SPOTIFY_CLIENT_SECRET = os.environ.get('SPOTIFY_CLIENT_SECRET')# ÖRNEK - DEĞİŞTİR
+SPOTIFY_CLIENT_ID = '332e5f2c9fe44d9b9ef19c49d0caeb78' # ÖRNEK - DEĞİŞTİR
+SPOTIFY_CLIENT_SECRET = 'bbb19ad9c7d04d738f61cd0bd4f47426'# ÖRNEK - DEĞİŞTİR
 # !!! BU URI'NIN SPOTIFY DEVELOPER DASHBOARD'DAKİ REDIRECT URI İLE AYNI OLDUĞUNDAN EMİN OLUN !!!
 SPOTIFY_REDIRECT_URI = 'http://web-vds.tail1b3477.ts.net/callback' # ÖRNEK - DEĞİŞTİR
 SPOTIFY_SCOPE = 'user-read-playback-state user-read-private user-modify-playback-state playlist-read-private user-read-currently-playing user-read-recently-played'
