@@ -1992,4 +1992,4 @@ if __name__ == '__main__':
     logger.info(f"Uygulama arayüzüne http://<SUNUCU_IP>:{port} adresinden erişilebilir.")
     logger.info(f"Admin paneline http://<SUNUCU_IP>:{port}/admin adresinden erişilebilir.")
 
-    app.run(host='0.0.0.0', port=443, ssl_context=('cert.crt', 'cert.key'))
+    app.run(host='0.0.0.0', port=8080 )
