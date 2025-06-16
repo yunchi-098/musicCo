@@ -564,7 +564,20 @@
         let currentSettings = JSON.parse('{{ settings | tojson | safe }}');
         let spotifyNameCache = {}; // ID -> Name eşleşmesi için cache
         let locationSaveTimer; // Konum kaydı için debounce zamanlayıcısı
-    
+        $(document).ready(function() {
+        // CSRF token'ını tüm AJAX isteklerine eklemek için jQuery'yi ayarla
+        $.ajaxSetup({
+        beforeSend: function(xhr, settings) {
+            if (!/^(GET|HEAD|OPTIONS|TRACE)$/i.test(settings.type) && !this.crossDomain) {
+            // Meta etiketinden token'ı al
+            const token = $('meta[name="csrf-token"]').attr('content');
+            if (token) {
+                // X-CSRFToken başlığına token'ı ekle
+                xhr.setRequestHeader('X-CSRFToken', token);
+            }
+            }
+        }
+        });
         // --- Yardımcı Fonksiyonlar ---
         function showFlashMessage(message, category = 'info', duration = 7000) {
             const flashDiv = document.getElementById('flash-messages');
