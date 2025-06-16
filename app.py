@@ -818,7 +818,7 @@ def admin_panel():
 
 # --- Çalma Kontrol Rotaları ---
 @app.route('/player/pause')
-@limiter.limit("10/minute")
+@limiter.limit("10 per minute")
 @admin_login_required
 def player_pause():
     global auto_advance_enabled; spotify = get_spotify_client()
@@ -842,7 +842,7 @@ def player_pause():
 
 @app.route('/player/resume')
 @admin_login_required
-@limiter.limit("10/minute")
+@limiter.limit("10 per minute")
 def player_resume():
     global auto_advance_enabled; spotify = get_spotify_client()
     active_spotify_connect_device_id = settings.get('active_device_id')
@@ -866,7 +866,7 @@ def player_resume():
 
 @app.route('/player/next', methods=['POST']) # 'POST' metodu daha güvenli ve idempotent olmayan işlemler için daha uygundur
 @admin_login_required
-@limiter.limit("5/minute")
+@limiter.limit("5 per minute")
 def player_next():
     global auto_advance_enabled # Otomatik geçişi de kontrol etmek isteyebilirsiniz
     spotify = get_spotify_client()
@@ -905,7 +905,7 @@ def player_next():
 # --- Diğer Rotalar ---
 @app.route('/refresh-devices')
 @admin_login_required
-@limiter.limit("5/minute")
+@limiter.limit("5 per minute")
 def refresh_devices():
     spotify = get_spotify_client()
     if not spotify: flash('Spotify bağlantısı yok!', 'danger'); return redirect(url_for('admin_panel'))
@@ -995,7 +995,7 @@ def callback():
 
 # GÜNCELLENDİ: /search endpoint'i filtrelemeyi uygular ve URI kullanır
 @app.route('/search', methods=['POST'])
-@limiter.limit("5/minute")
+@limiter.limit("5 per minute")
 def search():
     """Spotify'da arama yapar ve sonuçları aktif filtrelere göre süzer."""
     global settings
@@ -1099,7 +1099,7 @@ def search():
 
 @app.route('/add-song', methods=['POST'])
 @admin_login_required
-@limiter.limit("5/minute")
+@limiter.limit("5 per minute")
 def add_song():
     """Admin tarafından şarkı ekleme (Filtreleri atlar)."""
     global song_queue
