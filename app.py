@@ -55,7 +55,11 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY')
 app.jinja_env.globals['BLUETOOTH_SCAN_DURATION'] = BLUETOOTH_SCAN_DURATION
 app.jinja_env.globals['ALLOWED_GENRES'] = ALLOWED_GENRES
-limiter = Limiter(app, key_func=get_remote_address, default_limits=["200 per day", "50 per hour"])
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"]
+)
+limiter.init_app(app)
 csrf = CSRFProtect(app)
 
 # --- WAF Benzeri Ara Katman (Middleware) ---
