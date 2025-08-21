@@ -63,6 +63,11 @@ limiter = Limiter(
 limiter.init_app(app)
 csrf = CSRFProtect(app)
 
+@app.context_processor
+def inject_csrf():
+    # Şablonlarda {{ csrf_token() }} olarak kullanılabilir
+    return dict(csrf_token=generate_csrf)
+
 # --- WAF Benzeri Ara Katman (Middleware) ---
 @app.before_request
 def waf_middleware():
@@ -241,12 +246,19 @@ def restart_spotifyd():
 def load_settings():
     """Ayarları dosyadan yükler, eksik filtre ayarları için varsayılanları ekler."""
     default_settings = {
-        'max_queue_length': 20, 'max_user_requests': 5, 'active_device_id': None,
-        'genre_filter_mode': 'blacklist', 'artist_filter_mode': 'blacklist', 'song_filter_mode': 'blacklist',
-        'genre_blacklist': [], 'genre_whitelist': [],
-        'artist_blacklist': [], 'artist_whitelist': [], # Bunlar URI listeleri olmalı
-        'track_blacklist': [], 'track_whitelist': [], # Anahtar 'track' olmalı
-        'active_playlist_uri': None # DEĞİŞİKLİK: Aktif çalma listesi ayarı eklendi
+        'max_queue_length': 20,
+        'max_user_requests': 5,
+        'active_device_id': None,
+        'genre_filter_mode': 'blacklist',
+        'artist_filter_mode': 'blacklist',
+        'track_filter_mode': 'blacklist',  # song_filter_mode yerine track_filter_mode kullan
+        'genre_blacklist': [],
+        'genre_whitelist': [],
+        'artist_blacklist': [],
+        'artist_whitelist': [],
+        'track_blacklist': [],  # song_blacklist yerine track_blacklist kullan
+        'track_whitelist': [],  # song_whitelist yerine track_whitelist kullan
+        'active_playlist_uri': None
     }
     settings_to_use = default_settings.copy() # Önce varsayılanı al
     if os.path.exists(SETTINGS_FILE):
@@ -568,16 +580,16 @@ def check_song_filters(track_uri, spotify_client):
         logger.debug(f"Şarkı bilgileri: {song_name}, Sanatçılar: {artist_names} ({artist_uris})")
 
         # Ayarlardaki filtre listelerini al (URI formatında olmalılar)
-        track_blacklist_uris = settings.get('track_blacklist', []) # 'track_' kullan
-        track_whitelist_uris = settings.get('track_whitelist', []) # 'track_' kullan
+        track_blacklist_uris = settings.get('track_blacklist', [])
+        track_whitelist_uris = settings.get('track_whitelist', [])
         artist_blacklist_uris = settings.get('artist_blacklist', [])
         artist_whitelist_uris = settings.get('artist_whitelist', [])
         genre_blacklist = [g.lower() for g in settings.get('genre_blacklist', [])]
         genre_whitelist = [g.lower() for g in settings.get('genre_whitelist', [])]
 
         # 2. Şarkı Filtresi Kontrolü
-        track_filter_mode = settings.get('track_filter_mode', 'blacklist') # 'track_' kullan
-        logger.debug(f"Şarkı ('track') filtresi modu: {track_filter_mode}")
+        track_filter_mode = settings.get('track_filter_mode', 'blacklist')
+        logger.debug(f"Şarkı filtresi modu: {track_filter_mode}")
         if track_filter_mode == 'whitelist':
             if not track_whitelist_uris:
                 logger.debug("Filtre takıldı: Şarkı beyaz listesi boş.")
@@ -589,7 +601,7 @@ def check_song_filters(track_uri, spotify_client):
              if track_uri in track_blacklist_uris:
                 logger.debug(f"Filtre takıldı: Şarkı ({track_uri}) kara listede. Kara Liste: {track_blacklist_uris}")
                 return False, 'Bu şarkı kara listede.'
-        logger.debug(f"Şarkı ('track') filtresinden geçti: {track_uri}")
+        logger.debug(f"Şarkı filtresinden geçti: {track_uri}")
 
         # 3. Sanatçı Filtresi Kontrolü
         artist_filter_mode = settings.get('artist_filter_mode', 'blacklist')

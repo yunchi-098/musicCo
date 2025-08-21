@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QuBeat - Yenilenen Müzik Deneyimi</title>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -193,6 +194,7 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
             const prevContainer = document.getElementById('previous-track-container');
             const currentContainer = document.getElementById('current-track-container');
@@ -352,7 +354,10 @@
 
                 fetch('/search', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    headers: { 
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': CSRF_TOKEN
+                    },
                     body: `search_query=${encodeURIComponent(query)}&type=track`
                 })
                 .then(response => response.json())
@@ -399,7 +404,10 @@
                 
                 fetch('/add-to-queue', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': CSRF_TOKEN
+                    },
                     body: JSON.stringify({ track_id: uri })
                 })
                 .then(response => response.json())
