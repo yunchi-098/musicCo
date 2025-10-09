@@ -7,7 +7,6 @@ import re # Spotify URL parse ve URI kontrolü için
 import subprocess # ex.py ve spotifyd için
 from functools import wraps
 import requests
-from datetime import datetime, timedelta # ZAMAN KONTROLÜ İÇİN EKLENDİ
 # flash mesajları için import
 from flask import Flask, request, render_template, redirect, url_for, session, jsonify, flash
 import spotipy
@@ -15,7 +14,6 @@ from spotipy.oauth2 import SpotifyOAuth
 import traceback # Hata ayıklama için eklendi
 import random # DEĞİŞİKLİK: Rastgele şarkı seçimi için eklendi
 import socket
-from math import radians, cos, sin, asin, sqrt 
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
@@ -35,7 +33,6 @@ BLUETOOTH_SCAN_DURATION = 12 # Saniye cinsinden Bluetooth tarama süresi
 EX_SCRIPT_PATH = 'ex.py' # ex.py betiğinin yolu
 # Kullanıcı arayüzünde gösterilecek varsayılan türler (opsiyonel)
 ALLOWED_GENRES = ['pop', 'rock', 'jazz', 'electronic', 'hip-hop', 'classical', 'r&b', 'indie', 'turkish']
-SESSION_TIMEOUT_MINUTES = 0.01 # YENİ: Kafe'de kalma süresi (dakika)
 # ---------------------------------
 
 # Logging ayarları
@@ -125,19 +122,6 @@ def waf_middleware():
 
     # Hiçbir kural eşleşmezse, isteğin normal şekilde devam etmesine izin ver
     return None
-
-def haversine(lon1, lat1, lon2, lat2):
-    """
-    İki nokta arasındaki mesafeyi metre cinsinden hesaplar.
-    """
-    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
-    dlon = lon2 - lon1
-    dlat = lat2 - lat1
-    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
-    c = 2 * asin(sqrt(a))
-    r = 6371000 # Dünyanın yarıçapı (metre)
-    return c * r
-
 
 # --- BİTİŞ: Yeni Konum Mantığı ---
 
@@ -506,44 +490,6 @@ def admin_login_required(f):
             logger.warning("Yetkisiz admin paneli erişim girişimi")
             flash("Bu sayfaya erişmek için yönetici girişi yapmalısınız.", "warning")
             return redirect(url_for('admin'))
-        return f(*args, **kwargs)
-    return decorated_function
-
-SESSION_TIMEOUT_MINUTES = 30 
-
-def location_required(f):
-    """
-    Kullanıcının konumunu doğrulamadan bir sayfaya erişmesini engelleyen decorator.
-    Doğrulama yoksa veya süresi dolmuşsa, kullanıcıyı doğrulama sayfasına yönlendirir.
-    """
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        # Yönetici giriş yapmışsa konum kontrolünü atla
-        if session.get('admin_logged_in'):
-            return f(*args, **kwargs)
-
-        location_verified_at = session.get('location_verified_at')
-        is_verified = False
-
-        if location_verified_at:
-            try:
-                # Doğrulama zamanını string'den datetime objesine çevir
-                verified_time = datetime.fromisoformat(location_verified_at)
-                # Sürenin dolup dolmadığını kontrol et
-                if datetime.now() < verified_time + timedelta(minutes=SESSION_TIMEOUT_MINUTES):
-                    is_verified = True
-                else:
-                    logger.info("Konum doğrulama oturumunun süresi doldu.")
-            except (ValueError, TypeError):
-                logger.warning("Session'daki 'location_verified_at' formatı geçersiz.")
-                is_verified = False
-
-        if not is_verified:
-            logger.info(f"Kullanıcı {request.remote_addr} için konum doğrulaması gerekli. Yönlendiriliyor...")
-            # Kullanıcıyı konum doğrulama sayfasına yönlendir
-            return redirect(url_for('verify_location'))
-        
-        # Konum doğrulanmışsa, istenen sayfayı göster
         return f(*args, **kwargs)
     return decorated_function
 
