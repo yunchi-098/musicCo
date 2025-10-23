@@ -168,14 +168,24 @@ class BluetoothManager:
             if not is_paired:
                 logger.info(f"'{device_name}' eşleşmemiş, eşleştiriliyor...")
                 try:
-                    device_interface.Pair(timeout=dbus.UInt32(20, variant_level=1)) # Eşleşme için timeout
-                    logger.info(f"'{device_name}' başarıyla eşleştirildi.")
-                    # Eşleşme sonrası güvenmeyi dene (bazı cihazlar için gerekli)
+                    # Eşleştirme öncesi güvenilir olarak işaretle
                     try:
                         props_iface.Set('org.bluez.Device1', 'Trusted', dbus.Boolean(True))
                         logger.info(f"'{device_name}' güvenilir olarak işaretlendi.")
                     except Exception as trust_err:
-                         logger.warning(f"'{device_name}' güvenilir olarak işaretlenemedi: {trust_err}")
+                        logger.warning(f"'{device_name}' güvenilir olarak işaretlenemedi: {trust_err}")
+
+                    # Eşleştirme işlemi
+                    device_interface.Pair(timeout=dbus.UInt32(20, variant_level=1))
+                    logger.info(f"'{device_name}' başarıyla eşleştirildi.")
+                    
+                    # Eşleştirme sonrası tekrar güvenilir olarak işaretle
+                    try:
+                        props_iface.Set('org.bluez.Device1', 'Trusted', dbus.Boolean(True))
+                        logger.info(f"'{device_name}' güvenilir olarak işaretlendi.")
+                    except Exception as trust_err:
+                        logger.warning(f"'{device_name}' güvenilir olarak işaretlenemedi: {trust_err}")
+
                 except dbus.exceptions.DBusException as e:
                     # Already Exists veya Authentication Failed gibi hatalar olabilir
                     logger.error(f"'{device_name}' eşleştirilemedi: {e}")
@@ -194,7 +204,6 @@ class BluetoothManager:
             else:
                  logger.error(f"'{device_name}' cihazına bağlanılamadı (timeout veya başka bir sorun).")
                  return {'success': False, 'error': f"'{device_name}' cihazına bağlanılamadı."}
-
 
         except dbus.exceptions.DBusException as e:
             logger.error(f"Cihaza bağlanırken DBus hatası ({device_path}): {e}")
