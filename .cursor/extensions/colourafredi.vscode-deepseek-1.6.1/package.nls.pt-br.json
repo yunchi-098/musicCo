@@ -1,0 +1,18 @@
+{
+	"deepseek.command_why_broken": "Verificar o código a seguir em busca de bugs e fornecer sugestões de reparo 🐛",
+	"deepseek.command_explain": "Explicar o código a seguir em detalhes 💬",
+	"deepseek.command_refactor_code": "Refatorar este código e me dizer o que foi alterado 🔧",
+	"deepseek.command_add_tests": "Adicionar testes para o código a seguir 🧪",
+	"deepseek.command_custom_prompt": "Prompt personalizado ❓",
+	"deepseek.command_validate_APIkey": "Validar chave API ✔️",
+	"deepseek.command_display_language": "Definir idioma 🌍",
+	"deepseek.command_query": "Fazer uma pergunta ❓",
+	"deepseek.command_add_predefined_prompt": "Adicionar prompt predefinido ➕",
+	"deepseek.command_edit_predefined_prompt": "Editar prompt predefinido ✏️",
+	"deepseek.command_list_clear": "Limpar lista 🗑️",
+	"deepseek.command_export_markdown": "Exportar markdown 📤",
+	"deepseek.command_choose_predefined_prompt": "Selecionar prompt predefinido 🔍",
+	"deepseek.command_unbindAll": "Desvincular todas as configurações personalizadas 🗑️",
+	"deepseek.command_toggle_completion": "Alternar conclusão de código",
+	"deepseek.command_accept_completion": "Aceitar conclusão de código"
+}

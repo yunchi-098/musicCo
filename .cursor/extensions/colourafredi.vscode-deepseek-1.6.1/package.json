@@ -1,0 +1,361 @@
+{
+	"name": "vscode-deepseek",
+	"icon": "images/icon.png",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/zhangrenyang/deepseek.git"
+	},
+	"bugs": {
+		"url": "https://github.com/zhangrenyang/deepseek/issues"
+	},
+	"homepage": "https://github.com/zhangrenyang/deepseek",
+	"publisher": "colourafredi",
+	"displayName": "DeepSeek R1",
+	"description": "Write, review, explain, refactor, and test code. Supports multiple languages and provides customizable prompts for efficient coding assistance.",
+	"version": "1.6.1",
+	"keywords": [
+		"DeepSeek",
+		"deepseek",
+		"ai",
+		"chat",
+		"gpt",
+		"code",
+		"assistant",
+		"copilot",
+		"code-review",
+		"code-explanation",
+		"code-refactoring",
+		"testing",
+		"documentation",
+		"code-completion"
+	],
+	"engines": {
+		"vscode": "^1.70.0"
+	},
+	"categories": [
+		"Other"
+	],
+	"activationEvents": [
+		"onView:deepseek.sidebar",
+		"onCommand:deepseek.ask",
+		"onCommand:deepseek.whyBroken",
+		"onCommand:deepseek.explain",
+		"onCommand:deepseek.refactor",
+		"onCommand:deepseek.addTests",
+		"onCommand:deepseek.customPrompt",
+		"onCommand:deepseek.AddPredefinedPrompt",
+		"onCommand:deepseek.editPredefinedPrompt",
+		"onCommand:deepseek.choosePredefinedPrompt",
+		"onCommand:deepseek.switchLanguage",
+		"onCommand:deepseek.unBindAll",
+		"onCommand:deepseek.toggleCompletion",
+		"onCommand:deepseek.acceptCompletion"
+	],
+	"main": "./dist/extension.js",
+	"contributes": {
+		"viewsContainers": {
+			"activitybar": [
+				{
+					"id": "deepseek-activitybar",
+					"title": "DeepSeek",
+					"icon": "images/deepseek.png"
+				}
+			]
+		},
+		"views": {
+			"deepseek-activitybar": [
+				{
+					"id": "deepseek.sidebar",
+					"name": "DeepSeek",
+					"type": "webview"
+				}
+			]
+		},
+		"commands": [
+			{
+				"command": "deepseek.clearList",
+				"title": "%deepseek.command_list_clear%",
+				"category": "DeepSeek",
+				"icon": {
+					"dark": "images/dark/clear.svg",
+					"light": "images/light/clear.svg"
+				}
+			},
+			{
+				"command": "deepseek.exportMarkdown",
+				"title": "%deepseek.command_export_markdown%",
+				"category": "DeepSeek",
+				"icon": {
+					"dark": "images/dark/exportMarkdown.svg",
+					"light": "images/light/exportMarkdown.svg"
+				}
+			},
+			{
+				"command": "deepseek.explain",
+				"category": "DeepSeek",
+				"title": "%deepseek.command_explain%"
+			},
+			{
+				"command": "deepseek.switchLanguage",
+				"category": "DeepSeek",
+				"title": "%deepseek.command_display_language%"
+			},
+			{
+				"command": "deepseek.ask",
+				"category": "DeepSeek",
+				"title": "%deepseek.command_query%"
+			},
+			{
+				"command": "deepseek.addTests",
+				"category": "DeepSeek",
+				"title": "%deepseek.command_add_tests%"
+			},
+			{
+				"command": "deepseek.AddPredefinedPrompt",
+				"category": "DeepSeek",
+				"title": "%deepseek.command_add_predefined_prompt%"
+			},
+			{
+				"command": "deepseek.editPredefinedPrompt",
+				"category": "DeepSeek",
+				"title": "%deepseek.command_edit_predefined_prompt%"
+			},
+			{
+				"command": "deepseek.choosePredefinedPrompt",
+				"category": "DeepSeek",
+				"title": "%deepseek.command_choose_predefined_prompt%"
+			},
+			{
+				"command": "deepseek.customPrompt",
+				"category": "DeepSeek",
+				"title": "%deepseek.command_custom_prompt%"
+			},
+			{
+				"command": "deepseek.whyBroken",
+				"category": "DeepSeek",
+				"title": "%deepseek.command_why_broken%"
+			},
+			{
+				"command": "deepseek.refactor",
+				"category": "DeepSeek",
+				"title": "%deepseek.command_refactor_code%"
+			},
+			{
+				"command": "deepseek.unBindAll",
+				"category": "DeepSeek",
+				"title": "%deepseek.command_unbindAll%"
+			},
+			{
+				"command": "deepseek.toggleCompletion",
+				"category": "DeepSeek",
+				"title": "%deepseek.command_toggle_completion%"
+			},
+			{
+				"command": "deepseek.acceptCompletion",
+				"category": "DeepSeek",
+				"title": "%deepseek.command_accept_completion%"
+			}
+		],
+		"menus": {
+			"explorer/context": [],
+			"editor/context": [
+				{
+					"submenu": "deepseek/editor/context/menuItems",
+					"group": "navigation"
+				}
+			],
+			"view/title": [
+				{
+					"command": "deepseek.exportMarkdown",
+					"when": "view == deepseek.sidebar",
+					"group": "navigation"
+				},
+				{
+					"command": "deepseek.clearList",
+					"when": "view == deepseek.sidebar",
+					"group": "navigation"
+				}
+			],
+			"deepseek/editor/context/menuItems": [
+				{
+					"command": "deepseek.whyBroken",
+					"group": "deepseek-menu-group1@1"
+				},
+				{
+					"command": "deepseek.explain",
+					"group": "deepseek-menu-group1@2"
+				},
+				{
+					"command": "deepseek.refactor",
+					"group": "deepseek-menu-group1@3"
+				},
+				{
+					"command": "deepseek.addTests",
+					"group": "deepseek-menu-group1@4"
+				},
+				{
+					"command": "deepseek.AddPredefinedPrompt",
+					"group": "deepseek-menu-group1@5"
+				},
+				{
+					"command": "deepseek.editPredefinedPrompt",
+					"group": "deepseek-menu-group1@6"
+				},
+				{
+					"command": "deepseek.choosePredefinedPrompt",
+					"group": "deepseek-menu-group1@7"
+				},
+				{
+					"command": "deepseek.customPrompt",
+					"group": "deepseek-menu-group1@8"
+				},
+				{
+					"command": "deepseek.unBindAll",
+					"group": "deepseek-menu-group2@1"
+				},
+				{
+					"command": "deepseek.switchLanguage",
+					"group": "deepseek-menu-group3@1"
+				}
+			]
+		},
+		"submenus": [
+			{
+				"id": "deepseek/editor/context/menuItems",
+				"label": "🚀DeepSeek"
+			}
+		],
+		"configuration": {
+			"title": "DeepSeek",
+			"properties": {
+				"deepseek.baseURL": {
+					"order": 1,
+					"type": "string",
+					"default": "",
+					"description": "Set up baseURL,Please make sure that your server is properly available"
+				},
+				"deepseek.model": {
+					"order": 2,
+					"type": "string",
+					"default": "",
+					"description": "Set the model of deepseek. Available models: deepseek-chat, deepseek-coder, deepseek-reasoner"
+				},
+				"deepseek.apikey": {
+					"order": 3,
+					"type": "string",
+					"default": "",
+					"password": true,
+					"description": "Set the API key of deepseek"
+				},
+				"deepseek.temperature": {
+					"order": 4,
+					"type": "string",
+					"default": "",
+					"description": "Set the temperature of deepseek API,between 0 and 2"
+				},
+				"deepseek.max_tokens": {
+					"order": 5,
+					"type": "string",
+					"default": "",
+					"description": "Set the max_tokens of deepseek API. Max value is 8192 when using beta endpoint"
+				},
+				"deepseek.roleDefinition": {
+					"order": 6,
+					"type": "string",
+					"default": "",
+					"description": "Set the system role definition of deepseek API. If not set, will use default role definition"
+				},
+				"deepseek.lang": {
+					"order": 7,
+					"type": "string",
+					"default": "",
+					"description": "Set the language of deepseek."
+				},
+				"deepseek.top_p": {
+					"order": 8,
+					"type": "string",
+					"default": "",
+					"description": "Set the top_p of deepseek API, between 0 and 1"
+				},
+				"deepseek.top_k": {
+					"order": 9,
+					"type": "string",
+					"default": "",
+					"description": "Set the top_k of deepseek API"
+				},
+				"deepseek.frequency_penalty": {
+					"order": 10,
+					"type": "string",
+					"default": "",
+					"description": "The frequency_penalty parameter is used to adjust the frequency of tokens in the generated text"
+				},
+				"deepseek.enableCompletion": {
+					"order": 11,
+					"type": "boolean",
+					"default": false,
+					"description": "Enable AI code completion feature"
+				}
+			}
+		}
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run package",
+		"compile": "webpack",
+		"watch": "webpack --watch",
+		"package": "webpack --mode production --devtool hidden-source-map",
+		"compile-tests": "tsc -p . --outDir out",
+		"watch-tests": "tsc -p . -w --outDir out",
+		"pretest": "npm run compile-tests && npm run compile && npm run lint",
+		"lint": "eslint src --ext ts",
+		"test": "node ./out/test/runTest.js",
+		"icon": "node icon.js",
+		"pack": "vsce package"
+	},
+	"devDependencies": {
+		"@types/axios": "^0.14.0",
+		"@types/glob": "^8.0.0",
+		"@types/mocha": "^10.0.1",
+		"@types/node": "16.x",
+		"@types/request-promise": "^4.1.48",
+		"@types/vscode": "^1.70.0",
+		"@typescript-eslint/eslint-plugin": "^5.45.0",
+		"@typescript-eslint/parser": "^5.45.0",
+		"@vscode/test-electron": "^2.2.0",
+		"eslint": "^8.28.0",
+		"glob": "^8.0.3",
+		"mocha": "^10.1.0",
+		"ts-loader": "^9.4.1",
+		"typescript": "^4.9.3",
+		"webpack": "^5.75.0",
+		"webpack-cli": "^5.0.0",
+		"vscode": "^1.1.37"
+	},
+	"dependencies": {
+		"antd": "^5.14.0",
+		"axios": "^1.7.9",
+		"dotenv": "^16.4.7",
+		"escape-html": "^1.0.3",
+		"i18next": "^22.4.9",
+		"node-fetch": "^3.3.1",
+		"openai": "^4.80.1",
+		"ping": "^0.4.4",
+		"react": "^18.2.0",
+		"react-dom": "^18.2.0",
+		"uuid": "^11.1.0"
+	},
+	"__metadata": {
+		"id": "94a8383c-04c2-476e-b228-f125310e5a9a",
+		"publisherId": "bc80a8fd-f5fe-4597-b83d-30c38a4c7656",
+		"publisherDisplayName": "colourafredi",
+		"targetPlatform": "undefined",
+		"isApplicationScoped": false,
+		"isPreReleaseVersion": false,
+		"hasPreReleaseVersion": false,
+		"installedTimestamp": 1741281292385,
+		"pinned": false,
+		"preRelease": false,
+		"source": "gallery",
+		"size": 2052254
+	}
+}
