@@ -2,3 +2,10 @@ flask==3.0.0
 spotipy==2.23.0
 python-dotenv==1.0.0
 requests==2.31.0
+flask-limiter==3.5.0
+flask-wtf==1.2.1
+pulsectl==23.5.2
+dbus-python==1.3.2
+flask-talisman==1.1.0
+prometheus-client==0.20.0
+psutil==5.9.8

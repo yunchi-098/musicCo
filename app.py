@@ -20,13 +20,17 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
 from flask_wtf.csrf import generate_csrf
+from flask_talisman import Talisman
+from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATEST
+import psutil
+from dotenv import load_dotenv
  
 # --- Yapılandırılabilir Ayarlar ---
-# !!! BU BİLGİLERİ KENDİ SPOTIFY DEVELOPER BİLGİLERİNİZLE DEĞİŞTİRİN !!!
-SPOTIFY_CLIENT_ID = '332e5f2c9fe44d9b9ef19c49d0caeb78' # ÖRNEK - DEĞİŞTİR
-SPOTIFY_CLIENT_SECRET = 'bbb19ad9c7d04d738f61cd0bd4f47426'# ÖRNEK - DEĞİŞTİR
-# !!! BU URI'NIN SPOTIFY DEVELOPER DASHBOARD'DAKİ REDIRECT URI İLE AYNI OLDUĞUNDAN EMİN OLUN !!!
-SPOTIFY_REDIRECT_URI = 'http://web-vds.tail1b3477.ts.net/callback' # ÖRNEK - DEĞİŞTİR
+# .env değişkenlerini yükle (varsa)
+load_dotenv()
+SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID') or '332e5f2c9fe44d9b9ef19c49d0caeb78'
+SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET') or 'bbb19ad9c7d04d738f61cd0bd4f47426'
+SPOTIFY_REDIRECT_URI = os.getenv('SPOTIFY_REDIRECT_URI') or 'http://web-vds.tail1b3477.ts.net/callback'
 SPOTIFY_SCOPE = 'user-read-playback-state user-read-private user-modify-playback-state playlist-read-private user-read-currently-playing user-read-recently-played'
 
 TOKEN_FILE = 'spotify_token.json'
@@ -35,7 +39,7 @@ BLUETOOTH_SCAN_DURATION = 12 # Saniye cinsinden Bluetooth tarama süresi
 EX_SCRIPT_PATH = 'ex.py' # ex.py betiğinin yolu
 # Kullanıcı arayüzünde gösterilecek varsayılan türler (opsiyonel)
 ALLOWED_GENRES = ['pop', 'rock', 'jazz', 'electronic', 'hip-hop', 'classical', 'r&b', 'indie', 'turkish']
-SESSION_TIMEOUT_MINUTES = 0.01 # YENİ: Kafe'de kalma süresi (dakika)
+SESSION_TIMEOUT_MINUTES = 30 # Kafe'de kalma süresi (dakika)
 # ---------------------------------
 
 # Logging ayarları
@@ -62,6 +66,54 @@ limiter = Limiter(
 )
 limiter.init_app(app)
 csrf = CSRFProtect(app)
+
+# --- Güvenlik Başlıkları (Talisman) ---
+csp = {
+    'default-src': ["'self'", 'https://cdn.jsdelivr.net', 'https://cdnjs.cloudflare.com', 'https://fonts.googleapis.com', 'https://fonts.gstatic.com', 'https://unpkg.com'],
+    'img-src': ["'self'", 'data:', 'https://*'],
+    'style-src': ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net', 'https://cdnjs.cloudflare.com', 'https://fonts.googleapis.com'],
+    'script-src': ["'self'", "'unsafe-inline'", 'https://cdn.tailwindcss.com', 'https://cdn.jsdelivr.net', 'https://cdnjs.cloudflare.com', 'https://unpkg.com', 'https://code.jquery.com', 'https://stackpath.bootstrapcdn.com'],
+    'connect-src': ["'self'", 'https://*']
+}
+Talisman(app, content_security_policy=csp, force_https=False)
+
+# --- Prometheus Metric'ler ---
+REQUEST_COUNT = Counter('musicco_http_requests_total', 'HTTP istek sayısı', ['method', 'endpoint', 'http_status'])
+ERROR_COUNT = Counter('musicco_errors_total', 'Hata sayısı', ['endpoint', 'type'])
+QUEUE_LENGTH = Gauge('musicco_queue_length', 'Anlık şarkı kuyruğu uzunluğu')
+
+@app.after_request
+def after_request(response):
+    try:
+        REQUEST_COUNT.labels(request.method, request.path, response.status_code).inc()
+    except Exception:
+        pass
+    return response
+
+# --- Sistem yükünü periyodik olarak logla ---
+def _log_system_load_periodically(interval_seconds=30):
+    while True:
+        try:
+            cpu = psutil.cpu_percent(interval=1)
+            mem = psutil.virtual_memory()
+            disk = psutil.disk_usage('/')
+            net = psutil.net_io_counters()
+            logger.info(
+                f"SYSTEM LOAD - CPU: {cpu}% | MEM: {mem.percent}% ({mem.used//(1024**2)}MB/{mem.total//(1024**2)}MB) | "
+                f"DISK: {disk.percent}% ({disk.used//(1024**3)}GB/{disk.total//(1024**3)}GB) | "
+                f"NET: sent={net.bytes_sent//(1024**2)}MB recv={net.bytes_recv//(1024**2)}MB"
+            )
+        except Exception as e:
+            logger.warning(f"Sistem yükü loglanırken hata: {e}")
+        time.sleep(interval_seconds)
+
+# Arka planda sistem yükü loglayıcısını başlat (ENV ile kapatılabilir)
+if os.environ.get('SYSTEM_LOAD_LOG', '1') == '1':
+    try:
+        threading.Thread(target=_log_system_load_periodically, args=(30,), daemon=True, name='SystemLoadLogger').start()
+        logger.info("System load logger thread başlatıldı." )
+    except Exception as e:
+        logger.warning(f"System load logger başlatılamadı: {e}")
 
 @app.context_processor
 def inject_csrf():
@@ -509,7 +561,8 @@ def admin_login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-SESSION_TIMEOUT_MINUTES = 30 
+## SESSION_TIMEOUT_MINUTES ikinci kez tanımlanmamalı; üstte 30 olarak tanımlı.
+# SESSION_TIMEOUT_MINUTES = 30 
 
 def location_required(f):
     """
@@ -677,6 +730,44 @@ def check_song_filters(track_uri, spotify_client):
 def index():
     """Ana sayfayı gösterir."""
     return render_template('index.html', allowed_genres=ALLOWED_GENRES)
+
+@app.route('/health')
+def health():
+    """Temel sağlık durumu: Spotify, sistem ve kuyruk bilgisi."""
+    status = {
+        'app': 'ok',
+        'spotify': 'down',
+        'bluetooth': 'unknown',
+        'audio': 'unknown',
+        'queue_length': len(song_queue)
+    }
+    try:
+        spotify = get_spotify_client()
+        status['spotify'] = 'ok' if spotify else 'down'
+    except Exception as e:
+        ERROR_COUNT.labels('/health', 'spotify').inc()
+        status['spotify'] = 'down'
+    try:
+        audio_sinks_result = _run_command(['list_sinks'])
+        status['audio'] = 'ok' if audio_sinks_result.get('success') else 'down'
+    except Exception:
+        status['audio'] = 'down'
+    try:
+        bt_result = _run_command(['discover_bluetooth'])
+        status['bluetooth'] = 'ok' if bt_result.get('success') else 'down'
+    except Exception:
+        status['bluetooth'] = 'down'
+    try:
+        QUEUE_LENGTH.set(len(song_queue))
+    except Exception:
+        pass
+    http_code = 200 if status['spotify'] == 'ok' else 503
+    return jsonify(status), http_code
+
+@app.route('/metrics')
+def metrics():
+    """Prometheus metrikleri."""
+    return generate_latest(), 200, {'Content-Type': CONTENT_TYPE_LATEST}
 
 @app.route('/admin')
 def admin():
