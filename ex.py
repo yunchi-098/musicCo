@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 import subprocess
 import pulsectl
@@ -8,28 +7,20 @@ import os
 import time
 import dbus
 from dbus.mainloop.glib import DBusGMainLoop
-# GLib importu dbus için gerekli olsa da doğrudan kullanılmıyorsa kaldırılabilir.
-# from gi.repository import GLib
-import json # JSON çıktısı için
-import argparse # Komut satırı argümanları için
-import logging # Loglama için
+import json
+import argparse
+import logging
 
-# Logging ayarları
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger('ex_script')
 
-# --- BluetoothManager Sınıfı (DBus Kullanımı - Hata Yönetimi Eklendi) ---
 class BluetoothManager:
     def __init__(self):
         self.bus = None
         self.adapter = None
         self.adapter_props = None
         try:
-            # DBus ana döngüsünü ayarla (bazı ortamlar için gerekli olabilir)
-            # DBusGMainLoop(set_as_default=True) # Genellikle gerekli değil, sorun olursa açılabilir
             self.bus = dbus.SystemBus()
-            # Varsayılan adaptörü bulmaya çalış (genellikle hci0)
-            # Daha dinamik bir yol izlenebilir ama şimdilik hci0 varsayalım
             adapter_path = '/org/bluez/hci0'
             self.adapter_obj = self.bus.get_object('org.bluez', adapter_path)
             self.adapter = dbus.Interface(self.adapter_obj, 'org.bluez.Adapter1')
@@ -37,7 +28,6 @@ class BluetoothManager:
             logger.info("BluetoothManager başarıyla başlatıldı.")
         except dbus.exceptions.DBusException as e:
             logger.error(f"DBus başlatma hatası: {e}. Bluetooth servisi çalışıyor mu veya adaptör yolu doğru mu?")
-            # Uygulamanın çökmesini engellemek için None olarak bırak
             self.bus = None
             self.adapter = None
             self.adapter_props = None
@@ -70,17 +60,14 @@ class BluetoothManager:
 
         devices = []
         try:
-            # Keşfi başlat (zaten açıksa hata vermez)
             logger.info(f"{discovery_duration} saniye boyunca Bluetooth cihazları taranıyor...")
             try:
-                self.adapter.StartDiscovery(timeout=dbus.UInt32(discovery_duration + 1, variant_level=1)) # Timeout ekleyelim
+                self.adapter.StartDiscovery(timeout=dbus.UInt32(discovery_duration + 1, variant_level=1))
                 time.sleep(discovery_duration)
             except dbus.exceptions.DBusException as e:
-                 # Already discovering ise sorun yok
                  if "Already discovering" not in str(e):
                      logger.warning(f"Keşif başlatılamadı (belki zaten aktifti?): {e}")
             finally:
-                 # Keşfi durdurmayı dene
                  try:
                      if self.adapter_props.Get('org.bluez.Adapter1', 'Discovering'):
                           self.adapter.StopDiscovery()
@@ -97,23 +84,21 @@ class BluetoothManager:
             for path, interfaces in objects.items():
                 if 'org.bluez.Device1' in interfaces:
                     device_props = interfaces['org.bluez.Device1']
-                    # Temel bilgileri alalım
                     name = str(device_props.get('Name', device_props.get('Alias', 'Bilinmeyen Cihaz')))
                     address = str(device_props.get('Address', 'Adres Yok'))
                     connected = bool(device_props.get('Connected', False))
                     paired = bool(device_props.get('Paired', False))
-                    # Ses profili desteğini kontrol et (daha güvenilir olabilir)
                     uuids = device_props.get('UUIDs', [])
                     is_audio_device = any('a2dp' in str(uuid).lower() or 'hfp' in str(uuid).lower() or 'avrcp' in str(uuid).lower() for uuid in uuids)
 
                     device_info = {
-                        'path': str(path), # DBus yolu (bağlanma/çıkarma için lazım)
+                        'path': str(path),
                         'name': name,
-                        'mac_address': address, # app.py'nin beklediği anahtar
+                        'mac_address': address,
                         'connected': connected,
                         'paired': paired,
-                        'is_audio': is_audio_device, # Ses cihazı olup olmadığı
-                        'type': 'bluetooth' # app.py uyumluluğu
+                        'is_audio': is_audio_device,
+                        'type': 'bluetooth'
                     }
                     devices.append(device_info)
 
@@ -127,11 +112,10 @@ class BluetoothManager:
             logger.error(f"Cihazlar listelenirken hata: {e}", exc_info=True)
             return {'success': False, 'error': f'Beklenmedik hata: {e}', 'devices': []}
         finally:
-             # Her ihtimale karşı keşfi tekrar durdurmayı dene
              try:
                  if self.adapter and self.adapter_props and self.adapter_props.Get('org.bluez.Adapter1', 'Discovering'):
                       self.adapter.StopDiscovery()
-             except: pass # Hataları yoksay
+             except: pass
 
     def _get_device_interface(self, device_path):
         """Verilen yoldaki cihaz arayüzünü alır."""
@@ -168,18 +152,15 @@ class BluetoothManager:
             if not is_paired:
                 logger.info(f"'{device_name}' eşleşmemiş, eşleştiriliyor...")
                 try:
-                    # Eşleştirme öncesi güvenilir olarak işaretle
                     try:
                         props_iface.Set('org.bluez.Device1', 'Trusted', dbus.Boolean(True))
                         logger.info(f"'{device_name}' güvenilir olarak işaretlendi.")
                     except Exception as trust_err:
                         logger.warning(f"'{device_name}' güvenilir olarak işaretlenemedi: {trust_err}")
 
-                    # Eşleştirme işlemi
                     device_interface.Pair(timeout=dbus.UInt32(20, variant_level=1))
                     logger.info(f"'{device_name}' başarıyla eşleştirildi.")
                     
-                    # Eşleştirme sonrası tekrar güvenilir olarak işaretle
                     try:
                         props_iface.Set('org.bluez.Device1', 'Trusted', dbus.Boolean(True))
                         logger.info(f"'{device_name}' güvenilir olarak işaretlendi.")
@@ -187,17 +168,11 @@ class BluetoothManager:
                         logger.warning(f"'{device_name}' güvenilir olarak işaretlenemedi: {trust_err}")
 
                 except dbus.exceptions.DBusException as e:
-                    # Already Exists veya Authentication Failed gibi hatalar olabilir
                     logger.error(f"'{device_name}' eşleştirilemedi: {e}")
-                    # Eşleşme başarısız olsa bile bağlanmayı deneyebiliriz
-                    # return {'success': False, 'error': f"Eşleştirme hatası: {e}"}
 
             logger.info(f"'{device_name}' cihazına bağlanılıyor...")
-            # Bağlanma işlemi zaman alabilir, timeout ekleyelim
             device_interface.Connect(timeout=dbus.UInt32(30, variant_level=1))
-            # Bağlantının kurulduğunu doğrulamak için kısa bir süre bekle
             time.sleep(3)
-            # Tekrar kontrol et
             if bool(props_iface.Get('org.bluez.Device1', 'Connected')):
                  logger.info(f"'{device_name}' cihazına başarıyla bağlanıldı.")
                  return {'success': True, 'message': f"'{device_name}' cihazına başarıyla bağlanıldı."}
@@ -207,7 +182,6 @@ class BluetoothManager:
 
         except dbus.exceptions.DBusException as e:
             logger.error(f"Cihaza bağlanırken DBus hatası ({device_path}): {e}")
-            # Hata mesajını analiz etmeye çalışalım
             error_str = str(e).lower()
             if "already connected" in error_str:
                  logger.info(f"'{device_name}' zaten bağlı (DBus hatası).")
@@ -240,13 +214,12 @@ class BluetoothManager:
 
             logger.info(f"'{device_name}' cihazından bağlantı kesiliyor...")
             device_interface.Disconnect(timeout=dbus.UInt32(10, variant_level=1))
-            time.sleep(1) # Bağlantının kesilmesi için bekle
+            time.sleep(1)
             logger.info(f"'{device_name}' bağlantısı kesildi.")
             return {'success': True, 'message': f"'{device_name}' bağlantısı kesildi."}
 
         except dbus.exceptions.DBusException as e:
             logger.error(f"Bağlantı kesilirken DBus hatası ({device_path}): {e}")
-            # Hata mesajını analiz et
             error_str = str(e).lower()
             if "not connected" in error_str:
                  logger.info(f"'{device_name}' zaten bağlı değil (DBus hatası).")
@@ -257,7 +230,6 @@ class BluetoothManager:
             logger.error(f"Bağlantı kesilirken hata ({device_path}): {e}", exc_info=True)
             return {'success': False, 'error': f"Beklenmedik hata: {e}"}
 
-# --- AudioSinkManager Sınıfı (Pulsectl Kullanımı) ---
 class AudioSinkManager:
     def __init__(self, app_name='ex_script_audio'):
         self.app_name = app_name
@@ -267,7 +239,6 @@ class AudioSinkManager:
         sinks_info = []
         default_sink_name = None
         try:
-            # Bağlantı adını daha spesifik yapalım
             with pulsectl.Pulse(self.app_name + '-list') as pulse:
                 raw_sinks = pulse.sink_list()
                 server_info = pulse.server_info()
@@ -308,7 +279,6 @@ class AudioSinkManager:
                      logger.error("Sink değiştirilemiyor, hiç sink bulunamadı.")
                      return {'success': False, 'error': "Hiç ses çıkış cihazı bulunamadı."}
 
-                # Hedef sink'i bul
                 if isinstance(sink_identifier, int) or sink_identifier.isdigit():
                     try:
                         sink_index = int(sink_identifier)
@@ -318,7 +288,6 @@ class AudioSinkManager:
                          logger.error(f"Geçersiz veya bulunamayan sink indeksi: {sink_identifier} - Hata: {e}")
                          return {'success': False, 'error': f"Geçersiz veya bulunamayan sink indeksi: {sink_identifier}"}
                 else:
-                    # İsim veya açıklama ile ara (küçük/büyük harf duyarsız)
                     search_term = str(sink_identifier).lower()
                     found = False
                     for s in sinks:
@@ -351,10 +320,9 @@ class AudioSinkManager:
         try:
             with pulsectl.Pulse(self.app_name + '-find') as pulse:
                 sinks = pulse.sink_list()
-                if not sinks: return {'success': True, 'found': False, 'sink': None} # Sink yoksa hata değil
+                if not sinks: return {'success': True, 'found': False, 'sink': None}
 
                 search_term = device_name.lower()
-                # Bluetooth cihazları için olası isim formatı
                 bluez_search_term = f"bluez_sink.{device_name.replace(':', '_').lower()}"
 
                 for sink in sinks:
@@ -380,7 +348,6 @@ class AudioSinkManager:
             logger.error(f"Cihaz için sink aranırken genel hata: {e}", exc_info=True)
             return {'success': False, 'error': f"Bilinmeyen hata: {e}", 'found': False, 'sink': None}
 
-# --- Spotifyd Fonksiyonları ---
 def get_spotifyd_pid():
     """Çalışan spotifyd süreçlerinin PID'sini bulur."""
     try:
@@ -388,7 +355,7 @@ def get_spotifyd_pid():
         pids = output.strip().split("\n")
         return {'success': True, 'pids': pids}
     except subprocess.CalledProcessError:
-        return {'success': True, 'pids': []} # Çalışmıyorsa hata değil
+        return {'success': True, 'pids': []}
     except FileNotFoundError:
         return {'success': False, 'error': "'pgrep' komutu bulunamadı."}
     except Exception as e:
@@ -399,21 +366,20 @@ def restart_spotifyd():
     logger.info("Spotifyd yeniden başlatılıyor...")
     pid_result = get_spotifyd_pid()
     if not pid_result['success']:
-        return pid_result # PID alma hatasını döndür
+        return pid_result
 
     pids = pid_result['pids']
     killed_pids = []
     messages = []
     start_success = False
 
-    # Mevcut süreçleri sonlandır
     if pids:
         for pid in pids:
             try:
-                os.kill(int(pid), 15) # SIGTERM
+                os.kill(int(pid), 15)
                 killed_pids.append(pid)
                 messages.append(f"PID {pid} sonlandırıldı.")
-                time.sleep(0.5) # Kısa bekleme
+                time.sleep(0.5)
             except ValueError:
                  messages.append(f"Geçersiz PID atlandı: {pid}")
             except ProcessLookupError:
@@ -423,9 +389,7 @@ def restart_spotifyd():
     else:
         messages.append("Çalışan Spotifyd süreci bulunamadı.")
 
-    # Yeni süreci başlat
-    spotifyd_command = ["spotifyd", "--no-daemon"] # Varsayılan, config olmadan
-    # Config dosyası varsa ekleyelim (opsiyonel)
+    spotifyd_command = ["spotifyd", "--no-daemon"]
     config_home = os.path.expanduser("~/.config/spotifyd/spotifyd.conf")
     config_etc = "/etc/spotifyd.conf"
     if os.path.exists(config_home):
@@ -437,7 +401,7 @@ def restart_spotifyd():
 
     try:
         subprocess.Popen(spotifyd_command)
-        time.sleep(2) # Başlaması için bekle
+        time.sleep(2)
         new_pid_result = get_spotifyd_pid()
         if new_pid_result['success'] and new_pid_result['pids'] and any(pid not in killed_pids for pid in new_pid_result['pids']):
             messages.append("Spotifyd başarıyla yeniden başlatıldı.")
@@ -454,13 +418,12 @@ def restart_spotifyd():
 
     return {'success': start_success, 'message': " ".join(messages)}
 
-# --- ALSA Geçiş Fonksiyonu ---
 def switch_alsa():
     """ALSA uyumlu bir sink'e geçiş yapar."""
     audio_manager = AudioSinkManager()
     list_result = audio_manager.list_sinks()
     if not list_result['success']:
-        return list_result # Sink listeleme hatasını döndür
+        return list_result
 
     sinks = list_result['sinks']
     if not sinks:
@@ -470,28 +433,24 @@ def switch_alsa():
     for sink in sinks:
         name_lower = sink.get('name', '').lower()
         desc_lower = sink.get('description', '').lower()
-        # 'alsa', 'analog', 'builtin' içeren ve 'bluez' içermeyenleri bul
         if ("alsa" in name_lower or "analog" in name_lower or "builtin" in desc_lower) and "bluez" not in name_lower:
              alsa_sinks.append(sink)
 
     if not alsa_sinks:
         return {'success': False, 'error': "Uygun ALSA ses çıkış cihazı bulunamadı."}
 
-    # Tercihen varsayılan olmayan ilk ALSA'yı seç
     target_sink = None
     for sink in alsa_sinks:
         if not sink.get('is_default'):
             target_sink = sink
             break
     if not target_sink:
-        target_sink = alsa_sinks[0] # Hepsi varsayılan ise ilkini al
+        target_sink = alsa_sinks[0]
 
     if target_sink.get('is_default'):
         return {'success': True, 'message': f"ALSA ses çıkışı ('{target_sink.get('description')}') zaten varsayılan."}
 
-    # Seçilen ALSA sink'ine index ile geçiş yap
     switch_result = audio_manager.switch_to_sink(target_sink.get('index'))
-    # Başarı mesajını biraz daha bilgilendirici yapalım
     if switch_result['success']:
          switch_result['message'] = f"ALSA ses çıkışına geçildi: {switch_result['message']}"
     else:
@@ -499,8 +458,6 @@ def switch_alsa():
 
     return switch_result
 
-
-# --- Ana Çalıştırma Bloğu ---
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Ses ve Bluetooth Yönetim Betiği")
     parser.add_argument('command', help="Çalıştırılacak komut", choices=[
@@ -508,16 +465,14 @@ if __name__ == "__main__":
         'disconnect_bluetooth', 'switch_to_alsa', 'set_audio_sink',
         'restart_spotifyd'
     ])
-    # Komutlara özel argümanlar
     parser.add_argument('--identifier', help="set_audio_sink için sink index'i veya adı/açıklaması")
     parser.add_argument('--path', help="pair_bluetooth ve disconnect_bluetooth için cihaz DBus yolu")
     parser.add_argument('--duration', type=int, default=5, help="discover_bluetooth için tarama süresi (saniye)")
 
     args = parser.parse_args()
 
-    result = {'success': False, 'error': 'Geçersiz komut veya argüman'} # Varsayılan hata
+    result = {'success': False, 'error': 'Geçersiz komut veya argüman'}
 
-    # Komutları işle
     if args.command == 'list_sinks':
         manager = AudioSinkManager()
         result = manager.list_sinks()
@@ -547,5 +502,4 @@ if __name__ == "__main__":
     elif args.command == 'restart_spotifyd':
         result = restart_spotifyd()
 
-    # Sonucu JSON olarak yazdır
-    print(json.dumps(result, indent=2)) # indent=2 okunaklılık için
+    print(json.dumps(result, indent=2))

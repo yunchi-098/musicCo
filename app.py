@@ -3,52 +3,41 @@ import json
 import threading
 import time
 import logging
-import re # Spotify URL parse ve URI kontrolü için
-import subprocess # ex.py ve spotifyd için
+import re
+import subprocess
 from functools import wraps
 import requests
-# flash mesajları için import
 from flask import Flask, request, render_template, redirect, url_for, session, jsonify, flash
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
-import traceback # Hata ayıklama için eklendi
-import random # DEĞİŞİKLİK: Rastgele şarkı seçimi için eklendi
+import traceback
+import random
 import socket
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
 from flask_wtf.csrf import generate_csrf
  
-# --- Yapılandırılabilir Ayarlar ---
-# !!! BU BİLGİLERİ KENDİ SPOTIFY DEVELOPER BİLGİLERİNİZLE DEĞİŞTİRİN !!!
-SPOTIFY_CLIENT_ID = '332e5f2c9fe44d9b9ef19c49d0caeb78' # ÖRNEK - DEĞİŞTİR
-SPOTIFY_CLIENT_SECRET = 'bbb19ad9c7d04d738f61cd0bd4f47426'# ÖRNEK - DEĞİŞTİR
-# !!! BU URI'NIN SPOTIFY DEVELOPER DASHBOARD'DAKİ REDIRECT URI İLE AYNI OLDUĞUNDAN EMİN OLUN !!!
-SPOTIFY_REDIRECT_URI = 'http://web-vds.tail1b3477.ts.net/callback' # ÖRNEK - DEĞİŞTİR
+SPOTIFY_CLIENT_ID = '332e5f2c9fe44d9b9ef19c49d0caeb78'
+SPOTIFY_CLIENT_SECRET = 'bbb19ad9c7d04d738f61cd0bd4f47426'
+SPOTIFY_REDIRECT_URI = 'http://web-vds.tail1b3477.ts.net/callback'
 SPOTIFY_SCOPE = 'user-read-playback-state user-read-private user-modify-playback-state playlist-read-private user-read-currently-playing user-read-recently-played'
 
 TOKEN_FILE = 'spotify_token.json'
 SETTINGS_FILE = 'settings.json'
-BLUETOOTH_SCAN_DURATION = 12 # Saniye cinsinden Bluetooth tarama süresi
-EX_SCRIPT_PATH = 'ex.py' # ex.py betiğinin yolu
-# Kullanıcı arayüzünde gösterilecek varsayılan türler (opsiyonel)
+BLUETOOTH_SCAN_DURATION = 12
+EX_SCRIPT_PATH = 'ex.py'
 ALLOWED_GENRES = ['pop', 'rock', 'jazz', 'electronic', 'hip-hop', 'classical', 'r&b', 'indie', 'turkish']
-# ---------------------------------
 
-# Logging ayarları
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(threadName)s - %(message)s', level=logging.DEBUG)
-# --- Güvenlik Olayları için Özel Logger ---
 waf_logger = logging.getLogger('WAF')
 waf_logger.setLevel(logging.WARNING)
-# Sadece güvenlik olaylarını 'security_events.log' dosyasına yaz
 waf_handler = logging.FileHandler('security_events.log')
 waf_formatter = logging.Formatter('%(asctime)s - %(levelname)s - IP: %(ip)s - Rule: %(rule)s - Path: %(path)s - Data: %(data)s')
 waf_handler.setFormatter(waf_formatter)
 waf_logger.addHandler(waf_handler)
-# ----------------------------------------
 logger = logging.getLogger(__name__)
 
-# --- Flask Uygulamasını Başlat ---
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'varsayilan_guvensiz_anahtar_lutfen_degistirin')
 app.jinja_env.globals['BLUETOOTH_SCAN_DURATION'] = BLUETOOTH_SCAN_DURATION
@@ -62,14 +51,10 @@ csrf = CSRFProtect(app)
 
 @app.context_processor
 def inject_csrf():
-    # Şablonlarda {{ csrf_token() }} olarak kullanılabilir
     return dict(csrf_token=generate_csrf)
 
-# --- WAF Benzeri Ara Katman (Middleware) ---
 @app.before_request
 def waf_middleware():
-    # Güvenlik kuralları (Regex kalıpları)
-    # Bu listeyi ihtiyaçlarınıza göre genişletebilirsiniz.
     rules = [
         {'name': 'SQL_INJECTION_1', 'pattern': r"(\b(union|select|insert|drop|update|delete|from|where)\b.*?--|\' OR \'1\'=\'1\')"},
         {'name': 'SQL_INJECTION_2', 'pattern': r"(\b(exec|execute|char|cast|convert)\b.*?--)"},
@@ -80,12 +65,10 @@ def waf_middleware():
         {'name': 'MALICIOUS_USER_AGENT', 'pattern': r"(sqlmap|nmap|nikto|wpscan|nessus)"}
     ]
 
-    # İncelenecek veri kaynakları
     user_ip = request.remote_addr
-    path_and_query = request.path  # Sadece path'i al, query string'i alma
+    path_and_query = request.path
     user_agent = request.headers.get('User-Agent', '')
     
-    # POST, PUT gibi isteklerin body'sini güvenli bir şekilde al
     body = ''
     if request.method in ['POST', 'PUT', 'PATCH']:
         try:
@@ -93,39 +76,31 @@ def waf_middleware():
         except Exception as e:
             logger.warning(f"WAF: İstek body'si okunamadı. IP: {user_ip}, Hata: {e}")
 
-    # Kontrol edilecek tüm metinleri birleştir
     data_to_check = {
         'path': path_and_query,
         'user_agent': user_agent,
         'body': body
     }
 
-    # Kuralları uygula
     for rule in rules:
         for source, data in data_to_check.items():
             if data and re.search(rule['pattern'], data, re.IGNORECASE):
-                # Kural eşleşti! Saldırı girişimini engelle ve logla.
                 log_extra = {
                     'ip': user_ip,
                     'rule': rule['name'],
                     'path': request.path,
-                    'data': f"Kaynak: {source}, Veri: {data[:200]}" # Verinin ilk 200 karakterini logla
+                    'data': f"Kaynak: {source}, Veri: {data[:200]}"
                 }
                 waf_logger.warning("Potansiyel Saldırı Engellendi!", extra=log_extra)
                 
-                # İsteği 403 Forbidden hatası ile sonlandır
                 return jsonify({
                     'success': False,
                     'error': 'Forbidden',
                     'message': 'İsteğiniz güvenlik politikalarımızı ihlal ettiği için reddedildi.'
                 }), 403
 
-    # Hiçbir kural eşleşmezse, isteğin normal şekilde devam etmesine izin ver
     return None
 
-# --- BİTİŞ: Yeni Konum Mantığı ---
-
-# --- Yardımcı Fonksiyon: Spotify URI İşleme ---
 def _ensure_spotify_uri(item_id, item_type):
     """
     Converts the given ID (or URL) into the correct Spotify URI format or returns None.
@@ -134,17 +109,13 @@ def _ensure_spotify_uri(item_id, item_type):
     if not item_id or not isinstance(item_id, str): return None
     item_id = item_id.strip()
 
-    # Normalize item_type: treat 'song' as 'track'
     actual_item_type = 'track' if item_type in ['song', 'track'] else item_type
     prefix = f"spotify:{actual_item_type}:"
 
-    # If already in the correct URI format, return it
     if item_id.startswith(prefix): return item_id
 
-    # If it's just an ID (no ':'), add the prefix
     if ":" not in item_id: return f"{prefix}{item_id}"
 
-    # If it's a URL, extract the ID
     if actual_item_type == 'track' and '/track/' in item_id:
         match = re.search(r'/track/([a-zA-Z0-9]+)', item_id)
         if match:
@@ -153,40 +124,34 @@ def _ensure_spotify_uri(item_id, item_type):
         match = re.search(r'/artist/([a-zA-Z0-9]+)', item_id)
         if match:
             return f"spotify:artist:{match.group(1)}"
-    # DEĞİŞİKLİK: Çalma listesi URL'sini de URI'ye çevirme eklendi
     elif actual_item_type == 'playlist' and '/playlist/' in item_id:
         match = re.search(r'/playlist/([a-zA-Z0-9]+)', item_id)
         if match:
             return f"spotify:playlist:{match.group(1)}"
 
-    # Unrecognized or invalid format
     logger.warning(f"Tanınmayan veya geçersiz Spotify {actual_item_type} ID/URI formatı: {item_id}")
     return None
 
-# --- Yardımcı Fonksiyon: Komut Çalıştırma (ex.py ve spotifyd için) ---
 def _run_command(command, timeout=30):
     """Helper function to run shell commands and return parsed JSON or error."""
     try:
-        # Komutun 'python3' ile başlayıp başlamadığını kontrol et
         if command[0] == 'python3' and len(command) > 1 and command[1] == EX_SCRIPT_PATH:
              full_command = command
         elif command[0] == 'spotifyd' or command[0] == 'pgrep':
              full_command = command
         else:
-             # Eğer ex.py komutuysa başına python3 ekle
              full_command = ['python3', EX_SCRIPT_PATH] + command
 
         logger.debug(f"Running command: {' '.join(full_command)}")
         result = subprocess.run(full_command, capture_output=True, text=True, check=True, timeout=timeout, encoding='utf-8')
         logger.debug(f"Command stdout (first 500 chars): {result.stdout[:500]}")
         try:
-            # JSON parse etmeyi sadece ex.py çıktısı için yap
             if full_command[0] == 'python3' and full_command[1] == EX_SCRIPT_PATH:
                  if not result.stdout.strip():
                       logger.warning(f"Command {' '.join(full_command)} returned empty output.")
                       return {'success': False, 'error': 'Komut boş çıktı döndürdü.'}
                  return json.loads(result.stdout)
-            else: # spotifyd veya pgrep gibi diğer komutlar için ham çıktıyı döndür
+            else:
                  return {'success': True, 'output': result.stdout.strip()}
         except json.JSONDecodeError as json_err:
              logger.error(f"Failed to parse JSON output from command {' '.join(full_command)}: {json_err}")
@@ -208,7 +173,6 @@ def _run_command(command, timeout=30):
         logger.error(f"Error running command '{' '.join(full_command)}': {e}", exc_info=True)
         return {'success': False, 'error': f"Beklenmedik hata: {e}"}
 
-# --- Spotifyd Yardımcı Fonksiyonları ---
 def get_spotifyd_pid():
     """Çalışan spotifyd süreçlerinin PID'sini bulur."""
     result = _run_command(["pgrep", "spotifyd"], timeout=5)
@@ -223,10 +187,9 @@ def get_spotifyd_pid():
 def restart_spotifyd():
     """Spotifyd servisini ex.py aracılığıyla yeniden başlatır."""
     logger.info("Attempting to restart spotifyd via ex.py...")
-    result = _run_command(['restart_spotifyd']) # ex.py'nin kendi komutunu çağırır
+    result = _run_command(['restart_spotifyd'])
     return result.get('success', False), result.get('message', result.get('error', 'Bilinmeyen hata'))
 
-# --- Ayarlar Yönetimi (Filtreler Eklendi) ---
 def load_settings():
     """Ayarları dosyadan yükler, eksik filtre ayarları için varsayılanları ekler."""
     default_settings = {
@@ -235,26 +198,25 @@ def load_settings():
         'active_device_id': None,
         'genre_filter_mode': 'blacklist',
         'artist_filter_mode': 'blacklist',
-        'track_filter_mode': 'blacklist',  # song_filter_mode yerine track_filter_mode kullan
+        'track_filter_mode': 'blacklist',
         'genre_blacklist': [],
         'genre_whitelist': [],
         'artist_blacklist': [],
         'artist_whitelist': [],
-        'track_blacklist': [],  # song_blacklist yerine track_blacklist kullan
-        'track_whitelist': [],  # song_whitelist yerine track_whitelist kullan
+        'track_blacklist': [],
+        'track_whitelist': [],
         'active_playlist_uri': None
     }
-    settings_to_use = default_settings.copy() # Önce varsayılanı al
+    settings_to_use = default_settings.copy()
     if os.path.exists(SETTINGS_FILE):
         try:
             with open(SETTINGS_FILE, 'r', encoding='utf-8') as f: loaded = json.load(f)
 
-            # Eski 'song_' anahtarlarını 'track_' anahtarlarına dönüştür (varsa)
             if 'song_blacklist' in loaded:
-                if 'track_blacklist' not in loaded: # Sadece track_blacklist yoksa taşı
+                if 'track_blacklist' not in loaded:
                     loaded['track_blacklist'] = loaded.pop('song_blacklist')
                     logger.info("Eski 'song_blacklist' ayarı 'track_blacklist' olarak taşındı.")
-                else: # İkisi de varsa song_ olanı sil
+                else:
                     del loaded['song_blacklist']
                     logger.info("Hem 'song_blacklist' hem 'track_blacklist' bulundu, 'song_blacklist' kaldırıldı.")
             if 'song_whitelist' in loaded:
@@ -273,24 +235,19 @@ def load_settings():
                       logger.info("Hem 'song_filter_mode' hem 'track_filter_mode' bulundu, 'song_filter_mode' kaldırıldı.")
 
 
-            # Yüklenen ayarları varsayılanların üzerine yaz
             settings_to_use.update(loaded)
-            # Eksik anahtarları tekrar kontrol et (update sonrası)
             updated = False
             for key, default_value in default_settings.items():
                 if key not in settings_to_use:
                     logger.info(f"'{key}' ayarı dosyada bulunamadı (update sonrası), varsayılan değer ({default_value}) ekleniyor.")
                     settings_to_use[key] = default_value
                     updated = True
-            # Eski 'active_genres' ayarını kaldır (varsa)
             if 'active_genres' in settings_to_use:
                 del settings_to_use['active_genres']; logger.info("Eski 'active_genres' ayarı kaldırıldı."); updated = True
-            # Listelerin URI formatında olduğundan emin ol (yeni eklenmişse veya eski formattaysa)
             for key in ['artist_blacklist', 'artist_whitelist', 'track_blacklist', 'track_whitelist']:
                 if key in settings_to_use:
                     item_type = 'track' if 'track' in key else 'artist'
                     original_list = settings_to_use[key]
-                    # NoneType hatasını önle
                     if original_list is None:
                         original_list = []
                         settings_to_use[key] = []
@@ -298,7 +255,6 @@ def load_settings():
 
                     converted_list = []
                     changed = False
-                    # Listenin gerçekten liste olduğundan emin ol
                     if not isinstance(original_list, list):
                          logger.warning(f"Ayarlar yüklenirken '{key}' beklenen liste formatında değil: {type(original_list)}. Boş liste ile değiştiriliyor.")
                          original_list = []
@@ -310,23 +266,23 @@ def load_settings():
                         uri = _ensure_spotify_uri(item, item_type)
                         if uri:
                             converted_list.append(uri)
-                            if uri != item: changed = True # Format değiştiyse işaretle
+                            if uri != item: changed = True
                         else:
                             logger.warning(f"Ayarlar yüklenirken '{key}' listesindeki geçersiz öğe atlandı: {item}")
-                            changed = True # Geçersiz öğe kaldırıldıysa işaretle
+                            changed = True
                     if changed:
                         settings_to_use[key] = sorted(list(set(converted_list)))
                         updated = True
 
             if updated:
-                save_settings(settings_to_use) # Eksik anahtar eklendiyse veya format düzeltildiyse kaydet
+                save_settings(settings_to_use)
             logger.info(f"Ayarlar yüklendi: {SETTINGS_FILE}")
         except json.JSONDecodeError as e:
             logger.error(f"Ayar dosyası ({SETTINGS_FILE}) bozuk JSON içeriyor: {e}. Varsayılanlar kullanılacak.")
-            settings_to_use = default_settings.copy() # Hata durumunda varsayılana dön
+            settings_to_use = default_settings.copy()
         except Exception as e:
             logger.error(f"Ayar dosyası ({SETTINGS_FILE}) okunamadı: {e}. Varsayılanlar kullanılacak.")
-            settings_to_use = default_settings.copy() # Hata durumunda varsayılana dön
+            settings_to_use = default_settings.copy()
     else:
         logger.info(f"Ayar dosyası bulunamadı, varsayılanlar oluşturuluyor: {SETTINGS_FILE}")
         settings_to_use = default_settings.copy()
@@ -336,25 +292,20 @@ def load_settings():
 def save_settings(current_settings):
     """Ayarları dosyaya kaydeder. Listeleri temizler, URI formatına çevirir ve sıralar."""
     try:
-        # Ayarları kopyala ki orijinal dict değişmesin (fonksiyon dışından geldiyse)
         settings_to_save = current_settings.copy()
 
-        # Tür listelerini küçük harfe çevir ve sırala
         if 'genre_blacklist' in settings_to_save:
             settings_to_save['genre_blacklist'] = sorted(list(set([g.lower() for g in settings_to_save.get('genre_blacklist', []) if isinstance(g, str) and g.strip()])))
         if 'genre_whitelist' in settings_to_save:
             settings_to_save['genre_whitelist'] = sorted(list(set([g.lower() for g in settings_to_save.get('genre_whitelist', []) if isinstance(g, str) and g.strip()])))
 
-        # Sanatçı ve Şarkı listelerini URI formatına çevir, temizle ve sırala
         for key in ['artist_blacklist', 'artist_whitelist', 'track_blacklist', 'track_whitelist']:
              if key in settings_to_save:
                   cleaned_uris = set()
                   item_type = 'track' if 'track' in key else 'artist'
-                  # Listenin var olduğundan ve None olmadığından emin ol
                   current_list = settings_to_save.get(key, [])
                   if current_list is None: current_list = []
 
-                  # Listenin gerçekten liste olduğundan emin ol
                   if not isinstance(current_list, list):
                       logger.warning(f"Ayarlar kaydedilirken '{key}' beklenen liste formatında değil: {type(current_list)}. Boş liste olarak kaydedilecek.")
                       current_list = []
@@ -373,16 +324,13 @@ def save_settings(current_settings):
     except Exception as e:
         logger.error(f"Ayarları kaydederken hata: {e}", exc_info=True)
 
-# --- Global Değişkenler ---
 spotify_client = None
-song_queue = [] # Şarkı objelerini tutar {'id': URI, 'name': ..., 'artist': ..., 'artist_ids': [URI,...], ...}
-user_requests = {} # IP adresi başına istek sayısını tutar
-# DEĞİŞİKLİK: 'time_profiles' kaldırıldı. Bunun yerine çalma listesinden son çalınanları tutacağız.
+song_queue = []
+user_requests = {}
 recently_played_from_playlist = []
-settings = load_settings() # Ayarları başlangıçta yükle
-auto_advance_enabled = True # Otomatik şarkı geçişi aktif mi?
+settings = load_settings()
+auto_advance_enabled = True
 
-# --- Spotify Token Yönetimi (İyileştirildi) ---
 def load_token():
     """Token'ı dosyadan yükler."""
     if os.path.exists(TOKEN_FILE):
@@ -451,7 +399,7 @@ def get_spotify_client():
             refresh_token_val = token_info.get('refresh_token')
             if not refresh_token_val: logger.error("Refresh token bulunamadı. Token dosyası siliniyor."); os.remove(TOKEN_FILE); return None
             try:
-                auth_manager.token = token_info # Eski token'ı set et
+                auth_manager.token = token_info
                 new_token_info = auth_manager.refresh_access_token(refresh_token_val)
                 if not new_token_info: logger.error("Token yenilenemedi (API'den boş yanıt?). Token dosyası siliniyor."); os.remove(TOKEN_FILE); return None
                 if isinstance(new_token_info, str):
@@ -482,7 +430,6 @@ def get_spotify_client():
     except spotipy.SpotifyOauthError as e: logger.error(f"Spotify OAuth hatası: {e}. API anahtarları veya URI yanlış olabilir."); return None
     except Exception as e: logger.error(f"Spotify istemcisi alınırken genel hata: {e}", exc_info=True); return None
 
-# --- Admin Giriş Decorator'ı ---
 def admin_login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -493,13 +440,7 @@ def admin_login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# DEĞİŞİKLİK: Zaman profili ve öneri fonksiyonları kaldırıldı.
-# def get_current_time_profile(): ... (KALDIRILDI)
-# def update_time_profile(track_uri, spotify): ... (KALDIRILDI)
-# def suggest_song_for_time(spotify): ... (KALDIRILDI)
 
-
-# --- Şarkı Filtreleme Yardımcı Fonksiyonu (Güncellendi) ---
 def check_song_filters(track_uri, spotify_client):
     """
     Verilen track_uri'nin filtrelere uyup uymadığını kontrol eder.
@@ -514,18 +455,15 @@ def check_song_filters(track_uri, spotify_client):
 
     logger.debug(f"Filtre kontrolü başlatılıyor: {track_uri}")
     try:
-        # 1. Şarkı Bilgilerini Al
         song_info = spotify_client.track(track_uri, market='TR')
         if not song_info: return False, f"Şarkı bulunamadı (URI: {track_uri})."
         song_name = song_info.get('name', '?')
         artists = song_info.get('artists', []);
-        # Sanatçı ID'lerini URI formatına çevir
         artist_uris = [_ensure_spotify_uri(a.get('id'), 'artist') for a in artists if a.get('id')]
         artist_names = [a.get('name') for a in artists];
-        primary_artist_uri = artist_uris[0] if artist_uris else None # İlk sanatçının URI'sini al
+        primary_artist_uri = artist_uris[0] if artist_uris else None
         logger.debug(f"Şarkı bilgileri: {song_name}, Sanatçılar: {artist_names} ({artist_uris})")
 
-        # Ayarlardaki filtre listelerini al (URI formatında olmalılar)
         track_blacklist_uris = settings.get('track_blacklist', [])
         track_whitelist_uris = settings.get('track_whitelist', [])
         artist_blacklist_uris = settings.get('artist_blacklist', [])
@@ -533,7 +471,6 @@ def check_song_filters(track_uri, spotify_client):
         genre_blacklist = [g.lower() for g in settings.get('genre_blacklist', [])]
         genre_whitelist = [g.lower() for g in settings.get('genre_whitelist', [])]
 
-        # 2. Şarkı Filtresi Kontrolü
         track_filter_mode = settings.get('track_filter_mode', 'blacklist')
         logger.debug(f"Şarkı filtresi modu: {track_filter_mode}")
         if track_filter_mode == 'whitelist':
@@ -549,11 +486,9 @@ def check_song_filters(track_uri, spotify_client):
                 return False, 'Bu şarkı kara listede.'
         logger.debug(f"Şarkı filtresinden geçti: {track_uri}")
 
-        # 3. Sanatçı Filtresi Kontrolü
         artist_filter_mode = settings.get('artist_filter_mode', 'blacklist')
         logger.debug(f"Sanatçı filtresi modu: {artist_filter_mode}")
         if artist_filter_mode == 'blacklist':
-            # Şarkının sanatçılarından herhangi biri kara listede mi?
             if any(a_uri in artist_blacklist_uris for a_uri in artist_uris if a_uri):
                 blocked_artist_info = next(((a_uri, a_name) for a_uri, a_name in zip(artist_uris, artist_names) if a_uri in artist_blacklist_uris), (None, "?"))
                 logger.debug(f"Filtre takıldı: Sanatçı ({blocked_artist_info[1]} - {blocked_artist_info[0]}) kara listede.")
@@ -562,22 +497,18 @@ def check_song_filters(track_uri, spotify_client):
             if not artist_whitelist_uris:
                 logger.debug("Filtre takıldı: Sanatçı beyaz listesi boş.")
                 return False, 'Sanatçı beyaz listesi aktif ama boş.'
-            # Şarkının sanatçılarından en az biri beyaz listede mi?
             if not any(a_uri in artist_whitelist_uris for a_uri in artist_uris if a_uri):
                 logger.debug(f"Filtre takıldı: Sanatçı ({artist_names}) beyaz listede değil. Beyaz Liste: {artist_whitelist_uris}")
                 return False, 'Bu sanatçı beyaz listede değil.'
         logger.debug("Sanatçı filtresinden geçti.")
 
-        # 4. Tür Filtresi Kontrolü
         genre_filter_mode = settings.get('genre_filter_mode', 'blacklist')
         logger.debug(f"Tür filtresi modu: {genre_filter_mode}")
-        # Sadece listelerden biri doluysa ve mod aktifse tür kontrolü yap
         run_genre_check = (genre_filter_mode == 'blacklist' and genre_blacklist) or \
                           (genre_filter_mode == 'whitelist' and genre_whitelist)
 
         if run_genre_check:
             artist_genres = []
-            # Birincil sanatçının türlerini almayı dene
             if primary_artist_uri:
                 try:
                     artist_info = spotify_client.artist(primary_artist_uri)
@@ -588,16 +519,14 @@ def check_song_filters(track_uri, spotify_client):
             if not artist_genres: logger.warning(f"Tür filtresi uygulanamıyor (türler yok): {song_name}. İzin veriliyor.")
             else:
                 if genre_filter_mode == 'blacklist':
-                    # Sanatçının türlerinden herhangi biri kara listede mi?
                     if any(genre in genre_blacklist for genre in artist_genres):
                         blocked_genre = next((genre for genre in artist_genres if genre in genre_blacklist), "?")
                         logger.debug(f"Filtre takıldı: Tür ({blocked_genre}) kara listede.")
                         return False, f"'{blocked_genre}' türü kara listede."
                 elif genre_filter_mode == 'whitelist':
-                    if not genre_whitelist: # Beyaz liste boşsa kontrol etmeye gerek yok, zaten izin verilmez
+                    if not genre_whitelist:
                          logger.debug("Filtre takıldı: Tür beyaz listesi boş.")
                          return False, 'Tür beyaz listesi aktif ama boş.'
-                    # Sanatçının türlerinden en az biri beyaz listede mi?
                     if not any(genre in genre_whitelist for genre in artist_genres):
                         logger.debug(f"Filtre takıldı: Tür ({artist_genres}) beyaz listede değil. Beyaz Liste: {genre_whitelist}")
                         return False, 'Bu tür beyaz listede değil.'
@@ -605,7 +534,6 @@ def check_song_filters(track_uri, spotify_client):
         else:
              logger.debug("Tür filtresi uygulanmadı (mod blacklist/whitelist değil veya ilgili liste boş).")
 
-        # 5. Tüm Filtrelerden Geçti
         logger.debug(f"Filtre kontrolü tamamlandı: İzin verildi - {track_uri}")
         return True, "Filtrelerden geçti."
 
@@ -616,8 +544,6 @@ def check_song_filters(track_uri, spotify_client):
     except Exception as e:
         logger.error(f"Filtre kontrolü sırasında hata (URI={track_uri}): {e}", exc_info=True)
         return False, "Filtre kontrolü sırasında bilinmeyen hata."
-
-# --- Flask Rotaları ---
 
 @app.route('/')
 def index():
@@ -634,7 +560,7 @@ def admin():
 @limiter.limit("3 per minute")
 def admin_login():
     """Admin giriş isteğini işler."""
-    ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "mekan123") # Güvenli bir yerden alınmalı
+    ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "mekan123")
     if request.form.get('password') == ADMIN_PASSWORD:
         session['admin_logged_in'] = True; logger.info("Admin girişi başarılı")
         flash("Yönetim paneline hoş geldiniz!", "success"); return redirect(url_for('admin_panel'))
@@ -650,7 +576,6 @@ def logout():
     logger.info("Admin çıkışı yapıldı."); flash("Başarıyla çıkış yaptınız.", "info")
     return redirect(url_for('admin'))
 
-# app.py dosyasında, mevcut admin_panel fonksiyonunu bununla değiştirin.
 @app.route('/admin-panel')
 @admin_login_required
 def admin_panel():
@@ -663,14 +588,12 @@ def admin_panel():
     currently_playing_info = None
     filtered_queue = []
     
-    # DEĞİŞİKLİK: Sayfalama için değişkenler
     user_playlists = []
     paginated_playlists = []
     page = request.args.get('page', 1, type=int)
-    per_page = 8  # Sayfa başına gösterilecek çalma listesi sayısı
+    per_page = 8
     total_pages = 1
 
-    # Ses cihazı bilgilerini al
     audio_sinks_result = _run_command(['list_sinks'])
     audio_sinks = audio_sinks_result.get('sinks', []) if audio_sinks_result.get('success') else []
     default_audio_sink_name = audio_sinks_result.get('default_sink_name') if audio_sinks_result.get('success') else None
@@ -681,10 +604,8 @@ def admin_panel():
         spotify_authenticated = True
         session['spotify_authenticated'] = True
         try:
-            # Spotify cihazlarını al
             result = spotify.devices(); spotify_devices = result.get('devices', [])
             
-            # Kullanıcının tüm çalma listelerini al
             try:
                 all_playlists = []
                 results = spotify.current_user_playlists(limit=50)
@@ -695,7 +616,6 @@ def admin_panel():
                 user_playlists = all_playlists
                 logger.info(f"{len(user_playlists)} adet çalma listesi bulundu.")
 
-                # Sayfalama mantığını uygula
                 total_items = len(user_playlists)
                 total_pages = (total_items + per_page - 1) // per_page
                 start = (page - 1) * per_page
@@ -706,11 +626,9 @@ def admin_panel():
                 logger.warning(f"Kullanıcının çalma listeleri alınamadı: {pl_err}")
                 flash("Spotify çalma listeleriniz alınırken bir hata oluştu.", "warning")
 
-            # Kullanıcı bilgisini al
             try: user = spotify.current_user(); spotify_user = user.get('display_name', '?'); session['spotify_user'] = spotify_user
             except Exception as user_err: logger.warning(f"Spotify kullanıcı bilgisi alınamadı: {user_err}"); session.pop('spotify_user', None)
             
-            # Şu an çalan şarkı bilgisini al
             try:
                 playback = spotify.current_playback(additional_types='track,episode', market='TR')
                 if playback and playback.get('item'):
@@ -729,7 +647,6 @@ def admin_panel():
                          }
             except Exception as pb_err: logger.warning(f"Çalma durumu alınamadı: {pb_err}")
 
-            # Kuyruğu filtrele
             for song in song_queue:
                 song_uri = song.get('id')
                 if song_uri and song_uri.startswith('spotify:track:'):
@@ -765,1188 +682,9 @@ def admin_panel():
         audio_sinks=audio_sinks, default_audio_sink_name=default_audio_sink_name,
         currently_playing_info=currently_playing_info,
         auto_advance_enabled=auto_advance_enabled,
-        # DEĞİŞİKLİK: Sayfalanmış listeyi ve sayfa bilgilerini şablona gönder
         paginated_playlists=paginated_playlists,
         page=page,
         total_pages=total_pages,
         active_playlist_uri=settings.get('active_playlist_uri'),
         csrf_token=generate_csrf()
     )
-
-# --- Çalma Kontrol Rotaları ---
-@app.route('/player/pause')
-@limiter.limit("10 per minute")
-@admin_login_required
-def player_pause():
-    global auto_advance_enabled; spotify = get_spotify_client()
-    active_spotify_connect_device_id = settings.get('active_device_id')
-    if not spotify: flash('Spotify bağlantısı yok!', 'danger'); return redirect(url_for('admin_panel'))
-    try:
-        logger.info(f"Admin: Duraklatma isteği (Cihaz: {active_spotify_connect_device_id or '?'}).")
-        spotify.pause_playback(device_id=active_spotify_connect_device_id)
-        auto_advance_enabled = False; logger.info("Admin: Otomatik geçiş DURAKLATILDI.")
-        flash('Müzik duraklatıldı ve otomatik geçiş kapatıldı.', 'success')
-    except spotipy.SpotifyException as e:
-        logger.error(f"Spotify duraklatma hatası: {e}")
-        if e.http_status == 401 or e.http_status == 403: flash('Spotify yetkilendirme hatası.', 'danger');
-        global spotify_client; spotify_client = None;
-        if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
-        elif e.http_status == 404: flash(f'Duraklatma hatası: Cihaz bulunamadı ({e.msg})', 'warning')
-        elif e.reason == 'NO_ACTIVE_DEVICE': flash('Aktif Spotify cihazı bulunamadı!', 'warning')
-        else: flash(f'Spotify duraklatma hatası: {e.msg}', 'danger')
-    except Exception as e: logger.error(f"Duraklatma sırasında genel hata: {e}", exc_info=True); flash('Müzik duraklatılırken bir hata oluştu.', 'danger')
-    return redirect(url_for('admin_panel'))
-
-@app.route('/player/resume')
-@admin_login_required
-@limiter.limit("10 per minute")
-def player_resume():
-    global auto_advance_enabled; spotify = get_spotify_client()
-    active_spotify_connect_device_id = settings.get('active_device_id')
-    if not spotify: flash('Spotify bağlantısı yok!', 'danger'); return redirect(url_for('admin_panel'))
-    try:
-        logger.info(f"Admin: Sürdürme isteği (Cihaz: {active_spotify_connect_device_id or '?'}).")
-        spotify.start_playback(device_id=active_spotify_connect_device_id)
-        auto_advance_enabled = True; logger.info("Admin: Otomatik geçiş SÜRDÜRÜLDÜ.")
-        flash('Müzik sürdürüldü ve otomatik sıraya geçiş açıldı.', 'success')
-    except spotipy.SpotifyException as e:
-        logger.error(f"Spotify sürdürme hatası: {e}")
-        if e.http_status == 401 or e.http_status == 403: flash('Spotify yetkilendirme hatası.', 'danger');
-        global spotify_client; spotify_client = None;
-        if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
-        elif e.http_status == 404: flash(f'Sürdürme hatası: Cihaz bulunamadı ({e.msg})', 'warning')
-        elif e.reason == 'NO_ACTIVE_DEVICE': flash('Aktif Spotify cihazı bulunamadı!', 'warning')
-        elif e.reason == 'PREMIUM_REQUIRED': flash('Bu işlem için Spotify Premium gerekli.', 'warning')
-        else: flash(f'Spotify sürdürme hatası: {e.msg}', 'danger')
-    except Exception as e: logger.error(f"Sürdürme sırasında genel hata: {e}", exc_info=True); flash('Müzik sürdürülürken bir hata oluştu.', 'danger')
-    return redirect(url_for('admin_panel'))
-
-@app.route('/player/next', methods=['POST']) # 'POST' metodu daha güvenli ve idempotent olmayan işlemler için daha uygundur
-@admin_login_required
-@limiter.limit("5 per minute")
-def player_next():
-    global auto_advance_enabled # Otomatik geçişi de kontrol etmek isteyebilirsiniz
-    spotify = get_spotify_client()
-    active_spotify_connect_device_id = settings.get('active_device_id')
-
-    if not spotify:
-        flash('Spotify bağlantısı yok!', 'danger')
-        return redirect(url_for('admin_panel'))
-
-    try:
-        logger.info(f"Admin: Sonraki şarkıya geçiş isteği (Cihaz: {active_spotify_connect_device_id or '?'}).")
-        spotify.next_track(device_id=active_spotify_connect_device_id)
-        # Eğer otomatik geçiş kapalıysa, bir sonraki şarkıya geçildiğinde otomatik geçişi tekrar açmak mantıklı olabilir.
-        # Ya da sadece manuel geçiş yapmak isteyip otomatik geçiş ayarını değiştirmeyebilirsiniz.
-        # auto_advance_enabled = True # Bu satırı isterseniz ekleyebilirsiniz
-        logger.info("Admin: Sonraki şarkıya geçildi.")
-        flash('Sonraki şarkıya geçildi.', 'success')
-    except spotipy.SpotifyException as e:
-        logger.error(f"Spotify sonraki şarkı hatası: {e}")
-        if e.http_status == 401 or e.http_status == 403:
-            flash('Spotify yetkilendirme hatası. Lütfen tekrar yetkilendirin.', 'danger')
-            global spotify_client
-            spotify_client = None
-            if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
-        elif e.http_status == 404:
-            flash(f'Sonraki şarkıya geçiş hatası: Cihaz bulunamadı veya oynatma aktif değil ({e.msg})', 'warning')
-        elif e.reason == 'NO_ACTIVE_DEVICE':
-            flash('Aktif Spotify cihazı bulunamadı!', 'warning')
-        else:
-            flash(f'Spotify sonraki şarkı hatası: {e.msg}', 'danger')
-    except Exception as e:
-        logger.error(f"Sonraki şarkıya geçiş sırasında genel hata: {e}", exc_info=True)
-        flash('Sonraki şarkıya geçilirken bir hata oluştu.', 'danger')
-
-    return redirect(url_for('admin_panel'))
-# --- Diğer Rotalar ---
-@app.route('/refresh-devices')
-@admin_login_required
-@limiter.limit("5 per minute")
-def refresh_devices():
-    spotify = get_spotify_client()
-    if not spotify: flash('Spotify bağlantısı yok!', 'danger'); return redirect(url_for('admin_panel'))
-    try:
-        result = spotify.devices(); devices = result.get('devices', [])
-        logger.info(f"Spotify Connect Cihazları yenilendi: {len(devices)} cihaz")
-        active_spotify_connect_device = settings.get('active_device_id')
-        if active_spotify_connect_device and not any(d['id'] == active_spotify_connect_device for d in devices):
-            logger.warning(f"Aktif Spotify Connect cihazı ({active_spotify_connect_device}) listede yok. Ayar temizleniyor.")
-            settings['active_device_id'] = None; save_settings(settings)
-            flash('Ayarlardaki aktif Spotify Connect cihazı artık mevcut değil.', 'warning')
-        flash('Spotify Connect cihaz listesi yenilendi.', 'info')
-    except Exception as e:
-        logger.error(f"Spotify Connect Cihazlarını yenilerken hata: {e}")
-        flash('Spotify Connect cihaz listesi yenilenirken bir hata oluştu.', 'danger')
-        if isinstance(e, spotipy.SpotifyException) and (e.http_status == 401 or e.http_status == 403):
-            global spotify_client; spotify_client = None;
-        if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
-    return redirect(url_for('admin_panel'))
-
-@app.route('/update-settings', methods=['POST'])
-@admin_login_required
-def update_settings():
-    global settings
-    try:
-        logger.info("Ayarlar güncelleniyor...")
-        current_settings = load_settings() # En güncel ayarları al
-        current_settings['max_queue_length'] = int(request.form.get('max_queue_length', 20))
-        current_settings['max_user_requests'] = int(request.form.get('max_user_requests', 5))
-        
-        if 'active_spotify_connect_device_id' in request.form:
-             new_spotify_device_id = request.form.get('active_spotify_connect_device_id')
-             current_settings['active_device_id'] = new_spotify_device_id if new_spotify_device_id else None
-             logger.info(f"Aktif Spotify Connect cihazı ayarlandı: {current_settings['active_device_id']}")
-        
-        # DEĞİŞİKLİK: Aktif çalma listesi ayarını kaydet
-        if 'active_playlist_uri' in request.form:
-            new_playlist_uri = request.form.get('active_playlist_uri')
-            current_settings['active_playlist_uri'] = new_playlist_uri if new_playlist_uri else None
-            logger.info(f"Aktif çalma listesi ayarlandı: {current_settings['active_playlist_uri']}")
-
-        current_settings['genre_filter_mode'] = request.form.get('genre_filter_mode', 'blacklist')
-        current_settings['artist_filter_mode'] = request.form.get('artist_filter_mode', 'blacklist')
-        # Şarkı filtresi modu için 'track_filter_mode' kullan
-        current_settings['track_filter_mode'] = request.form.get('song_filter_mode', 'blacklist') # Formdan 'song_' gelir ama 'track_' olarak kaydet
-        
-        save_settings(current_settings);
-        settings = current_settings # Global ayarları güncelle
-        logger.info(f"Ayarlar güncellendi: {settings}")
-        flash("Ayarlar başarıyla güncellendi.", "success")
-    except ValueError:
-        logger.error("Ayarları güncellerken geçersiz sayısal değer.")
-        flash("Geçersiz sayısal değer girildi!", "danger")
-    except Exception as e:
-        logger.error(f"Ayarları güncellerken hata: {e}", exc_info=True)
-        flash("Ayarlar güncellenirken bir hata oluştu.", "danger")
-    return redirect(url_for('admin_panel'))
-
-@app.route('/spotify-auth')
-@admin_login_required
-def spotify_auth():
-    if os.path.exists(TOKEN_FILE): logger.warning("Mevcut token varken yeniden yetkilendirme.")
-    try: auth_manager = get_spotify_auth(); auth_url = auth_manager.get_authorize_url(); logger.info("Spotify yetkilendirme URL'sine yönlendiriliyor."); return redirect(auth_url)
-    except ValueError as e: logger.error(f"Spotify yetkilendirme hatası: {e}"); flash(f"Spotify Yetkilendirme Hatası: {e}", "danger"); return redirect(url_for('admin_panel'))
-    except Exception as e: logger.error(f"Spotify yetkilendirme URL'si alınırken hata: {e}", exc_info=True); flash("Spotify yetkilendirme başlatılamadı.", "danger"); return redirect(url_for('admin_panel'))
-
-@app.route('/callback')
-def callback():
-    try: auth_manager = get_spotify_auth()
-    except ValueError as e: logger.error(f"Callback hatası: {e}"); return f"Callback Hatası: {e}", 500
-    if 'error' in request.args: error = request.args.get('error'); logger.error(f"Spotify yetkilendirme hatası (callback): {error}"); return f"Spotify Yetkilendirme Hatası: {error}", 400
-    if 'code' not in request.args: logger.error("Callback'te 'code' yok."); return "Geçersiz callback isteği.", 400
-    code = request.args.get('code')
-    try:
-        token_info = auth_manager.get_access_token(code, check_cache=False)
-        if not token_info: logger.error("Spotify'dan token alınamadı."); return "Token alınamadı.", 500
-        if isinstance(token_info, str): logger.error("get_access_token sadece string döndürdü, refresh token alınamadı."); return "Token bilgisi eksik alındı.", 500
-        elif not isinstance(token_info, dict): logger.error(f"get_access_token beklenmedik formatta veri döndürdü: {type(token_info)}"); return "Token bilgisi alınırken hata oluştu.", 500
-        if save_token(token_info):
-            global spotify_client; spotify_client = None # Yeni token ile istemciyi yeniden oluşturmaya zorla
-            logger.info("Spotify yetkilendirme başarılı, token kaydedildi.")
-            if session.get('admin_logged_in'): flash("Spotify yetkilendirmesi başarıyla tamamlandı!", "success"); return redirect(url_for('admin_panel'))
-            else: return redirect(url_for('index')) # Admin değilse ana sayfaya yönlendir
-        else: logger.error("Alınan token dosyaya kaydedilemedi."); return "Token kaydedilirken bir hata oluştu.", 500
-    except spotipy.SpotifyOauthError as e: logger.error(f"Spotify token alırken OAuth hatası: {e}", exc_info=True); return f"Token alınırken yetkilendirme hatası: {e}", 500
-    except Exception as e: logger.error(f"Spotify token alırken/kaydederken hata: {e}", exc_info=True); return "Token işlenirken bir hata oluştu.", 500
-
-# GÜNCELLENDİ: /search endpoint'i filtrelemeyi uygular ve URI kullanır
-@app.route('/search', methods=['POST'])
-@limiter.limit("5 per minute")
-def search():
-    """Spotify'da arama yapar ve sonuçları aktif filtrelere göre süzer."""
-    global settings
-    search_query = request.form.get('search_query')
-    search_type = request.form.get('type', 'track') # Arama tipi (track veya artist)
-    logger.info(f"Arama isteği: '{search_query}' (Tip: {search_type})")
-    if not search_query: return jsonify({'error': 'Arama terimi girin.'}), 400
-
-    spotify = get_spotify_client()
-    if not spotify: logger.error("Arama: Spotify istemcisi yok."); return jsonify({'error': 'Spotify bağlantısı yok.'}), 503
-
-    try:
-        items = []
-        if search_type == 'artist':
-             results = spotify.search(q=search_query, type='artist', limit=20, market='TR')
-             items = results.get('artists', {}).get('items', [])
-             logger.info(f"Spotify'dan {len(items)} sanatçı bulundu.")
-        elif search_type == 'track':
-             results = spotify.search(q=search_query, type='track', limit=20, market='TR')
-             items = results.get('tracks', {}).get('items', [])
-             logger.info(f"Spotify'dan {len(items)} şarkı bulundu.")
-        else:
-             return jsonify({'error': 'Geçersiz arama tipi.'}), 400
-
-        filtered_items = []
-        for item in items:
-            if not item: continue
-            item_uri = item.get('uri') # URI'yi al
-            if not item_uri: continue
-
-            is_allowed = True; reason = ""
-            if search_type == 'track':
-                # Şarkı filtresini URI ile kontrol et
-                is_allowed, reason = check_song_filters(item_uri, spotify)
-            elif search_type == 'artist':
-                # Sanatçı filtresini URI ile kontrol et
-                artist_uri_to_check = item_uri
-                artist_name = item.get('name')
-                artist_filter_mode = settings.get('artist_filter_mode', 'blacklist')
-                artist_blacklist_uris = settings.get('artist_blacklist', [])
-                artist_whitelist_uris = settings.get('artist_whitelist', [])
-
-                if artist_filter_mode == 'blacklist':
-                    if artist_uri_to_check in artist_blacklist_uris: is_allowed = False; reason = f"'{artist_name}' kara listede."
-                elif artist_filter_mode == 'whitelist':
-                    if not artist_whitelist_uris: is_allowed = False; reason = "Sanatçı beyaz listesi boş."
-                    elif artist_uri_to_check not in artist_whitelist_uris: is_allowed = False; reason = f"'{artist_name}' beyaz listede değil."
-
-                # Sanatçı filtresinden geçtiyse tür filtresini uygula
-                if is_allowed:
-                    genre_filter_mode = settings.get('genre_filter_mode', 'blacklist')
-                    genre_blacklist = [g.lower() for g in settings.get('genre_blacklist', [])]
-                    genre_whitelist = [g.lower() for g in settings.get('genre_whitelist', [])]
-                    run_genre_check = (genre_filter_mode == 'blacklist' and genre_blacklist) or \
-                                      (genre_filter_mode == 'whitelist' and genre_whitelist)
-                    if run_genre_check:
-                        artist_genres = [g.lower() for g in item.get('genres', [])]
-                        if not artist_genres: logger.warning(f"Tür filtresi uygulanamıyor (türler yok): {artist_name}")
-                        else:
-                            if genre_filter_mode == 'blacklist':
-                                if any(genre in genre_blacklist for genre in artist_genres):
-                                    blocked_genre = next((genre for genre in artist_genres if genre in genre_blacklist), "?"); is_allowed = False; reason = f"'{blocked_genre}' türü kara listede."
-                            elif genre_filter_mode == 'whitelist':
-                                if not genre_whitelist: is_allowed = False; reason = "Tür beyaz listesi boş."
-                                elif not any(genre in genre_whitelist for genre in artist_genres): is_allowed = False; reason = "Bu tür beyaz listede değil."
-
-            # Eğer öğe filtrelere takılmadıysa listeye ekle
-            if is_allowed: filtered_items.append(item)
-            else: logger.debug(f"Arama sonucu filtrelendi ({reason}): {item.get('name')} ({item_uri})")
-
-        # Sonuçları frontend için formatla (ID ve diğer bilgilerle)
-        search_results = []
-        limit = 10 # Frontend'de gösterilecek max sonuç sayısı
-        for item in filtered_items[:limit]:
-            item_id = item.get('id') # Frontend genellikle ID bekler
-            item_uri = item.get('uri')
-            if not item_id or not item_uri: continue
-
-            result_data = {'id': item_id, 'uri': item_uri, 'name': item.get('name')} # Temel bilgiler
-            images = item.get('images', [])
-            if not images and 'album' in item: images = item.get('album', {}).get('images', []) # Şarkılar için albüm kapağı
-            result_data['image'] = images[-1].get('url') if images else None
-
-            if search_type == 'artist':
-                 result_data['genres'] = item.get('genres', [])
-            elif search_type == 'track':
-                 artists = item.get('artists', []);
-                 result_data['artist'] = ', '.join([a.get('name') for a in artists])
-                 result_data['artist_ids'] = [_ensure_spotify_uri(a.get('id'), 'artist') for a in artists if a.get('id')] # Sanatçı URI'leri
-                 result_data['album'] = item.get('album', {}).get('name')
-
-            search_results.append(result_data)
-
-        logger.info(f"Filtrelenmiş {search_type} arama sonucu: {len(search_results)} öğe.")
-        return jsonify({'results': search_results})
-
-    except Exception as e:
-        logger.error(f"Spotify araması hatası ({search_type}): {e}", exc_info=True)
-        return jsonify({'error': 'Arama sırasında sorun oluştu.'}), 500
-
-
-@app.route('/add-song', methods=['POST'])
-@admin_login_required
-@limiter.limit("5 per minute")
-def add_song():
-    """Admin tarafından şarkı ekleme (Filtreleri atlar)."""
-    global song_queue
-    song_input = request.form.get('song_id', '').strip()
-    if not song_input: flash("Şarkı ID/URL girin.", "warning"); return redirect(url_for('admin_panel'))
-
-    # Girdiyi URI formatına çevir
-    track_uri = _ensure_spotify_uri(song_input, 'track')
-    if not track_uri: flash("Geçersiz Spotify Şarkı ID veya URL formatı.", "danger"); return redirect(url_for('admin_panel'))
-
-    if len(song_queue) >= settings.get('max_queue_length', 20): flash("Kuyruk dolu!", "warning"); return redirect(url_for('admin_panel'))
-
-    spotify = get_spotify_client()
-    if not spotify: flash("Spotify yetkilendirmesi gerekli.", "warning"); return redirect(url_for('spotify_auth'))
-
-    try:
-        song_info = spotify.track(track_uri, market='TR')
-        if not song_info: flash(f"Şarkı bulunamadı (URI: {track_uri}).", "danger"); return redirect(url_for('admin_panel'))
-
-        artists = song_info.get('artists');
-        artist_uris = [_ensure_spotify_uri(a.get('id'), 'artist') for a in artists if a.get('id')]
-        
-        images = song_info.get('album', {}).get('images', [])
-        image_url = images[0].get('url') if images else None
-
-        song_queue.append({
-            'id': track_uri,
-            'name': song_info.get('name', '?'),
-            'artist': ', '.join([a.get('name') for a in artists]),
-            'artist_ids': artist_uris,
-            'image_url': image_url,
-            'added_by': 'admin',
-            'added_at': time.time()
-        })
-        logger.info(f"Şarkı eklendi (Admin - Filtresiz): {track_uri} - {song_info.get('name')}")
-        flash(f"'{song_info.get('name')}' eklendi.", "success");
-        # DEĞİŞİKLİK: update_time_profile çağrısı kaldırıldı.
-        # update_time_profile(track_uri, spotify)
-    except spotipy.SpotifyException as e:
-        logger.error(f"Admin eklerken Spotify hatası (URI={track_uri}): {e}")
-        if e.http_status == 401 or e.http_status == 403: flash("Spotify yetkilendirme hatası.", "danger"); return redirect(url_for('spotify_auth'))
-        elif e.http_status == 400: flash(f"Geçersiz Spotify URI: {track_uri}", "danger")
-        else: flash(f"Spotify hatası: {e.msg}", "danger")
-    except Exception as e: logger.error(f"Admin eklerken genel hata (URI={track_uri}): {e}", exc_info=True); flash("Şarkı eklenirken hata.", "danger")
-    return redirect(url_for('admin_panel'))
-
-# --- Queue Rotaları ---
-@app.route('/add-to-queue', methods=['POST'])
-def add_to_queue():
-    """Kullanıcı tarafından şarkı ekleme (Filtreler uygulanır)."""
-    global settings, song_queue, user_requests
-    if not request.is_json: return jsonify({'error': 'Geçersiz format.'}), 400
-    data = request.get_json();
-    track_identifier = data.get('track_id')
-    logger.info(f"Kuyruğa ekleme isteği: identifier={track_identifier}")
-    if not track_identifier: return jsonify({'error': 'Eksik ID.'}), 400
-
-    track_uri = _ensure_spotify_uri(track_identifier, 'track')
-    if not track_uri:
-        logger.error(f"Kullanıcı ekleme: Geçersiz ID formatı: {track_identifier}")
-        return jsonify({'error': 'Geçersiz şarkı ID formatı.'}), 400
-
-    if len(song_queue) >= settings.get('max_queue_length', 20): logger.warning("Kuyruk dolu."); return jsonify({'error': 'Kuyruk dolu.'}), 429
-
-    user_ip = request.remote_addr; max_requests = settings.get('max_user_requests', 5)
-    if user_requests.get(user_ip, 0) >= max_requests: logger.warning(f"Limit aşıldı: {user_ip}"); return jsonify({'error': f'İstek limitiniz ({max_requests}) doldu.'}), 429
-
-    spotify = get_spotify_client()
-    if not spotify: logger.error("Ekleme: Spotify istemcisi yok."); return jsonify({'error': 'Spotify bağlantısı yok.'}), 503
-
-    is_allowed, reason = check_song_filters(track_uri, spotify)
-    if not is_allowed:
-        logger.info(f"Reddedildi ({reason}): {track_uri}")
-        return jsonify({'error': reason}), 403
-
-    try:
-        song_info = spotify.track(track_uri, market='TR')
-        if not song_info: return jsonify({'error': 'Şarkı bilgisi alınamadı (tekrar kontrol).'}), 500
-        song_name = song_info.get('name', '?')
-        artists = song_info.get('artists', []);
-        artist_uris = [_ensure_spotify_uri(a.get('id'), 'artist') for a in artists if a.get('id')]
-        artist_names = [a.get('name') for a in artists]
-
-        images = song_info.get('album', {}).get('images', [])
-        image_url = images[0].get('url') if images else None
-
-        logger.info(f"Filtrelerden geçti: {song_name} ({track_uri})")
-        # DEĞİŞİKLİK: update_time_profile çağrısı kaldırıldı.
-        # update_time_profile(track_uri, spotify)
-
-        song_queue.append({
-            'id': track_uri,
-            'name': song_name,
-            'artist': ', '.join(artist_names),
-            'artist_ids': artist_uris,
-            'image_url': image_url,
-            'added_by': user_ip,
-            'added_at': time.time()
-        })
-        user_requests[user_ip] = user_requests.get(user_ip, 0) + 1
-        logger.info(f"Şarkı eklendi (Kullanıcı: {user_ip}): {song_name}. Kuyruk: {len(song_queue)}")
-        return jsonify({'success': True, 'message': f"'{song_name}' kuyruğa eklendi!"})
-
-    except spotipy.SpotifyException as e:
-        logger.error(f"Kullanıcı eklerken Spotify hatası (URI={track_uri}): {e}")
-        if e.http_status == 401 or e.http_status == 403: return jsonify({'error': 'Spotify yetkilendirme sorunu.'}), 503
-        elif e.http_status == 400: return jsonify({'error': f"Geçersiz Spotify URI: {track_uri}"}), 400
-        else: return jsonify({'error': f"Spotify hatası: {e.msg}"}), 500
-    except Exception as e:
-        logger.error(f"Kuyruğa ekleme hatası (URI: {track_uri}): {e}", exc_info=True)
-        return jsonify({'error': 'Şarkı eklenirken bilinmeyen bir sorun oluştu.'}), 500
-
-@app.route('/remove-song/<path:song_id_str>', methods=['POST'])
-@admin_login_required
-def remove_song(song_id_str):
-    """Admin tarafından kuyruktan şarkı kaldırma."""
-    global song_queue;
-    song_uri_to_remove = _ensure_spotify_uri(song_id_str, 'track')
-    if not song_uri_to_remove:
-        flash(f"Geçersiz şarkı ID formatı: {song_id_str}", "danger")
-        return redirect(url_for('admin_panel'))
-
-    logger.debug(f"Kuyruktan kaldırılacak URI: {song_uri_to_remove}")
-    original_length = len(song_queue)
-    song_queue = [song for song in song_queue if song.get('id') != song_uri_to_remove]
-    if len(song_queue) < original_length:
-        logger.info(f"Şarkı kaldırıldı (Admin): URI={song_uri_to_remove}")
-        flash("Şarkı kuyruktan kaldırıldı.", "success")
-    else:
-        logger.warning(f"Kaldırılacak şarkı bulunamadı: URI={song_uri_to_remove}")
-        flash("Şarkı kuyrukta bulunamadı.", "warning")
-    return redirect(url_for('admin_panel'))
-
-@app.route('/clear-queue')
-@admin_login_required
-def clear_queue():
-    global song_queue, user_requests; song_queue = []; user_requests = {}
-    logger.info("Kuyruk temizlendi (Admin)."); flash("Kuyruk temizlendi.", "success")
-    return redirect(url_for('admin_panel'))
-
-@app.route('/queue')
-def view_queue():
-    """Kullanıcılar için şarkı kuyruğunu gösterir (Filtrelenmiş)."""
-    global spotify_client, song_queue
-    currently_playing_info = None
-    recently_played_info = None
-    filtered_queue = []
-    spotify = get_spotify_client()
-
-    if spotify:
-        try:
-            recent_tracks = spotify.current_user_recently_played(limit=1)
-            if recent_tracks and recent_tracks.get('items'):
-                item = recent_tracks['items'][0]['track']
-                track_uri = item.get('uri')
-                if track_uri and track_uri.startswith('spotify:track:'):
-                    is_allowed, _ = check_song_filters(track_uri, spotify)
-                    if is_allowed:
-                        track_name = item.get('name')
-                        artists = item.get('artists', [])
-                        artist_name = ', '.join([a.get('name') for a in artists])
-                        images = item.get('album', {}).get('images', [])
-                        image_url = images[-1].get('url') if images else None # En küçük resmi al
-                        artist_uris = [_ensure_spotify_uri(a.get('id'), 'artist') for a in artists if a.get('id')]
-                        recently_played_info = {
-                            'id': track_uri, 'name': track_name, 'artist': artist_name,
-                            'artist_ids': artist_uris, 'image_url': image_url
-                        }
-                        logger.debug(f"Son Çalınan (Kuyruk): {track_name}")
-        except Exception as e:
-            logger.error(f"Son çalınan şarkı alınırken hata: {e}", exc_info=True)
-
-        try:
-            playback = spotify.current_playback(additional_types='track,episode', market='TR')
-            if playback and playback.get('item'):
-                item = playback['item']; is_playing = playback.get('is_playing', False)
-                track_uri = item.get('uri')
-                if track_uri and track_uri.startswith('spotify:track:'):
-                    is_allowed, _ = check_song_filters(track_uri, spotify)
-                    if is_allowed:
-                        track_name = item.get('name'); artists = item.get('artists', [])
-                        artist_name = ', '.join([a.get('name') for a in artists]); images = item.get('album', {}).get('images', [])
-                        image_url = images[-1].get('url') if images else None
-                        artist_uris = [_ensure_spotify_uri(a.get('id'), 'artist') for a in artists if a.get('id')]
-                        currently_playing_info = {
-                            'id': track_uri, 'name': track_name, 'artist': artist_name,
-                            'artist_ids': artist_uris, 'image_url': image_url, 'is_playing': is_playing
-                        }
-                        logger.debug(f"Şu An Çalıyor (Kuyruk): {track_name} - {'Çalıyor' if is_playing else 'Duraklatıldı'}")
-                    else:
-                         logger.debug(f"Kuyruk Sayfası: Çalan şarkı filtrelendi: {item.get('name')} ({track_uri})")
-        except spotipy.SpotifyException as e:
-            logger.warning(f"Çalma durumu hatası (Kuyruk): {e}")
-            if e.http_status == 401 or e.http_status == 403: spotify_client = None;
-            if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
-        except Exception as e: logger.error(f"Çalma durumu genel hatası (Kuyruk): {e}", exc_info=True)
-
-        for song in song_queue:
-            song_uri = song.get('id')
-            if song_uri and song_uri.startswith('spotify:track:'):
-                is_allowed, _ = check_song_filters(song_uri, spotify)
-                if is_allowed:
-                    if 'artist_ids' in song and isinstance(song['artist_ids'], list):
-                         song['artist_ids'] = [_ensure_spotify_uri(aid, 'artist') for aid in song['artist_ids']]
-                    filtered_queue.append(song)
-                else:
-                     logger.debug(f"Kuyruk Sayfası: Kuyruktaki şarkı filtrelendi: {song.get('name')} ({song_uri})")
-            else:
-                 logger.warning(f"Kuyruk Sayfası: Kuyrukta geçersiz şarkı formatı: {song}")
-
-    return render_template(
-        'queue.html', 
-        queue=filtered_queue, 
-        currently_playing_info=currently_playing_info,
-        recently_played_info=recently_played_info
-    )
-
-
-@app.route('/api/queue')
-def api_get_queue():
-    """API: Filtrelenmemiş ham kuyruk verisini döndürür (Admin veya debug için)."""
-    global song_queue
-    return jsonify({'queue': song_queue, 'queue_length': len(song_queue), 'max_length': settings.get('max_queue_length', 20)})
-
-# --- Ses/Bluetooth API Rotaları (ex.py'yi Çağıran) ---
-@app.route('/api/audio-sinks')
-@admin_login_required
-def api_audio_sinks():
-    logger.info("API: Ses sink listesi isteniyor (ex.py aracılığıyla)...")
-    result = _run_command(['list_sinks'])
-    status_code = 200 if result.get('success') else 500
-    return jsonify(result), status_code
-
-@app.route('/api/set-audio-sink', methods=['POST'])
-@admin_login_required
-def api_set_audio_sink():
-    if not request.is_json: return jsonify({'success': False, 'error': 'JSON isteği gerekli'}), 400
-    data = request.get_json()
-    sink_identifier = data.get('sink_identifier')
-    if sink_identifier is None: return jsonify({'success': False, 'error': 'Sink tanımlayıcısı gerekli'}), 400
-    logger.info(f"API: Varsayılan ses sink ayarlama: {sink_identifier} (ex.py)...")
-    result = _run_command(['set_audio_sink', '--identifier', str(sink_identifier)])
-    status_code = 200 if result.get('success') else 500
-    final_result = result.copy()
-    if result.get('success'):
-         sinks_list_res = _run_command(['list_sinks'])
-         bt_list_res = _run_command(['discover_bluetooth', '--duration', '0']) 
-         if sinks_list_res.get('success'):
-              final_result['sinks'] = sinks_list_res.get('sinks', [])
-              final_result['default_sink_name'] = sinks_list_res.get('default_sink_name')
-         if bt_list_res.get('success'):
-              all_bt = bt_list_res.get('devices', [])
-              final_result['bluetooth_devices'] = [d for d in all_bt if d.get('paired')]
-         else: final_result['bluetooth_devices'] = []
-    return jsonify(final_result), status_code
-
-@app.route('/api/discover-bluetooth')
-@admin_login_required
-def api_discover_bluetooth():
-    scan_duration = request.args.get('duration', BLUETOOTH_SCAN_DURATION, type=int)
-    logger.info(f"API: Bluetooth keşfi (Süre: {scan_duration}s, ex.py)...")
-    result = _run_command(['discover_bluetooth', '--duration', str(scan_duration)])
-    status_code = 200 if result.get('success') else 500
-    return jsonify(result), status_code
-
-@app.route('/api/pair-bluetooth', methods=['POST'])
-@admin_login_required
-def api_pair_bluetooth():
-    if not request.is_json: return jsonify({'success': False, 'error': 'JSON isteği gerekli'}), 400
-    data = request.get_json()
-    device_path = data.get('device_path')
-    if not device_path: return jsonify({'success': False, 'error': 'device_path gerekli'}), 400
-
-    logger.info(f"API: Bluetooth eşleştirme/bağlama: {device_path} (ex.py)...")
-    result = _run_command(['pair_bluetooth', '--path', device_path])
-    status_code = 200 if result.get('success') else 500
-    final_result = result.copy()
-    if result.get('success'):
-         sinks_list_res = _run_command(['list_sinks'])
-         bt_list_res = _run_command(['discover_bluetooth', '--duration', '0'])
-         if sinks_list_res.get('success'):
-              final_result['sinks'] = sinks_list_res.get('sinks', [])
-              final_result['default_sink_name'] = sinks_list_res.get('default_sink_name')
-         if bt_list_res.get('success'):
-              all_bt = bt_list_res.get('devices', [])
-              final_result['bluetooth_devices'] = [d for d in all_bt if d.get('paired')]
-         else: final_result['bluetooth_devices'] = []
-    return jsonify(final_result), status_code
-
-@app.route('/api/disconnect-bluetooth', methods=['POST'])
-@admin_login_required
-def api_disconnect_bluetooth():
-    if not request.is_json: return jsonify({'success': False, 'error': 'JSON isteği gerekli'}), 400
-    data = request.get_json()
-    device_path = data.get('device_path')
-    if not device_path: return jsonify({'success': False, 'error': 'device_path gerekli'}), 400
-
-    logger.info(f"API: Bluetooth bağlantısını kesme: {device_path} (ex.py)...")
-    result = _run_command(['disconnect_bluetooth', '--path', device_path])
-    status_code = 200 if result.get('success') else 500
-    final_result = result.copy()
-    if result.get('success'):
-         sinks_list_res = _run_command(['list_sinks'])
-         bt_list_res = _run_command(['discover_bluetooth', '--duration', '0'])
-         if sinks_list_res.get('success'):
-              final_result['sinks'] = sinks_list_res.get('sinks', [])
-              final_result['default_sink_name'] = sinks_list_res.get('default_sink_name')
-         if bt_list_res.get('success'):
-              all_bt = bt_list_res.get('devices', [])
-              final_result['bluetooth_devices'] = [d for d in all_bt if d.get('paired')]
-         else: final_result['bluetooth_devices'] = []
-    return jsonify(final_result), status_code
-
-@app.route('/api/switch-to-alsa', methods=['POST'])
-@admin_login_required
-def api_switch_to_alsa():
-    logger.info("API: ALSA ses çıkışına geçiş isteniyor (ex.py aracılığıyla)...")
-    result = _run_command(['switch_to_alsa'])
-    status_code = 200 if result.get('success') else 500
-    final_result = result.copy()
-    if result.get('success'):
-         sinks_list_res = _run_command(['list_sinks'])
-         bt_list_res = _run_command(['discover_bluetooth', '--duration', '0'])
-         if sinks_list_res.get('success'):
-              final_result['sinks'] = sinks_list_res.get('sinks', [])
-              final_result['default_sink_name'] = sinks_list_res.get('default_sink_name')
-         if bt_list_res.get('success'):
-              all_bt = bt_list_res.get('devices', [])
-              final_result['bluetooth_devices'] = [d for d in all_bt if d.get('paired')]
-         else: final_result['bluetooth_devices'] = []
-    return jsonify(final_result), status_code
-
-@app.route('/api/restart-spotifyd', methods=['POST'])
-@admin_login_required
-def api_restart_spotifyd():
-    logger.info("API: Spotifyd yeniden başlatma isteği alındı (ex.py aracılığıyla)...")
-    success, message = restart_spotifyd()
-    status_code = 200 if success else 500
-    response_data = {'success': success}
-    if success: response_data['message'] = message
-    else: response_data['error'] = message
-    sinks_list_res = _run_command(['list_sinks'])
-    bt_list_res = _run_command(['discover_bluetooth', '--duration', '0'])
-    if sinks_list_res.get('success'):
-        response_data['sinks'] = sinks_list_res.get('sinks', [])
-        response_data['default_sink_name'] = sinks_list_res.get('default_sink_name')
-    if bt_list_res.get('success'):
-        all_bt = bt_list_res.get('devices', [])
-        response_data['bluetooth_devices'] = [d for d in all_bt if d.get('paired')]
-    else: response_data['bluetooth_devices'] = []
-    return jsonify(response_data), status_code
-
-# --- Filtre Yönetimi API Rotaları (Güncellendi) ---
-
-@app.route('/api/block', methods=['POST'])
-@admin_login_required
-def api_block_item():
-    """Hızlı engelleme: Sanatçı veya şarkıyı doğrudan kara listeye ekler."""
-    global settings
-    if not request.is_json: return jsonify({'success': False, 'error': 'JSON isteği gerekli'}), 400
-    data = request.get_json(); item_type = data.get('type'); identifier = data.get('identifier')
-    actual_item_type = 'track' if item_type in ['song', 'track'] else 'artist'
-    if actual_item_type not in ['artist', 'track']: return jsonify({'success': False, 'error': 'Geçersiz öğe tipi (artist veya track).'}), 400
-
-    item_uri = _ensure_spotify_uri(identifier, actual_item_type)
-    if not item_uri: return jsonify({'success': False, 'error': f"Geçersiz Spotify {actual_item_type} ID/URI."}), 400
-
-    list_key = f"{actual_item_type}_blacklist" # Kara listeye ekle
-    try:
-        current_settings = load_settings(); target_list = current_settings.get(list_key, [])
-        if item_uri not in target_list:
-            target_list.append(item_uri); current_settings[list_key] = target_list; save_settings(current_settings)
-            settings = current_settings; # Global ayarları güncelle
-            logger.info(f"Hızlı Engelleme: '{item_uri}' ({actual_item_type}) kara listeye eklendi.")
-            return jsonify({'success': True, 'message': f"'{identifier}' kara listeye eklendi."})
-        else:
-            logger.info(f"Hızlı Engelleme: '{item_uri}' ({actual_item_type}) zaten kara listede.")
-            return jsonify({'success': True, 'message': f"'{identifier}' zaten kara listede."})
-    except Exception as e: logger.error(f"Hızlı engelleme hatası ({actual_item_type}, {item_uri}): {e}", exc_info=True); return jsonify({'success': False, 'error': f"Öğe kara listeye eklenirken hata: {e}"}), 500
-
-@app.route('/api/add-to-list', methods=['POST'])
-@admin_login_required
-def api_add_to_list():
-    """Belirtilen filtre listesine öğe ekler."""
-    global settings
-    if not request.is_json: return jsonify({'success': False, 'error': 'JSON isteği gerekli'}), 400
-    data = request.get_json(); filter_type = data.get('filter_type'); list_type = data.get('list_type'); item = data.get('item')
-
-    actual_filter_type = 'track' if filter_type == 'song' else filter_type
-    if actual_filter_type not in ['genre', 'artist', 'track']: return jsonify({'success': False, 'error': 'Geçersiz filtre tipi.'}), 400
-    if list_type not in ['whitelist', 'blacklist']: return jsonify({'success': False, 'error': 'Geçersiz liste tipi.'}), 400
-    if not item or not isinstance(item, str) or not item.strip(): return jsonify({'success': False, 'error': 'Eklenecek öğe boş olamaz.'}), 400
-
-    item = item.strip(); processed_item = None
-    if actual_filter_type == 'genre':
-        processed_item = item.lower() # Türler küçük harf
-    elif actual_filter_type in ['artist', 'track']:
-        processed_item = _ensure_spotify_uri(item, actual_filter_type) # URI'ye çevir
-        if not processed_item: return jsonify({'success': False, 'error': f"Geçersiz Spotify {actual_filter_type} ID/URI formatı."}), 400
-
-    if not processed_item: return jsonify({'success': False, 'error': 'İşlenecek öğe oluşturulamadı.'}), 500
-
-    list_key = f"{actual_filter_type}_{list_type}" # Doğru anahtarı kullan (örn: track_whitelist)
-    try:
-        current_settings = load_settings(); target_list = current_settings.get(list_key, [])
-        if target_list is None: target_list = []
-
-        if processed_item not in target_list:
-            target_list.append(processed_item); current_settings[list_key] = target_list; save_settings(current_settings)
-            settings = current_settings; # Global ayarları güncelle
-            logger.info(f"Listeye Ekleme: '{processed_item}' -> '{list_key}'")
-            return jsonify({'success': True, 'message': f"'{item}' listeye eklendi.", 'updated_list': settings[list_key]})
-        else:
-            logger.info(f"Listeye Ekleme: '{processed_item}' zaten '{list_key}' listesinde.")
-            return jsonify({'success': True, 'message': f"'{item}' zaten listede.", 'updated_list': target_list})
-    except Exception as e: logger.error(f"Listeye ekleme hatası ({list_key}, {item}): {e}", exc_info=True); return jsonify({'success': False, 'error': f"Listeye öğe eklenirken hata: {e}"}), 500
-
-@app.route('/api/remove-from-list', methods=['POST'])
-@admin_login_required
-def api_remove_from_list():
-    """Belirtilen filtre listesinden öğe çıkarır."""
-    global settings
-    if not request.is_json: return jsonify({'success': False, 'error': 'JSON isteği gerekli'}), 400
-    data = request.get_json(); filter_type = data.get('filter_type'); list_type = data.get('list_type'); item = data.get('item')
-
-    actual_filter_type = 'track' if filter_type == 'song' else filter_type
-    if actual_filter_type not in ['genre', 'artist', 'track']: return jsonify({'success': False, 'error': 'Geçersiz filtre tipi.'}), 400
-    if list_type not in ['whitelist', 'blacklist']: return jsonify({'success': False, 'error': 'Geçersiz liste tipi.'}), 400
-    if not item or not isinstance(item, str) or not item.strip(): return jsonify({'success': False, 'error': 'Çıkarılacak öğe boş olamaz.'}), 400
-
-    item = item.strip(); item_to_remove = None
-    if actual_filter_type == 'genre':
-        item_to_remove = item.lower()
-    elif actual_filter_type in ['artist', 'track']:
-        item_to_remove = _ensure_spotify_uri(item, actual_filter_type) # URI'ye çevir
-
-    if not item_to_remove: return jsonify({'success': False, 'error': f"Geçersiz öğe formatı: {item}"}), 400
-
-    list_key = f"{actual_filter_type}_{list_type}" # Doğru anahtarı kullan
-    try:
-        current_settings = load_settings(); target_list = current_settings.get(list_key, [])
-        if target_list is None: target_list = []
-
-        if item_to_remove in target_list:
-            target_list.remove(item_to_remove); current_settings[list_key] = target_list; save_settings(current_settings)
-            settings = current_settings; # Global ayarları güncelle
-            logger.info(f"Listeden Çıkarma: '{item_to_remove}' <- '{list_key}'")
-            return jsonify({'success': True, 'message': f"'{item}' listeden çıkarıldı.", 'updated_list': target_list})
-        else:
-            logger.info(f"Listeden Çıkarma: '{item_to_remove}' '{list_key}' listesinde bulunamadı.")
-            return jsonify({'success': False, 'error': f"'{item}' listede bulunamadı.", 'updated_list': target_list}), 404
-    except Exception as e: logger.error(f"Listeden çıkarma hatası ({list_key}, {item}): {e}", exc_info=True); return jsonify({'success': False, 'error': f"Listeden öğe çıkarılırken hata: {e}"}), 500
-
-@app.route('/api/spotify/genres')
-@admin_login_required
-def api_spotify_genres():
-    """
-    Spotify API'den /recommendations/available-genre-seeds endpoint'i ile
-    tüm türleri alır ve 'q' query parametresine göre filtreler.
-    """
-    spotify = get_spotify_client()              
-    if not spotify:
-        return jsonify({'success': False, 'error': 'Spotify bağlantısı yok.'}), 503
-    
-    try:
-        # get_access_token() yerine doğrudan client'in auth bilgisini kullanabiliriz
-        # spotipy objesi zaten token'ı içerir
-        auth_header = spotify._auth_headers()
-        
-        response = requests.get(
-            "https://api.spotify.com/v1/recommendations/available-genre-seeds",
-            headers=auth_header
-        )
-        response.raise_for_status()
-        data = response.json()
-        genres = data.get('genres', [])
-        
-        query = request.args.get('q', '').lower()
-        if query:
-            filtered_genres = [g for g in genres if query in g.lower()]
-        else:
-            filtered_genres = genres
-        
-        return jsonify({'success': True, 'genres': filtered_genres})
-    
-    except requests.HTTPError as http_err:
-        logger.error(f"Spotify API HTTP hatası: {http_err}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Spotify API çağrısı başarısız oldu.'}), 502
-    except Exception as e:
-        logger.error(f"Spotify türleri alınırken hata: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Spotify türleri alınamadı.'}), 500
-
-# Spotify ID'lerinden Detayları Getirme API'si (URI Kullanır)
-@app.route('/api/spotify/details', methods=['POST'])
-@admin_login_required
-def api_spotify_details():
-    """Verilen Spotify URI listesi için isimleri ve detayları getirir."""
-    if not request.is_json: return jsonify({'success': False, 'error': 'JSON isteği gerekli'}), 400
-    data = request.get_json()
-    uris = data.get('ids', []) # Frontend 'ids' gönderse de bunlar URI olmalı
-    id_type = data.get('type') # 'artist' veya 'track'
-
-    logger.debug(f"Received /api/spotify/details request: type={id_type}, uris_count={len(uris)}")
-    if uris: logger.debug(f"First few URIs: {uris[:5]}")
-
-    if not uris or not isinstance(uris, list): return jsonify({'success': False, 'error': 'Geçerli URI listesi gerekli.'}), 400
-    actual_id_type = 'track' if id_type == 'song' else id_type
-    if actual_id_type not in ['artist', 'track']: return jsonify({'success': False, 'error': 'Geçersiz tip (artist veya track).'}), 400
-
-    spotify = get_spotify_client()
-    if not spotify: return jsonify({'success': False, 'error': 'Spotify bağlantısı yok.'}), 503
-
-    details_map = {}
-    batch_size = 50
-    valid_uris = [_ensure_spotify_uri(uri, actual_id_type) for uri in uris]
-    valid_uris = [uri for uri in valid_uris if uri] 
-
-    if not valid_uris:
-        logger.warning("No valid Spotify URIs found in the request.")
-        return jsonify({'success': True, 'details': {}})
-
-    logger.debug(f"Fetching details for {len(valid_uris)} valid URIs (type: {actual_id_type})...")
-
-    try:
-        for i in range(0, len(valid_uris), batch_size):
-            batch_uris = valid_uris[i:i + batch_size]
-            if not batch_uris: continue
-            logger.debug(f"Processing batch {i//batch_size + 1} with URIs: {batch_uris}")
-
-            results = None; items = []
-            try:
-                if actual_id_type == 'artist':
-                    results = spotify.artists(batch_uris)
-                    items = results.get('artists', []) if results else []
-                elif actual_id_type == 'track':
-                    results = spotify.tracks(batch_uris, market='TR')
-                    items = results.get('tracks', []) if results else []
-            except spotipy.SpotifyException as e:
-                logger.error(f"Spotify API error during batch fetch (type: {actual_id_type}, batch: {batch_uris}): {e}")
-                if e.http_status == 400: logger.error("Likely caused by invalid URIs in the batch."); continue
-                else: raise e
-
-            if items:
-                for item in items:
-                    if item:
-                        item_uri = item.get('uri') # URI'yi kullan
-                        item_name = item.get('name')
-                        if item_uri and item_name:
-                            if actual_id_type == 'track':
-                                artists = item.get('artists', [])
-                                artist_name = ', '.join([a.get('name') for a in artists]) if artists else ''
-                                details_map[item_uri] = f"{item_name} - {artist_name}"
-                            else: # Artist
-                                details_map[item_uri] = item_name
-                        else: logger.warning(f"Missing URI or Name in item: {item}")
-                    else: logger.warning("Received a null item in the batch response.")
-        logger.debug(f"Successfully fetched details for {len(details_map)} items.")
-        return jsonify({'success': True, 'details': details_map})
-
-    except spotipy.SpotifyException as e:
-         logger.error(f"Spotify API error processing details (type: {actual_id_type}): {e}", exc_info=True)
-         return jsonify({'success': False, 'error': f'Spotify API hatası: {e.msg}'}), e.http_status or 500
-    except Exception as e:
-        logger.error(f"Error fetching Spotify details (type: {actual_id_type}): {e}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Spotify detayları alınırken bilinmeyen bir hata oluştu.'}), 500
-        
-@app.route('/debug-genre-filter/<artist_id>')
-def debug_genre_filter(artist_id):
-    spotify = get_spotify_client()
-    if not spotify:
-        return jsonify({'error': 'Spotify bağlantısı yok'}), 503
-
-    uri = _ensure_spotify_uri(artist_id, 'artist')
-    if not uri:
-        return jsonify({'error': 'Geçersiz sanatçı ID'}), 400
-
-    try:
-        artist_info = spotify.artist(uri)
-        genres = [g.lower() for g in artist_info.get('genres', [])]
-
-        return jsonify({
-            'artist_name': artist_info.get('name'),
-            'genres': genres,
-            'filter_mode': settings.get('genre_filter_mode'),
-            'genre_blacklist': settings.get('genre_blacklist'),
-            'genre_whitelist': settings.get('genre_whitelist'),
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-# --- Arka Plan Şarkı Çalma İş Parçacığı ---
-def background_queue_player():
-    # DEĞİŞİKLİK: 'time_profiles' yerine 'recently_played_from_playlist' kullanılıyor.
-    global spotify_client, song_queue, user_requests, settings, auto_advance_enabled, recently_played_from_playlist
-    logger.info("Arka plan şarkı çalma/çalma listesi görevi başlatılıyor...")
-    last_played_song_uri = None
-    
-    while True:
-        try:
-            spotify = get_spotify_client()
-            active_spotify_connect_device_id = settings.get('active_device_id')
-            
-            if not spotify or not active_spotify_connect_device_id:
-                time.sleep(10)
-                continue
-
-            current_playback = None
-            try:
-                current_playback = spotify.current_playback(additional_types='track,episode', market='TR')
-            except spotipy.SpotifyException as pb_err:
-                logger.error(f"Arka plan: Playback kontrol hatası: {pb_err}")
-                if pb_err.http_status in [401, 403]:
-                    spotify_client = None
-                    if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
-                time.sleep(10)
-                continue
-            except Exception as pb_err:
-                logger.error(f"Arka plan: Playback kontrol genel hata: {pb_err}", exc_info=True)
-                time.sleep(15)
-                continue
-
-            is_playing_now = current_playback.get('is_playing', False) if current_playback else False
-            
-            # Müzik çalmıyorsa ve otomatik ilerleme aktifse
-            if auto_advance_enabled and not is_playing_now:
-                # 1. Önce kuyruğu kontrol et
-                if song_queue:
-                    next_song = song_queue.pop(0)
-                    next_song_uri = next_song.get('id')
-                    
-                    if not next_song_uri or not next_song_uri.startswith('spotify:track:'):
-                        logger.warning(f"Arka plan: Kuyrukta geçersiz URI formatı: {next_song_uri}")
-                        continue
-                    
-                    if next_song_uri == last_played_song_uri:
-                        logger.debug(f"Şarkı ({next_song.get('name')}) zaten son çalınandı, atlanıyor.")
-                        last_played_song_uri = None
-                        time.sleep(1)
-                        continue
-
-                    logger.info(f"Arka plan: Kuyruktan çalınıyor: {next_song.get('name')} ({next_song_uri})")
-                    try:
-                        spotify.start_playback(device_id=active_spotify_connect_device_id, uris=[next_song_uri])
-                        logger.info(f"===> Şarkı çalmaya başlandı: {next_song.get('name')}")
-                        last_played_song_uri = next_song_uri
-                        user_ip = next_song.get('added_by')
-                        if user_ip and user_ip not in ['admin', 'auto-playlist']:
-                            user_requests[user_ip] = max(0, user_requests.get(user_ip, 0) - 1)
-                            logger.debug(f"Kullanıcı {user_ip} limiti azaltıldı: {user_requests.get(user_ip)}")
-                        time.sleep(1)
-                        continue
-                    except spotipy.SpotifyException as start_err:
-                        logger.error(f"Arka plan: Şarkı başlatılamadı ({next_song_uri}): {start_err}")
-                        song_queue.insert(0, next_song)
-                        if start_err.http_status in [401, 403]:
-                             spotify_client = None
-                             if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
-                        elif start_err.http_status == 404 and 'device_id' in str(start_err).lower():
-                             logger.warning(f"Aktif Spotify Connect cihazı ({active_spotify_connect_device_id}) bulunamadı.");
-                             settings['active_device_id'] = None; save_settings(settings)
-                        time.sleep(5)
-                        continue
-                
-                # 2. Kuyruk boşsa, seçili çalma listesinden rastgele şarkı ekle
-                else:
-                    playlist_uri = settings.get('active_playlist_uri')
-                    if not playlist_uri:
-                        logger.debug("Arka plan: Kuyruk boş ve aktif çalma listesi seçilmemiş. Bekleniyor.")
-                        time.sleep(15)
-                        continue
-                    
-                    logger.info(f"Arka plan: Kuyruk boş. '{playlist_uri}' listesinden rastgele şarkı seçilecek.")
-                    try:
-                        # Çalma listesindeki tüm şarkıları al (sadece URI'ler yeterli)
-                        results = spotify.playlist_items(playlist_uri, fields='items.track.uri,items.track.name', market='TR')
-                        playlist_tracks = [item['track'] for item in results.get('items', []) if item and item.get('track') and item['track'].get('uri')]
-                        
-                        if not playlist_tracks:
-                            logger.warning(f"Çalma listesi '{playlist_uri}' boş veya şarkılar alınamadı.")
-                            time.sleep(30)
-                            continue
-
-                        # Son çalınan şarkıları listeden çıkar
-                        potential_tracks = [track for track in playlist_tracks if track['uri'] not in recently_played_from_playlist]
-                        
-                        # Eğer tüm şarkılar son zamanlarda çalındıysa, listeyi sıfırla
-                        if not potential_tracks:
-                            logger.info("Çalma listesindeki tüm şarkılar yakın zamanda çalındı. Liste sıfırlanıyor.")
-                            recently_played_from_playlist.clear()
-                            potential_tracks = playlist_tracks
-
-                        # Rastgele bir şarkı seç
-                        chosen_track = random.choice(potential_tracks)
-                        chosen_track_uri = chosen_track.get('uri')
-                        chosen_track_name = chosen_track.get('name', '?')
-                        
-                        logger.info(f"Rastgele seçilen şarkı: {chosen_track_name} ({chosen_track_uri})")
-
-                        # Seçilen şarkının filtrelere uygunluğunu kontrol et
-                        is_allowed, reason = check_song_filters(chosen_track_uri, spotify)
-                        if not is_allowed:
-                            logger.info(f"Seçilen şarkı '{chosen_track_name}' filtrelere takıldı: {reason}. Başka bir şarkı denenecek.")
-                            # Bu şarkıyı geçici olarak son çalınanlara ekle ki tekrar seçilmesin
-                            recently_played_from_playlist.append(chosen_track_uri)
-                            time.sleep(1)
-                            continue
-
-                        # Filtreden geçtiyse, tam şarkı bilgisini alıp kuyruğa ekle
-                        song_info = spotify.track(chosen_track_uri, market='TR')
-                        artists = song_info.get('artists', []);
-                        artist_uris = [_ensure_spotify_uri(a.get('id'), 'artist') for a in artists if a.get('id')]
-                        images = song_info.get('album', {}).get('images', [])
-                        image_url = images[0].get('url') if images else None
-
-                        song_queue.append({
-                            'id': chosen_track_uri,
-                            'name': song_info.get('name', '?'),
-                            'artist': ', '.join([a.get('name') for a in artists]),
-                            'artist_ids': artist_uris,
-                            'image_url': image_url,
-                            'added_by': 'auto-playlist',
-                            'added_at': time.time()
-                        })
-                        
-                        # Bu şarkıyı son çalınanlar listesine ekle
-                        recently_played_from_playlist.append(chosen_track_uri)
-                        # Listenin çok büyümesini engelle (çalma listesinin yarısı kadar veya max 50)
-                        max_recent = min(50, len(playlist_tracks) // 2)
-                        if len(recently_played_from_playlist) > max_recent:
-                            recently_played_from_playlist.pop(0)
-
-                        logger.info(f"'{chosen_track_name}' çalınmak üzere kuyruğa eklendi.")
-
-                    except Exception as e:
-                        logger.error(f"Arka plan: Çalma listesinden şarkı alınırken hata: {e}", exc_info=True)
-                        time.sleep(20)
-
-            # Müzik zaten çalıyorsa
-            elif is_playing_now:
-                 current_track_uri_now = current_playback['item'].get('uri') if current_playback.get('item') else None
-                 if current_track_uri_now and current_track_uri_now != last_played_song_uri:
-                     logger.debug(f"Arka plan: Yeni şarkı algılandı: {current_track_uri_now}")
-                     last_played_song_uri = current_track_uri_now
-                 time.sleep(5)
-            # Otomatik ilerleme kapalıysa ve müzik çalmıyorsa
-            else:
-                 time.sleep(10)
-
-        except Exception as loop_err:
-            logger.error(f"Arka plan döngü hatası: {loop_err}", exc_info=True)
-            time.sleep(15)
-
-
-@app.route('/api/set-active-playlist', methods=['POST'])
-@admin_login_required
-def api_set_active_playlist():
-    """API: Tıklanan çalma listesini anında aktif olarak ayarlar."""
-    global settings
-    if not request.is_json:
-        return jsonify({'success': False, 'error': 'JSON isteği gerekli'}), 400
-    
-    data = request.get_json()
-    playlist_uri = data.get('playlist_uri') # URI boş bir string olabilir (seçim kaldırıldığında)
-
-    logger.info(f"API: Aktif çalma listesi güncelleniyor -> {playlist_uri or 'Hiçbiri'}")
-
-    try:
-        current_settings = load_settings()
-        current_settings['active_playlist_uri'] = playlist_uri if playlist_uri else None
-        save_settings(current_settings)
-        settings = current_settings  # Global ayarları da anında güncelle
-        
-        message = "Otomatik çalma listesi güncellendi." if playlist_uri else "Otomatik çalma listesi seçimi kaldırıldı."
-        return jsonify({'success': True, 'message': message})
-    except Exception as e:
-        logger.error(f"Aktif çalma listesi ayarlanırken hata: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Ayar kaydedilirken bir hata oluştu.'}), 500
-# --- Uygulama Başlangıcı ---
-def check_token_on_startup():
-    logger.info("Başlangıçta Spotify token kontrol ediliyor...")
-    client = get_spotify_client()
-    if client: logger.info("Başlangıçta Spotify istemcisi başarıyla alındı.")
-    else: logger.warning("Başlangıçta Spotify istemcisi alınamadı. Yetkilendirme gerekli olabilir.")
-
-def start_queue_player():
-    thread = threading.Thread(target=background_queue_player, name="QueuePlayerThread", daemon=True)
-    thread.start()
-    logger.info("Arka plan şarkı çalma/çalma listesi görevi başlatıldı.")
-
-@app.route('/api/check-port', methods=['POST'])
-@admin_login_required
-def check_port():
-    """SSH portunun (22) durumunu kontrol eder."""
-    try:
-        data = request.get_json()
-        port = data.get('port')
-        
-        if port != 22:
-            return jsonify({'success': False, 'error': 'Sadece SSH portu (22) kontrol edilebilir'})
-            
-        import socket
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(1)
-        result = sock.connect_ex(('127.0.0.1', port))
-        sock.close()
-        
-        return jsonify({
-            'success': True,
-            'is_open': result == 0
-        })
-    except Exception as e:
-        logger.error(f"SSH port kontrolü sırasında hata: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)})
-
-@app.route('/api/open-port', methods=['POST'])
-@admin_login_required
-def open_port():
-    """SSH portunu (22) açar."""
-    try:
-        data = request.get_json()
-        port = data.get('port')
-        
-        if port != 22:
-            return jsonify({'success': False, 'error': 'Sadece SSH portu (22) açılabilir'})
-            
-        # Windows için netsh komutu ile port açma
-        command = f'netsh advfirewall firewall add rule name="Open SSH Port 22" dir=in action=allow protocol=TCP localport=22'
-        result = _run_command(command.split())
-        
-        if result.get('success'):
-            return jsonify({'success': True, 'message': 'SSH portu (22) başarıyla açıldı'})
-        else:
-            return jsonify({'success': False, 'error': result.get('error', 'SSH portu açılamadı')})
-    except Exception as e:
-        logger.error(f"SSH port açma sırasında hata: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)})
-
-@app.route('/api/close-port', methods=['POST'])
-@admin_login_required
-def close_port():
-    """SSH portunu (22) kapatır."""
-    try:
-        data = request.get_json()
-        port = data.get('port')
-        
-        if port != 22:
-            return jsonify({'success': False, 'error': 'Sadece SSH portu (22) kapatılabilir'})
-            
-        # Windows için netsh komutu ile port kapatma
-        command = f'netsh advfirewall firewall delete rule name="Open SSH Port 22"'
-        result = _run_command(command.split())
-        
-        if result.get('success'):
-            return jsonify({'success': True, 'message': 'SSH portu (22) başarıyla kapatıldı'})
-        else:
-            return jsonify({'success': False, 'error': result.get('error', 'SSH portu kapatılamadı')})
-    except Exception as e:
-        logger.error(f"SSH port kapatma sırasında hata: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)})
-
-if __name__ == '__main__':
-    logger.info("=================================================")
-    logger.info("       Mekan Müzik Uygulaması Başlatılıyor       ")
-    logger.info("=================================================")
-    logger.info(f"Ayarlar Yüklendi: {SETTINGS_FILE}")
-    logger.info(f"Harici betik yolu: {EX_SCRIPT_PATH}")
-
-    if not SPOTIFY_CLIENT_ID or SPOTIFY_CLIENT_ID.startswith('SENİN_') or \
-       not SPOTIFY_CLIENT_SECRET or SPOTIFY_CLIENT_SECRET.startswith('SENİN_') or \
-       not SPOTIFY_REDIRECT_URI or SPOTIFY_REDIRECT_URI.startswith('http://YOUR_'):
-        logger.error("LÜTFEN app.py dosyasında Spotify API bilgilerinizi ayarlayın!")
-    else:
-         logger.info("Spotify API bilgileri app.py içinde tanımlı görünüyor.")
-         logger.info(f"Kullanılacak Redirect URI: {SPOTIFY_REDIRECT_URI}")
-         logger.info("!!! BU URI'nin Spotify Developer Dashboard'da kayıtlı olduğundan emin olun !!!")
-
-    if not os.path.exists(EX_SCRIPT_PATH):
-        logger.error(f"Kritik Hata: Harici betik '{EX_SCRIPT_PATH}' bulunamadı!")
-    else:
-         logger.info(f"'{EX_SCRIPT_PATH}' betiği test ediliyor...")
-         test_result = _run_command(['list_sinks'], timeout=10)
-         if test_result.get('success'): logger.info(f"'{EX_SCRIPT_PATH}' betiği başarıyla çalıştı.")
-         else: logger.warning(f"'{EX_SCRIPT_PATH}' betiği hatası: {test_result.get('error')}.")
-
-    check_token_on_startup()
-    start_queue_player()
-
-    port = int(os.environ.get('PORT', 8080))
-    logger.info(f"Uygulama arayüzüne http://<SUNUCU_IP>:{port} adresinden erişilebilir.")
-    logger.info(f"Admin paneline http://<SUNUCU_IP>:{port}/admin adresinden erişilebilir.")
-
-    app.run(host='0.0.0.0', port=8080 )
