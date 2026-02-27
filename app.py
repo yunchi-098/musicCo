@@ -1,36 +1,45 @@
 import os
+import sys
+import platform
 import json
 import threading
 import time
 import logging
-import re # Spotify URL parse ve URI kontrolü için
-import subprocess # ex.py ve spotifyd için
+import re
+import io
+import base64
 from functools import wraps
 import requests
-# flash mesajları için import
-from flask import Flask, request, render_template, redirect, url_for, session, jsonify, flash
+from flask import Flask, request, render_template, redirect, url_for, session, jsonify, flash, send_file
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
-import traceback # Hata ayıklama için eklendi
-import random # DEĞİŞİKLİK: Rastgele şarkı seçimi için eklendi
+import traceback
+import random
 import socket
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect
 from flask_wtf.csrf import generate_csrf
+import qrcode
+from flask_socketio import SocketIO, emit
+
+# Abonelik sistemi modülleri
+from models import init_db, Venue, SubscriptionPlan, VenueSpotifyData, VenueQueue, VenueSettings, SongRequestAnalytics
  
+# --- Platform Tespiti ---
+IS_WINDOWS = platform.system() == 'Windows'
+PYTHON_CMD = 'python' if IS_WINDOWS else 'python3'
+
 # --- Yapılandırılabilir Ayarlar ---
-# !!! BU BİLGİLERİ KENDİ SPOTIFY DEVELOPER BİLGİLERİNİZLE DEĞİŞTİRİN !!!
-SPOTIFY_CLIENT_ID = '332e5f2c9fe44d9b9ef19c49d0caeb78' # ÖRNEK - DEĞİŞTİR
-SPOTIFY_CLIENT_SECRET = 'bbb19ad9c7d04d738f61cd0bd4f47426'# ÖRNEK - DEĞİŞTİR
-# !!! BU URI'NIN SPOTIFY DEVELOPER DASHBOARD'DAKİ REDIRECT URI İLE AYNI OLDUĞUNDAN EMİN OLUN !!!
-SPOTIFY_REDIRECT_URI = 'http://web-vds.tail1b3477.ts.net/callback' # ÖRNEK - DEĞİŞTİR
+# Spotify Developer Dashboard üzerinden alınan bilgiler
+SPOTIFY_CLIENT_ID = os.environ.get('SPOTIFY_CLIENT_ID', '332e5f2c9fe44d9b9ef19c49d0caeb78')
+SPOTIFY_CLIENT_SECRET = os.environ.get('SPOTIFY_CLIENT_SECRET', 'bbb19ad9c7d04d738f61cd0bd4f47426')
+# Production'da bu değeri ortam değişkeninden alın
+SPOTIFY_REDIRECT_URI = os.environ.get('SPOTIFY_REDIRECT_URI', 'http://localhost:9187/callback')
 SPOTIFY_SCOPE = 'user-read-playback-state user-read-private user-modify-playback-state playlist-read-private user-read-currently-playing user-read-recently-played'
 
 TOKEN_FILE = 'spotify_token.json'
 SETTINGS_FILE = 'settings.json'
-BLUETOOTH_SCAN_DURATION = 12 # Saniye cinsinden Bluetooth tarama süresi
-EX_SCRIPT_PATH = 'ex.py' # ex.py betiğinin yolu
 # Kullanıcı arayüzünde gösterilecek varsayılan türler (opsiyonel)
 ALLOWED_GENRES = ['pop', 'rock', 'jazz', 'electronic', 'hip-hop', 'classical', 'r&b', 'indie', 'turkish']
 # ---------------------------------
@@ -51,8 +60,13 @@ logger = logging.getLogger(__name__)
 # --- Flask Uygulamasını Başlat ---
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'varsayilan_guvensiz_anahtar_lutfen_degistirin')
-app.jinja_env.globals['BLUETOOTH_SCAN_DURATION'] = BLUETOOTH_SCAN_DURATION
 app.jinja_env.globals['ALLOWED_GENRES'] = ALLOWED_GENRES
+
+# Production'da subdomain routing için SERVER_NAME ayarlayın (opsiyonel)
+# Örn: MAIN_DOMAIN=qubeat.com
+if os.environ.get('MAIN_DOMAIN'):
+    app.config['SERVER_NAME'] = os.environ.get('MAIN_DOMAIN')
+
 limiter = Limiter(
     key_func=get_remote_address,
     default_limits=["200 per day", "50 per hour"]
@@ -60,10 +74,44 @@ limiter = Limiter(
 limiter.init_app(app)
 csrf = CSRFProtect(app)
 
+# SocketIO for real-time updates
+socketio = SocketIO(app, cors_allowed_origins="*")
+
+# Flask g objesi için import
+from flask import g
+
 @app.context_processor
 def inject_csrf():
     # Şablonlarda {{ csrf_token() }} olarak kullanılabilir
     return dict(csrf_token=generate_csrf)
+
+@app.context_processor
+def inject_venue():
+    """Şablonlara venue bilgisini enjekte eder"""
+    return dict(
+        current_venue=getattr(g, 'venue', None),
+        current_venue_id=getattr(g, 'venue_id', None)
+    )
+
+# --- Subdomain Middleware ---
+@app.before_request
+def detect_venue_from_subdomain():
+    """Her istekte subdomain'den venue'yu tespit eder"""
+    host = request.host.split(':')[0]  # Port'u kaldır
+    parts = host.split('.')
+    
+    # Subdomain varsa (örn: demo.qubeat.local -> ['demo', 'qubeat', 'local'])
+    if len(parts) > 2:
+        subdomain = parts[0]
+        # Ana domain veya www değilse venue ara
+        if subdomain not in ['www', 'qubeat', 'admin']:
+            venue = Venue.get_by_slug(subdomain)
+            if venue:
+                g.venue = venue
+                g.venue_id = venue.id
+                logger.debug(f"Subdomain tespit edildi: {subdomain} -> Venue ID: {venue.id}")
+            else:
+                logger.warning(f"Bilinmeyen subdomain: {subdomain}")
 
 # --- WAF Benzeri Ara Katman (Middleware) ---
 @app.before_request
@@ -162,69 +210,6 @@ def _ensure_spotify_uri(item_id, item_type):
     # Unrecognized or invalid format
     logger.warning(f"Tanınmayan veya geçersiz Spotify {actual_item_type} ID/URI formatı: {item_id}")
     return None
-
-# --- Yardımcı Fonksiyon: Komut Çalıştırma (ex.py ve spotifyd için) ---
-def _run_command(command, timeout=30):
-    """Helper function to run shell commands and return parsed JSON or error."""
-    try:
-        # Komutun 'python3' ile başlayıp başlamadığını kontrol et
-        if command[0] == 'python3' and len(command) > 1 and command[1] == EX_SCRIPT_PATH:
-             full_command = command
-        elif command[0] == 'spotifyd' or command[0] == 'pgrep':
-             full_command = command
-        else:
-             # Eğer ex.py komutuysa başına python3 ekle
-             full_command = ['python3', EX_SCRIPT_PATH] + command
-
-        logger.debug(f"Running command: {' '.join(full_command)}")
-        result = subprocess.run(full_command, capture_output=True, text=True, check=True, timeout=timeout, encoding='utf-8')
-        logger.debug(f"Command stdout (first 500 chars): {result.stdout[:500]}")
-        try:
-            # JSON parse etmeyi sadece ex.py çıktısı için yap
-            if full_command[0] == 'python3' and full_command[1] == EX_SCRIPT_PATH:
-                 if not result.stdout.strip():
-                      logger.warning(f"Command {' '.join(full_command)} returned empty output.")
-                      return {'success': False, 'error': 'Komut boş çıktı döndürdü.'}
-                 return json.loads(result.stdout)
-            else: # spotifyd veya pgrep gibi diğer komutlar için ham çıktıyı döndür
-                 return {'success': True, 'output': result.stdout.strip()}
-        except json.JSONDecodeError as json_err:
-             logger.error(f"Failed to parse JSON output from command {' '.join(full_command)}: {json_err}")
-             logger.error(f"Raw output was: {result.stdout}")
-             return {'success': False, 'error': f"Komut çıktısı JSON formatında değil: {json_err}", 'raw_output': result.stdout}
-    except FileNotFoundError:
-        err_msg = f"Komut bulunamadı: {full_command[0]}. Yüklü ve PATH içinde mi?"
-        if full_command[0] == 'python3' and len(full_command) > 1 and full_command[1] == EX_SCRIPT_PATH:
-             err_msg = f"Python 3 yorumlayıcısı veya '{EX_SCRIPT_PATH}' betiği bulunamadı."
-        logger.error(err_msg)
-        return {'success': False, 'error': err_msg}
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Command '{' '.join(full_command)}' failed with return code {e.returncode}. Stderr:\n{e.stderr}")
-        return {'success': False, 'error': f"Komut hatası (kod {e.returncode})", 'stderr': e.stderr, 'stdout': e.stdout}
-    except subprocess.TimeoutExpired:
-        logger.error(f"Command '{' '.join(full_command)}' timed out after {timeout} seconds.")
-        return {'success': False, 'error': f"Komut zaman aşımına uğradı ({timeout}s)."}
-    except Exception as e:
-        logger.error(f"Error running command '{' '.join(full_command)}': {e}", exc_info=True)
-        return {'success': False, 'error': f"Beklenmedik hata: {e}"}
-
-# --- Spotifyd Yardımcı Fonksiyonları ---
-def get_spotifyd_pid():
-    """Çalışan spotifyd süreçlerinin PID'sini bulur."""
-    result = _run_command(["pgrep", "spotifyd"], timeout=5)
-    if result.get('success'):
-         pids = result.get('output', '').split("\n") if result.get('output') else []
-         logger.debug(f"Found spotifyd PIDs: {pids}")
-         return pids
-    else:
-         logger.error(f"Failed to get spotifyd PID: {result.get('error')}")
-         return []
-
-def restart_spotifyd():
-    """Spotifyd servisini ex.py aracılığıyla yeniden başlatır."""
-    logger.info("Attempting to restart spotifyd via ex.py...")
-    result = _run_command(['restart_spotifyd']) # ex.py'nin kendi komutunu çağırır
-    return result.get('success', False), result.get('message', result.get('error', 'Bilinmeyen hata'))
 
 # --- Ayarlar Yönetimi (Filtreler Eklendi) ---
 def load_settings():
@@ -482,6 +467,99 @@ def get_spotify_client():
     except spotipy.SpotifyOauthError as e: logger.error(f"Spotify OAuth hatası: {e}. API anahtarları veya URI yanlış olabilir."); return None
     except Exception as e: logger.error(f"Spotify istemcisi alınırken genel hata: {e}", exc_info=True); return None
 
+# --- Multi-Venue Spotify Client Yönetimi ---
+venue_spotify_clients = {}  # venue_id -> spotify_client cache
+
+def get_venue_spotify_client(venue_id):
+    """Belirli bir venue için Spotify istemcisini döndürür veya oluşturur."""
+    global venue_spotify_clients
+    
+    # Önce cache'e bak
+    if venue_id in venue_spotify_clients:
+        client = venue_spotify_clients[venue_id]
+        try:
+            client.current_user()
+            logger.debug(f"[Venue {venue_id}] Cache'deki Spotify istemcisi geçerli.")
+            return client
+        except Exception as e:
+            logger.warning(f"[Venue {venue_id}] Cache'deki istemci geçersiz: {e}")
+            del venue_spotify_clients[venue_id]
+    
+    # Veritabanından token al
+    spotify_data = VenueSpotifyData.get_by_venue_id(venue_id)
+    if not spotify_data or not spotify_data.get('spotify_token_info'):
+        logger.info(f"[Venue {venue_id}] Spotify token bulunamadı. Yetkilendirme gerekli.")
+        return None
+    
+    token_info = spotify_data['spotify_token_info']
+    
+    try:
+        auth_manager = get_spotify_auth()
+    except ValueError as e:
+        logger.error(f"[Venue {venue_id}] SpotifyOAuth oluşturulamadı: {e}")
+        return None
+    
+    try:
+        # Token süresi dolmuş mu kontrol et
+        if auth_manager.is_token_expired(token_info):
+            logger.info(f"[Venue {venue_id}] Token süresi dolmuş, yenileniyor...")
+            refresh_token_val = token_info.get('refresh_token')
+            if not refresh_token_val:
+                logger.error(f"[Venue {venue_id}] Refresh token bulunamadı.")
+                VenueSpotifyData.delete_token(venue_id)
+                return None
+            
+            try:
+                auth_manager.token = token_info
+                new_token_info = auth_manager.refresh_access_token(refresh_token_val)
+                if not new_token_info:
+                    logger.error(f"[Venue {venue_id}] Token yenilenemedi.")
+                    VenueSpotifyData.delete_token(venue_id)
+                    return None
+                
+                if isinstance(new_token_info, str):
+                    token_info['access_token'] = new_token_info
+                    token_info['expires_at'] = int(time.time()) + 3600
+                    new_token_info = token_info
+                
+                # Yenilenen token'ı veritabanına kaydet
+                VenueSpotifyData.save_token(venue_id, new_token_info)
+                token_info = new_token_info
+                logger.info(f"[Venue {venue_id}] Token başarıyla yenilendi.")
+            except Exception as e:
+                logger.error(f"[Venue {venue_id}] Token yenileme hatası: {e}")
+                return None
+        
+        # Spotify client oluştur
+        access_token = token_info.get('access_token')
+        if not access_token:
+            logger.error(f"[Venue {venue_id}] Token'da access_token bulunamadı.")
+            return None
+        
+        new_client = spotipy.Spotify(auth=access_token)
+        
+        # Doğrula
+        try:
+            user_info = new_client.current_user()
+            logger.info(f"[Venue {venue_id}] Spotify bağlandı: {user_info.get('display_name', '?')}")
+            venue_spotify_clients[venue_id] = new_client
+            return new_client
+        except spotipy.SpotifyException as e:
+            logger.error(f"[Venue {venue_id}] Spotify doğrulama hatası: {e}")
+            if e.http_status in [401, 403]:
+                VenueSpotifyData.delete_token(venue_id)
+            return None
+    except Exception as e:
+        logger.error(f"[Venue {venue_id}] Spotify client oluşturma hatası: {e}")
+        return None
+
+def invalidate_venue_spotify_client(venue_id):
+    """Venue'nun Spotify istemcisini cache'den siler."""
+    global venue_spotify_clients
+    if venue_id in venue_spotify_clients:
+        del venue_spotify_clients[venue_id]
+        logger.info(f"[Venue {venue_id}] Spotify client cache'den silindi.")
+
 # --- Admin Giriş Decorator'ı ---
 def admin_login_required(f):
     @wraps(f)
@@ -493,10 +571,59 @@ def admin_login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+# --- Mekan Giriş Decorator'ı ---
+def venue_login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        venue_id = session.get('venue_id')
+        if not venue_id:
+            logger.warning("Yetkisiz mekan erişim girişimi")
+            flash("Bu sayfaya erişmek için mekan girişi yapmalısınız.", "warning")
+            return redirect(url_for('venue_login'))
+        
+        # Mekan bilgisini al ve request context'e ekle
+        venue = Venue.get_by_id(venue_id)
+        if not venue or not venue.is_active:
+            session.clear()
+            flash("Mekan hesabınız bulunamadı veya devre dışı.", "danger")
+            return redirect(url_for('venue_login'))
+        
+        # Venue objesini flask g objesine ekle
+        from flask import g
+        g.current_venue = venue
+        return f(*args, **kwargs)
+    return decorated_function
+
+# --- Abonelik Kontrolü Decorator'ı ---
+def subscription_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        venue_id = session.get('venue_id')
+        if not venue_id:
+            flash("Giriş yapmalısınız.", "warning")
+            return redirect(url_for('venue_login'))
+        
+        venue = Venue.get_by_id(venue_id)
+        if not venue:
+            session.clear()
+            flash("Mekan bulunamadı.", "danger")
+            return redirect(url_for('venue_login'))
+        
+        # Abonelik aktif mi kontrol et
+        if not venue.is_subscription_active():
+            flash("Aboneliğiniz sona ermiş. Lütfen aboneliğinizi yenileyin.", "warning")
+            return redirect(url_for('subscription_page'))
+        
+        from flask import g
+        g.current_venue = venue
+        return f(*args, **kwargs)
+    return decorated_function
+
 # DEĞİŞİKLİK: Zaman profili ve öneri fonksiyonları kaldırıldı.
 # def get_current_time_profile(): ... (KALDIRILDI)
 # def update_time_profile(track_uri, spotify): ... (KALDIRILDI)
 # def suggest_song_for_time(spotify): ... (KALDIRILDI)
+
 
 
 # --- Şarkı Filtreleme Yardımcı Fonksiyonu (Güncellendi) ---
@@ -650,39 +777,184 @@ def logout():
     logger.info("Admin çıkışı yapıldı."); flash("Başarıyla çıkış yaptınız.", "info")
     return redirect(url_for('admin'))
 
+# --- Mekan Giriş/Kayıt Rotaları ---
+@app.route('/venue/login', methods=['GET', 'POST'])
+@limiter.limit("5 per minute")
+def venue_login():
+    """Mekan giriş sayfası"""
+    if session.get('venue_id'):
+        return redirect(url_for('admin_panel'))
+    
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
+        password = request.form.get('password', '')
+        
+        if not email or not password:
+            flash("E-posta ve şifre gerekli.", "warning")
+            return render_template('login.html', csrf_token=generate_csrf())
+        
+        venue = Venue.authenticate(email, password)
+        if venue:
+            session['venue_id'] = venue.id
+            session['venue_name'] = venue.name
+            session['admin_logged_in'] = True  # Admin paneline erişim için
+            logger.info(f"Mekan girişi başarılı: {venue.name} (ID: {venue.id})")
+            
+            # Abonelik durumunu kontrol et
+            if not venue.is_subscription_active():
+                flash(f"Hoş geldiniz {venue.name}! Aboneliğiniz sona ermiş.", "warning")
+                return redirect(url_for('subscription_page'))
+            
+            flash(f"Hoş geldiniz {venue.name}!", "success")
+            return redirect(url_for('admin_panel'))
+        else:
+            logger.warning(f"Başarısız mekan girişi: {email}")
+            flash("E-posta veya şifre hatalı.", "danger")
+    
+    return render_template('login.html', csrf_token=generate_csrf())
+
+@app.route('/venue/register', methods=['GET', 'POST'])
+@limiter.limit("3 per minute")
+def venue_register():
+    """Mekan kayıt sayfası"""
+    if session.get('venue_id'):
+        return redirect(url_for('admin_panel'))
+    
+    plans = SubscriptionPlan.get_all()
+    
+    if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+        email = request.form.get('email', '').strip().lower()
+        password = request.form.get('password', '')
+        password_confirm = request.form.get('password_confirm', '')
+        phone = request.form.get('phone', '').strip()
+        address = request.form.get('address', '').strip()
+        
+        errors = []
+        if not name or len(name) < 2:
+            errors.append("Mekan adı en az 2 karakter olmalı.")
+        if not email or '@' not in email:
+            errors.append("Geçerli bir e-posta adresi girin.")
+        if not password or len(password) < 6:
+            errors.append("Şifre en az 6 karakter olmalı.")
+        if password != password_confirm:
+            errors.append("Şifreler eşleşmiyor.")
+        
+        if errors:
+            for error in errors:
+                flash(error, "danger")
+            return render_template('register.html', csrf_token=generate_csrf(), plans=plans)
+        
+        # Mekani oluştur
+        result = Venue.create(name, email, password, phone, address)
+        if result['success']:
+            logger.info(f"Yeni mekan kaydı: {name} ({email})")
+            flash("Kayıt başarılı! 7 günlük ücretsiz deneme süreniz başladı. Giriş yapabilirsiniz.", "success")
+            return redirect(url_for('venue_login'))
+        else:
+            flash(result['error'], "danger")
+    
+    return render_template('register.html', csrf_token=generate_csrf(), plans=plans)
+
+@app.route('/venue/logout')
+def venue_logout():
+    """Mekan çıkış işlemi"""
+    venue_name = session.get('venue_name', 'Mekan')
+    session.clear()
+    logger.info(f"Mekan çıkışı: {venue_name}")
+    flash("Başarıyla çıkış yaptınız.", "info")
+    return redirect(url_for('venue_login'))
+
+@app.route('/subscription')
+@venue_login_required
+def subscription_page():
+    """Abonelik yönetim sayfası"""
+    from flask import g
+    venue = g.current_venue
+    plans = SubscriptionPlan.get_all()
+    current_plan = SubscriptionPlan.get_by_name(venue.subscription_type)
+    
+    return render_template('subscription.html', 
+                          venue=venue.to_dict(),
+                          plans=plans,
+                          current_plan=current_plan,
+                          csrf_token=generate_csrf())
+
+@app.route('/api/upgrade-subscription', methods=['POST'])
+@venue_login_required
+@limiter.limit("3 per minute")
+def api_upgrade_subscription():
+    """Abonelik yükseltme API"""
+    from flask import g
+    venue = g.current_venue
+    
+    if not request.is_json:
+        return jsonify({'success': False, 'error': 'JSON gerekli'}), 400
+    
+    data = request.get_json()
+    plan_name = data.get('plan')
+    
+    if not plan_name:
+        return jsonify({'success': False, 'error': 'Plan seçilmedi'}), 400
+    
+    # Ödeme simülasyonu (gerçek uygulamada ödeme gateway'i kullanılmalı)
+    result = venue.upgrade_subscription(plan_name, amount_paid=0, payment_method='demo')
+    
+    if result['success']:
+        logger.info(f"Abonelik yükseltildi: {venue.name} -> {plan_name}")
+        return jsonify({'success': True, 'message': result['message']})
+    else:
+        return jsonify({'success': False, 'error': result['error']}), 400
+
+
 # app.py dosyasında, mevcut admin_panel fonksiyonunu bununla değiştirin.
 @app.route('/admin-panel')
 @admin_login_required
 def admin_panel():
-    """Yönetim panelini gösterir. Ayarları ve listeleri şablona gönderir."""
-    global auto_advance_enabled, settings, song_queue
-    spotify = get_spotify_client()
+    """Yönetim panelini gösterir. Venue bazlı Spotify ve kuyruk kullanır."""
+    global auto_advance_enabled, settings
+    
+    # Venue bazlı mı yoksa eski admin mi kontrol et
+    venue_id = session.get('venue_id')
+    
+    if venue_id:
+        # Venue bazlı Spotify client
+        spotify = get_venue_spotify_client(venue_id)
+        venue_settings = VenueSettings.get_settings(venue_id)
+        venue_queue = VenueQueue.get_queue(venue_id)
+        spotify_data = VenueSpotifyData.get_by_venue_id(venue_id)
+        active_device_id = spotify_data.get('active_device_id') if spotify_data else None
+        active_playlist_uri = spotify_data.get('active_playlist_uri') if spotify_data else None
+        venue_auto_advance = spotify_data.get('auto_advance_enabled', True) if spotify_data else True
+    else:
+        # Eski global admin sistemi
+        spotify = get_spotify_client()
+        venue_settings = settings
+        venue_queue = song_queue
+        active_device_id = settings.get('active_device_id')
+        active_playlist_uri = settings.get('active_playlist_uri')
+        venue_auto_advance = auto_advance_enabled
+    
     spotify_devices = []
     spotify_authenticated = False
     spotify_user = None
     currently_playing_info = None
     filtered_queue = []
     
-    # DEĞİŞİKLİK: Sayfalama için değişkenler
+    # Sayfalama değişkenleri
     user_playlists = []
     paginated_playlists = []
     page = request.args.get('page', 1, type=int)
-    per_page = 8  # Sayfa başına gösterilecek çalma listesi sayısı
+    per_page = 8
     total_pages = 1
-
-    # Ses cihazı bilgilerini al
-    audio_sinks_result = _run_command(['list_sinks'])
-    audio_sinks = audio_sinks_result.get('sinks', []) if audio_sinks_result.get('success') else []
-    default_audio_sink_name = audio_sinks_result.get('default_sink_name') if audio_sinks_result.get('success') else None
-    if not audio_sinks_result.get('success'):
-        flash(f"Ses cihazları listelenemedi: {audio_sinks_result.get('error', 'Bilinmeyen hata')}", "danger")
 
     if spotify:
         spotify_authenticated = True
         session['spotify_authenticated'] = True
         try:
             # Spotify cihazlarını al
-            result = spotify.devices(); spotify_devices = result.get('devices', [])
+            result = spotify.devices()
+            spotify_devices = result.get('devices', [])
             
             # Kullanıcının tüm çalma listelerini al
             try:
@@ -693,9 +965,9 @@ def admin_panel():
                     results = spotify.next(results)
                     all_playlists.extend(results['items'])
                 user_playlists = all_playlists
-                logger.info(f"{len(user_playlists)} adet çalma listesi bulundu.")
+                logger.info(f"[Venue {venue_id or 'Admin'}] {len(user_playlists)} çalma listesi bulundu.")
 
-                # Sayfalama mantığını uygula
+                # Sayfalama
                 total_items = len(user_playlists)
                 total_pages = (total_items + per_page - 1) // per_page
                 start = (page - 1) * per_page
@@ -703,74 +975,94 @@ def admin_panel():
                 paginated_playlists = user_playlists[start:end]
 
             except Exception as pl_err:
-                logger.warning(f"Kullanıcının çalma listeleri alınamadı: {pl_err}")
+                logger.warning(f"Çalma listeleri alınamadı: {pl_err}")
                 flash("Spotify çalma listeleriniz alınırken bir hata oluştu.", "warning")
 
             # Kullanıcı bilgisini al
-            try: user = spotify.current_user(); spotify_user = user.get('display_name', '?'); session['spotify_user'] = spotify_user
-            except Exception as user_err: logger.warning(f"Spotify kullanıcı bilgisi alınamadı: {user_err}"); session.pop('spotify_user', None)
+            try: 
+                user = spotify.current_user()
+                spotify_user = user.get('display_name', '?')
+                session['spotify_user'] = spotify_user
+            except Exception as user_err: 
+                logger.warning(f"Spotify kullanıcı bilgisi alınamadı: {user_err}")
+                session.pop('spotify_user', None)
             
             # Şu an çalan şarkı bilgisini al
             try:
                 playback = spotify.current_playback(additional_types='track,episode', market='TR')
                 if playback and playback.get('item'):
-                    item = playback['item']; is_playing = playback.get('is_playing', False)
+                    item = playback['item']
+                    is_playing = playback.get('is_playing', False)
                     track_uri = item.get('uri')
                     if track_uri and track_uri.startswith('spotify:track:'):
-                         is_allowed, _ = check_song_filters(track_uri, spotify)
-                         track_name = item.get('name', '?'); artists = item.get('artists', [])
-                         artist_name = ', '.join([a.get('name') for a in artists]) if artists else '?'
-                         artist_uris = [_ensure_spotify_uri(a.get('id'), 'artist') for a in artists if a.get('id')]
-                         images = item.get('album', {}).get('images', []); image_url = images[0].get('url') if images else None
-                         currently_playing_info = {
-                             'id': track_uri, 'name': track_name, 'artist': artist_name,
-                             'artist_ids': artist_uris, 'image_url': image_url, 
-                             'is_playing': is_playing, 'is_allowed': is_allowed
-                         }
-            except Exception as pb_err: logger.warning(f"Çalma durumu alınamadı: {pb_err}")
+                        is_allowed, _ = check_song_filters(track_uri, spotify)
+                        track_name = item.get('name', '?')
+                        artists = item.get('artists', [])
+                        artist_name = ', '.join([a.get('name') for a in artists]) if artists else '?'
+                        artist_uris = [_ensure_spotify_uri(a.get('id'), 'artist') for a in artists if a.get('id')]
+                        images = item.get('album', {}).get('images', [])
+                        image_url = images[0].get('url') if images else None
+                        currently_playing_info = {
+                            'id': track_uri, 'name': track_name, 'artist': artist_name,
+                            'artist_ids': artist_uris, 'image_url': image_url, 
+                            'is_playing': is_playing, 'is_allowed': is_allowed
+                        }
+            except Exception as pb_err: 
+                logger.warning(f"Çalma durumu alınamadı: {pb_err}")
 
             # Kuyruğu filtrele
-            for song in song_queue:
+            for song in venue_queue:
                 song_uri = song.get('id')
                 if song_uri and song_uri.startswith('spotify:track:'):
                     is_allowed, _ = check_song_filters(song_uri, spotify)
                     if is_allowed:
                         if 'artist_ids' in song and isinstance(song['artist_ids'], list):
-                             song['artist_ids'] = [_ensure_spotify_uri(aid, 'artist') for aid in song['artist_ids']]
+                            song['artist_ids'] = [_ensure_spotify_uri(aid, 'artist') for aid in song['artist_ids']]
                         filtered_queue.append(song)
+                        
         except spotipy.SpotifyException as e:
             logger.error(f"Spotify API hatası (Admin Panel): {e.http_status} - {e.msg}")
-            spotify_authenticated = False; session['spotify_authenticated'] = False
+            spotify_authenticated = False
+            session['spotify_authenticated'] = False
             if e.http_status in [401, 403]:
                 flash("Spotify yetkilendirmesi geçersiz. Lütfen tekrar yetkilendirin.", "warning")
-                if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
-                spotify_client = None
-            else: flash(f"Spotify API hatası: {e.msg}", "danger")
+                if venue_id:
+                    VenueSpotifyData.delete_token(venue_id)
+                    invalidate_venue_spotify_client(venue_id)
+                else:
+                    if os.path.exists(TOKEN_FILE): 
+                        os.remove(TOKEN_FILE)
+                    global spotify_client
+                    spotify_client = None
+            else: 
+                flash(f"Spotify API hatası: {e.msg}", "danger")
         except Exception as e:
             logger.error(f"Admin panelinde beklenmedik hata: {e}", exc_info=True)
-            spotify_authenticated = False; session['spotify_authenticated'] = False
+            spotify_authenticated = False
+            session['spotify_authenticated'] = False
             flash("Beklenmedik bir hata oluştu.", "danger")
     else:
-        spotify_authenticated = False; session['spotify_authenticated'] = False
-        if not os.path.exists(TOKEN_FILE): flash("Spotify hesabınızı bağlamak için yetkilendirme yapın.", "info")
+        spotify_authenticated = False
+        session['spotify_authenticated'] = False
+        flash("Spotify hesabınızı bağlamak için yetkilendirme yapın.", "info")
+        
     return render_template(
         'admin_panel.html',
-        settings=settings,
+        settings=venue_settings,
         spotify_devices=spotify_devices,
         queue=filtered_queue,
         all_genres=ALLOWED_GENRES,
         spotify_authenticated=spotify_authenticated,
         spotify_user=session.get('spotify_user'),
-        active_spotify_connect_device_id=settings.get('active_device_id'),
-        audio_sinks=audio_sinks, default_audio_sink_name=default_audio_sink_name,
+        active_spotify_connect_device_id=active_device_id,
         currently_playing_info=currently_playing_info,
-        auto_advance_enabled=auto_advance_enabled,
-        # DEĞİŞİKLİK: Sayfalanmış listeyi ve sayfa bilgilerini şablona gönder
+        auto_advance_enabled=venue_auto_advance,
         paginated_playlists=paginated_playlists,
         page=page,
         total_pages=total_pages,
-        active_playlist_uri=settings.get('active_playlist_uri'),
-        csrf_token=generate_csrf()
+        active_playlist_uri=active_playlist_uri,
+        csrf_token=generate_csrf(),
+        venue_id=venue_id
     )
 
 # --- Çalma Kontrol Rotaları ---
@@ -924,31 +1216,108 @@ def update_settings():
 @app.route('/spotify-auth')
 @admin_login_required
 def spotify_auth():
-    if os.path.exists(TOKEN_FILE): logger.warning("Mevcut token varken yeniden yetkilendirme.")
-    try: auth_manager = get_spotify_auth(); auth_url = auth_manager.get_authorize_url(); logger.info("Spotify yetkilendirme URL'sine yönlendiriliyor."); return redirect(auth_url)
-    except ValueError as e: logger.error(f"Spotify yetkilendirme hatası: {e}"); flash(f"Spotify Yetkilendirme Hatası: {e}", "danger"); return redirect(url_for('admin_panel'))
-    except Exception as e: logger.error(f"Spotify yetkilendirme URL'si alınırken hata: {e}", exc_info=True); flash("Spotify yetkilendirme başlatılamadı.", "danger"); return redirect(url_for('admin_panel'))
+    """Spotify yetkilendirme akışını başlatır (venue bazlı)."""
+    venue_id = session.get('venue_id')
+    if venue_id:
+        # Venue bazlı yetkilendirme
+        logger.info(f"[Venue {venue_id}] Spotify yetkilendirme başlatılıyor...")
+    else:
+        # Admin için eski global token
+        if os.path.exists(TOKEN_FILE): 
+            logger.warning("Mevcut token varken yeniden yetkilendirme.")
+    
+    try: 
+        auth_manager = get_spotify_auth()
+        auth_url = auth_manager.get_authorize_url()
+        logger.info(f"Spotify yetkilendirme URL'sine yönlendiriliyor. Redirect URI: {SPOTIFY_REDIRECT_URI}")
+        return redirect(auth_url)
+    except ValueError as e: 
+        logger.error(f"Spotify yetkilendirme hatası: {e}")
+        flash(f"Spotify Yetkilendirme Hatası: {e}", "danger")
+        return redirect(url_for('admin_panel'))
+    except Exception as e: 
+        logger.error(f"Spotify yetkilendirme URL'si alınırken hata: {e}", exc_info=True)
+        flash("Spotify yetkilendirme başlatılamadı.", "danger")
+        return redirect(url_for('admin_panel'))
 
 @app.route('/callback')
 def callback():
-    try: auth_manager = get_spotify_auth()
-    except ValueError as e: logger.error(f"Callback hatası: {e}"); return f"Callback Hatası: {e}", 500
-    if 'error' in request.args: error = request.args.get('error'); logger.error(f"Spotify yetkilendirme hatası (callback): {error}"); return f"Spotify Yetkilendirme Hatası: {error}", 400
-    if 'code' not in request.args: logger.error("Callback'te 'code' yok."); return "Geçersiz callback isteği.", 400
+    """Spotify OAuth callback - venue bazlı token kaydetme."""
+    try: 
+        auth_manager = get_spotify_auth()
+    except ValueError as e: 
+        logger.error(f"Callback hatası: {e}")
+        return f"Callback Hatası: {e}", 500
+    
+    if 'error' in request.args: 
+        error = request.args.get('error')
+        logger.error(f"Spotify yetkilendirme hatası (callback): {error}")
+        return f"Spotify Yetkilendirme Hatası: {error}", 400
+    
+    if 'code' not in request.args: 
+        logger.error("Callback'te 'code' yok.")
+        return "Geçersiz callback isteği.", 400
+    
     code = request.args.get('code')
+    
     try:
         token_info = auth_manager.get_access_token(code, check_cache=False)
-        if not token_info: logger.error("Spotify'dan token alınamadı."); return "Token alınamadı.", 500
-        if isinstance(token_info, str): logger.error("get_access_token sadece string döndürdü, refresh token alınamadı."); return "Token bilgisi eksik alındı.", 500
-        elif not isinstance(token_info, dict): logger.error(f"get_access_token beklenmedik formatta veri döndürdü: {type(token_info)}"); return "Token bilgisi alınırken hata oluştu.", 500
-        if save_token(token_info):
-            global spotify_client; spotify_client = None # Yeni token ile istemciyi yeniden oluşturmaya zorla
-            logger.info("Spotify yetkilendirme başarılı, token kaydedildi.")
-            if session.get('admin_logged_in'): flash("Spotify yetkilendirmesi başarıyla tamamlandı!", "success"); return redirect(url_for('admin_panel'))
-            else: return redirect(url_for('index')) # Admin değilse ana sayfaya yönlendir
-        else: logger.error("Alınan token dosyaya kaydedilemedi."); return "Token kaydedilirken bir hata oluştu.", 500
-    except spotipy.SpotifyOauthError as e: logger.error(f"Spotify token alırken OAuth hatası: {e}", exc_info=True); return f"Token alınırken yetkilendirme hatası: {e}", 500
-    except Exception as e: logger.error(f"Spotify token alırken/kaydederken hata: {e}", exc_info=True); return "Token işlenirken bir hata oluştu.", 500
+        if not token_info: 
+            logger.error("Spotify'dan token alınamadı.")
+            return "Token alınamadı.", 500
+        
+        if isinstance(token_info, str): 
+            logger.error("get_access_token sadece string döndürdü, refresh token alınamadı.")
+            return "Token bilgisi eksik alındı.", 500
+        elif not isinstance(token_info, dict): 
+            logger.error(f"get_access_token beklenmedik formatta veri döndürdü: {type(token_info)}")
+            return "Token bilgisi alınırken hata oluştu.", 500
+        
+        # Venue bazlı mı yoksa admin mi kontrol et
+        venue_id = session.get('venue_id')
+        
+        if venue_id:
+            # Venue bazlı token kaydetme
+            temp_client = spotipy.Spotify(auth=token_info.get('access_token'))
+            try:
+                user_info = temp_client.current_user()
+                user_name = user_info.get('display_name', '')
+                user_id = user_info.get('id', '')
+            except:
+                user_name = None
+                user_id = None
+            
+            result = VenueSpotifyData.save_token(venue_id, token_info, user_name, user_id)
+            if result['success']:
+                invalidate_venue_spotify_client(venue_id)  # Cache'i temizle
+                logger.info(f"[Venue {venue_id}] Spotify yetkilendirmesi başarılı.")
+                flash("Spotify yetkilendirmesi başarıyla tamamlandı!", "success")
+                return redirect(url_for('admin_panel'))
+            else:
+                logger.error(f"[Venue {venue_id}] Token kaydedilemedi: {result.get('error')}")
+                return "Token kaydedilirken bir hata oluştu.", 500
+        else:
+            # Eski admin global token
+            if save_token(token_info):
+                global spotify_client
+                spotify_client = None  # Yeni token ile istemciyi yeniden oluşturmaya zorla
+                logger.info("Spotify yetkilendirme başarılı, token kaydedildi.")
+                if session.get('admin_logged_in'): 
+                    flash("Spotify yetkilendirmesi başarıyla tamamlandı!", "success")
+                    return redirect(url_for('admin_panel'))
+                else: 
+                    return redirect(url_for('index'))
+            else: 
+                logger.error("Alınan token dosyaya kaydedilemedi.")
+                return "Token kaydedilirken bir hata oluştu.", 500
+                
+    except spotipy.SpotifyOauthError as e: 
+        logger.error(f"Spotify token alırken OAuth hatası: {e}", exc_info=True)
+        return f"Token alınırken yetkilendirme hatası: {e}", 500
+    except Exception as e: 
+        logger.error(f"Spotify token alırken/kaydederken hata: {e}", exc_info=True)
+        return "Token işlenirken bir hata oluştu.", 500
+
 
 # GÜNCELLENDİ: /search endpoint'i filtrelemeyi uygular ve URI kullanır
 @app.route('/search', methods=['POST'])
@@ -1058,143 +1427,248 @@ def search():
 @admin_login_required
 @limiter.limit("5 per minute")
 def add_song():
-    """Admin tarafından şarkı ekleme (Filtreleri atlar)."""
+    """Admin tarafından şarkı ekleme (Filtreleri atlar). Venue bazlı kuyruk kullanır."""
     global song_queue
+    
+    venue_id = session.get('venue_id')
     song_input = request.form.get('song_id', '').strip()
-    if not song_input: flash("Şarkı ID/URL girin.", "warning"); return redirect(url_for('admin_panel'))
+    
+    if not song_input: 
+        flash("Şarkı ID/URL girin.", "warning")
+        return redirect(url_for('admin_panel'))
 
-    # Girdiyi URI formatına çevir
     track_uri = _ensure_spotify_uri(song_input, 'track')
-    if not track_uri: flash("Geçersiz Spotify Şarkı ID veya URL formatı.", "danger"); return redirect(url_for('admin_panel'))
+    if not track_uri: 
+        flash("Geçersiz Spotify Şarkı ID veya URL formatı.", "danger")
+        return redirect(url_for('admin_panel'))
 
-    if len(song_queue) >= settings.get('max_queue_length', 20): flash("Kuyruk dolu!", "warning"); return redirect(url_for('admin_panel'))
+    # Kuyruk limiti kontrol
+    if venue_id:
+        queue_length = VenueQueue.get_length(venue_id)
+        venue_settings = VenueSettings.get_settings(venue_id)
+        max_length = venue_settings.get('max_queue_length', 20)
+    else:
+        queue_length = len(song_queue)
+        max_length = settings.get('max_queue_length', 20)
+    
+    if queue_length >= max_length:
+        flash("Kuyruk dolu!", "warning")
+        return redirect(url_for('admin_panel'))
 
-    spotify = get_spotify_client()
-    if not spotify: flash("Spotify yetkilendirmesi gerekli.", "warning"); return redirect(url_for('spotify_auth'))
+    # Spotify client al
+    if venue_id:
+        spotify = get_venue_spotify_client(venue_id)
+    else:
+        spotify = get_spotify_client()
+    
+    if not spotify: 
+        flash("Spotify yetkilendirmesi gerekli.", "warning")
+        return redirect(url_for('spotify_auth'))
 
     try:
         song_info = spotify.track(track_uri, market='TR')
-        if not song_info: flash(f"Şarkı bulunamadı (URI: {track_uri}).", "danger"); return redirect(url_for('admin_panel'))
+        if not song_info: 
+            flash(f"Şarkı bulunamadı (URI: {track_uri}).", "danger")
+            return redirect(url_for('admin_panel'))
 
-        artists = song_info.get('artists');
+        artists = song_info.get('artists', [])
         artist_uris = [_ensure_spotify_uri(a.get('id'), 'artist') for a in artists if a.get('id')]
+        artist_name = ', '.join([a.get('name') for a in artists])
         
         images = song_info.get('album', {}).get('images', [])
         image_url = images[0].get('url') if images else None
+        song_name = song_info.get('name', '?')
 
-        song_queue.append({
-            'id': track_uri,
-            'name': song_info.get('name', '?'),
-            'artist': ', '.join([a.get('name') for a in artists]),
-            'artist_ids': artist_uris,
-            'image_url': image_url,
-            'added_by': 'admin',
-            'added_at': time.time()
-        })
-        logger.info(f"Şarkı eklendi (Admin - Filtresiz): {track_uri} - {song_info.get('name')}")
-        flash(f"'{song_info.get('name')}' eklendi.", "success");
-        # DEĞİŞİKLİK: update_time_profile çağrısı kaldırıldı.
-        # update_time_profile(track_uri, spotify)
+        if venue_id:
+            # Venue bazlı kuyruğa ekle
+            VenueQueue.add_song(
+                venue_id=venue_id,
+                song_uri=track_uri,
+                song_name=song_name,
+                artist_name=artist_name,
+                artist_ids=artist_uris,
+                image_url=image_url,
+                added_by='admin'
+            )
+        else:
+            # Eski global kuyruk
+            song_queue.append({
+                'id': track_uri,
+                'name': song_name,
+                'artist': artist_name,
+                'artist_ids': artist_uris,
+                'image_url': image_url,
+                'added_by': 'admin',
+                'added_at': time.time()
+            })
+        
+        logger.info(f"[Venue {venue_id or 'Admin'}] Şarkı eklendi: {track_uri} - {song_name}")
+        flash(f"'{song_name}' eklendi.", "success")
+        
     except spotipy.SpotifyException as e:
         logger.error(f"Admin eklerken Spotify hatası (URI={track_uri}): {e}")
-        if e.http_status == 401 or e.http_status == 403: flash("Spotify yetkilendirme hatası.", "danger"); return redirect(url_for('spotify_auth'))
-        elif e.http_status == 400: flash(f"Geçersiz Spotify URI: {track_uri}", "danger")
-        else: flash(f"Spotify hatası: {e.msg}", "danger")
-    except Exception as e: logger.error(f"Admin eklerken genel hata (URI={track_uri}): {e}", exc_info=True); flash("Şarkı eklenirken hata.", "danger")
+        if e.http_status in [401, 403]: 
+            flash("Spotify yetkilendirme hatası.", "danger")
+            return redirect(url_for('spotify_auth'))
+        elif e.http_status == 400: 
+            flash(f"Geçersiz Spotify URI: {track_uri}", "danger")
+        else: 
+            flash(f"Spotify hatası: {e.msg}", "danger")
+    except Exception as e: 
+        logger.error(f"Admin eklerken genel hata (URI={track_uri}): {e}", exc_info=True)
+        flash("Şarkı eklenirken hata.", "danger")
+    
     return redirect(url_for('admin_panel'))
 
 # --- Queue Rotaları ---
 @app.route('/add-to-queue', methods=['POST'])
 def add_to_queue():
-    """Kullanıcı tarafından şarkı ekleme (Filtreler uygulanır)."""
+    """Kullanıcı tarafından şarkı ekleme (Filtreler uygulanır). Venue bazlı."""
     global settings, song_queue, user_requests
-    if not request.is_json: return jsonify({'error': 'Geçersiz format.'}), 400
-    data = request.get_json();
+    
+    if not request.is_json: 
+        return jsonify({'error': 'Geçersiz format.'}), 400
+    
+    data = request.get_json()
     track_identifier = data.get('track_id')
-    logger.info(f"Kuyruğa ekleme isteği: identifier={track_identifier}")
-    if not track_identifier: return jsonify({'error': 'Eksik ID.'}), 400
+    venue_id = data.get('venue_id')  # İstemciden venue_id alınır
+    
+    logger.info(f"[Venue {venue_id or 'Global'}] Kuyruğa ekleme isteği: {track_identifier}")
+    
+    if not track_identifier: 
+        return jsonify({'error': 'Eksik ID.'}), 400
 
     track_uri = _ensure_spotify_uri(track_identifier, 'track')
     if not track_uri:
-        logger.error(f"Kullanıcı ekleme: Geçersiz ID formatı: {track_identifier}")
         return jsonify({'error': 'Geçersiz şarkı ID formatı.'}), 400
 
-    if len(song_queue) >= settings.get('max_queue_length', 20): logger.warning("Kuyruk dolu."); return jsonify({'error': 'Kuyruk dolu.'}), 429
+    # Kuyruk ve ayarları venue bazlı al
+    if venue_id:
+        queue_length = VenueQueue.get_length(venue_id)
+        venue_settings = VenueSettings.get_settings(venue_id)
+        max_queue = venue_settings.get('max_queue_length', 20)
+        max_requests = venue_settings.get('max_user_requests_per_hour', 5)
+        spotify = get_venue_spotify_client(venue_id)
+    else:
+        queue_length = len(song_queue)
+        max_queue = settings.get('max_queue_length', 20)
+        max_requests = settings.get('max_user_requests', 5)
+        spotify = get_spotify_client()
 
-    user_ip = request.remote_addr; max_requests = settings.get('max_user_requests', 5)
-    if user_requests.get(user_ip, 0) >= max_requests: logger.warning(f"Limit aşıldı: {user_ip}"); return jsonify({'error': f'İstek limitiniz ({max_requests}) doldu.'}), 429
+    if queue_length >= max_queue: 
+        return jsonify({'error': 'Kuyruk dolu.'}), 429
 
-    spotify = get_spotify_client()
-    if not spotify: logger.error("Ekleme: Spotify istemcisi yok."); return jsonify({'error': 'Spotify bağlantısı yok.'}), 503
+    user_ip = request.remote_addr
+    if user_requests.get(user_ip, 0) >= max_requests: 
+        return jsonify({'error': f'İstek limitiniz ({max_requests}) doldu.'}), 429
+
+    if not spotify: 
+        return jsonify({'error': 'Spotify bağlantısı yok.'}), 503
 
     is_allowed, reason = check_song_filters(track_uri, spotify)
     if not is_allowed:
-        logger.info(f"Reddedildi ({reason}): {track_uri}")
         return jsonify({'error': reason}), 403
 
     try:
         song_info = spotify.track(track_uri, market='TR')
-        if not song_info: return jsonify({'error': 'Şarkı bilgisi alınamadı (tekrar kontrol).'}), 500
+        if not song_info: 
+            return jsonify({'error': 'Şarkı bilgisi alınamadı.'}), 500
+        
         song_name = song_info.get('name', '?')
-        artists = song_info.get('artists', []);
+        artists = song_info.get('artists', [])
         artist_uris = [_ensure_spotify_uri(a.get('id'), 'artist') for a in artists if a.get('id')]
-        artist_names = [a.get('name') for a in artists]
-
+        artist_name = ', '.join([a.get('name') for a in artists])
         images = song_info.get('album', {}).get('images', [])
         image_url = images[0].get('url') if images else None
 
-        logger.info(f"Filtrelerden geçti: {song_name} ({track_uri})")
-        # DEĞİŞİKLİK: update_time_profile çağrısı kaldırıldı.
-        # update_time_profile(track_uri, spotify)
-
-        song_queue.append({
-            'id': track_uri,
-            'name': song_name,
-            'artist': ', '.join(artist_names),
-            'artist_ids': artist_uris,
-            'image_url': image_url,
-            'added_by': user_ip,
-            'added_at': time.time()
-        })
+        if venue_id:
+            VenueQueue.add_song(
+                venue_id=venue_id,
+                song_uri=track_uri,
+                song_name=song_name,
+                artist_name=artist_name,
+                artist_ids=artist_uris,
+                image_url=image_url,
+                added_by=user_ip
+            )
+        else:
+            song_queue.append({
+                'id': track_uri,
+                'name': song_name,
+                'artist': artist_name,
+                'artist_ids': artist_uris,
+                'image_url': image_url,
+                'added_by': user_ip,
+                'added_at': time.time()
+            })
+        
         user_requests[user_ip] = user_requests.get(user_ip, 0) + 1
-        logger.info(f"Şarkı eklendi (Kullanıcı: {user_ip}): {song_name}. Kuyruk: {len(song_queue)}")
+        logger.info(f"[Venue {venue_id or 'Global'}] Şarkı eklendi: {song_name}")
         return jsonify({'success': True, 'message': f"'{song_name}' kuyruğa eklendi!"})
 
     except spotipy.SpotifyException as e:
-        logger.error(f"Kullanıcı eklerken Spotify hatası (URI={track_uri}): {e}")
-        if e.http_status == 401 or e.http_status == 403: return jsonify({'error': 'Spotify yetkilendirme sorunu.'}), 503
-        elif e.http_status == 400: return jsonify({'error': f"Geçersiz Spotify URI: {track_uri}"}), 400
-        else: return jsonify({'error': f"Spotify hatası: {e.msg}"}), 500
+        logger.error(f"Kullanıcı eklerken Spotify hatası: {e}")
+        if e.http_status in [401, 403]: 
+            return jsonify({'error': 'Spotify yetkilendirme sorunu.'}), 503
+        elif e.http_status == 400: 
+            return jsonify({'error': f"Geçersiz Spotify URI"}), 400
+        else: 
+            return jsonify({'error': f"Spotify hatası: {e.msg}"}), 500
     except Exception as e:
-        logger.error(f"Kuyruğa ekleme hatası (URI: {track_uri}): {e}", exc_info=True)
+        logger.error(f"Kuyruğa ekleme hatası: {e}", exc_info=True)
         return jsonify({'error': 'Şarkı eklenirken bilinmeyen bir sorun oluştu.'}), 500
+
 
 @app.route('/remove-song/<path:song_id_str>', methods=['POST'])
 @admin_login_required
 def remove_song(song_id_str):
-    """Admin tarafından kuyruktan şarkı kaldırma."""
-    global song_queue;
+    """Admin tarafından kuyruktan şarkı kaldırma. Venue bazlı."""
+    global song_queue
+    
+    venue_id = session.get('venue_id')
     song_uri_to_remove = _ensure_spotify_uri(song_id_str, 'track')
+    
     if not song_uri_to_remove:
         flash(f"Geçersiz şarkı ID formatı: {song_id_str}", "danger")
         return redirect(url_for('admin_panel'))
 
-    logger.debug(f"Kuyruktan kaldırılacak URI: {song_uri_to_remove}")
-    original_length = len(song_queue)
-    song_queue = [song for song in song_queue if song.get('id') != song_uri_to_remove]
-    if len(song_queue) < original_length:
-        logger.info(f"Şarkı kaldırıldı (Admin): URI={song_uri_to_remove}")
-        flash("Şarkı kuyruktan kaldırıldı.", "success")
+    logger.debug(f"[Venue {venue_id or 'Admin'}] Kuyruktan kaldırılacak URI: {song_uri_to_remove}")
+    
+    if venue_id:
+        result = VenueQueue.remove_song(venue_id, song_uri_to_remove)
+        if result['success']:
+            logger.info(f"[Venue {venue_id}] Şarkı kaldırıldı: {song_uri_to_remove}")
+            flash("Şarkı kuyruktan kaldırıldı.", "success")
+        else:
+            flash("Şarkı kuyrukta bulunamadı.", "warning")
     else:
-        logger.warning(f"Kaldırılacak şarkı bulunamadı: URI={song_uri_to_remove}")
-        flash("Şarkı kuyrukta bulunamadı.", "warning")
+        original_length = len(song_queue)
+        song_queue = [song for song in song_queue if song.get('id') != song_uri_to_remove]
+        if len(song_queue) < original_length:
+            logger.info(f"Şarkı kaldırıldı (Admin): URI={song_uri_to_remove}")
+            flash("Şarkı kuyruktan kaldırıldı.", "success")
+        else:
+            flash("Şarkı kuyrukta bulunamadı.", "warning")
+    
     return redirect(url_for('admin_panel'))
 
 @app.route('/clear-queue')
 @admin_login_required
 def clear_queue():
-    global song_queue, user_requests; song_queue = []; user_requests = {}
-    logger.info("Kuyruk temizlendi (Admin)."); flash("Kuyruk temizlendi.", "success")
+    """Kuyruğu temizler. Venue bazlı."""
+    global song_queue, user_requests
+    
+    venue_id = session.get('venue_id')
+    
+    if venue_id:
+        VenueQueue.clear_queue(venue_id)
+        logger.info(f"[Venue {venue_id}] Kuyruk temizlendi.")
+    else:
+        song_queue = []
+        user_requests = {}
+        logger.info("Kuyruk temizlendi (Admin).")
+    
+    flash("Kuyruk temizlendi.", "success")
     return redirect(url_for('admin_panel'))
 
 @app.route('/queue')
@@ -1281,135 +1755,8 @@ def api_get_queue():
     global song_queue
     return jsonify({'queue': song_queue, 'queue_length': len(song_queue), 'max_length': settings.get('max_queue_length', 20)})
 
-# --- Ses/Bluetooth API Rotaları (ex.py'yi Çağıran) ---
-@app.route('/api/audio-sinks')
-@admin_login_required
-def api_audio_sinks():
-    logger.info("API: Ses sink listesi isteniyor (ex.py aracılığıyla)...")
-    result = _run_command(['list_sinks'])
-    status_code = 200 if result.get('success') else 500
-    return jsonify(result), status_code
-
-@app.route('/api/set-audio-sink', methods=['POST'])
-@admin_login_required
-def api_set_audio_sink():
-    if not request.is_json: return jsonify({'success': False, 'error': 'JSON isteği gerekli'}), 400
-    data = request.get_json()
-    sink_identifier = data.get('sink_identifier')
-    if sink_identifier is None: return jsonify({'success': False, 'error': 'Sink tanımlayıcısı gerekli'}), 400
-    logger.info(f"API: Varsayılan ses sink ayarlama: {sink_identifier} (ex.py)...")
-    result = _run_command(['set_audio_sink', '--identifier', str(sink_identifier)])
-    status_code = 200 if result.get('success') else 500
-    final_result = result.copy()
-    if result.get('success'):
-         sinks_list_res = _run_command(['list_sinks'])
-         bt_list_res = _run_command(['discover_bluetooth', '--duration', '0']) 
-         if sinks_list_res.get('success'):
-              final_result['sinks'] = sinks_list_res.get('sinks', [])
-              final_result['default_sink_name'] = sinks_list_res.get('default_sink_name')
-         if bt_list_res.get('success'):
-              all_bt = bt_list_res.get('devices', [])
-              final_result['bluetooth_devices'] = [d for d in all_bt if d.get('paired')]
-         else: final_result['bluetooth_devices'] = []
-    return jsonify(final_result), status_code
-
-@app.route('/api/discover-bluetooth')
-@admin_login_required
-def api_discover_bluetooth():
-    scan_duration = request.args.get('duration', BLUETOOTH_SCAN_DURATION, type=int)
-    logger.info(f"API: Bluetooth keşfi (Süre: {scan_duration}s, ex.py)...")
-    result = _run_command(['discover_bluetooth', '--duration', str(scan_duration)])
-    status_code = 200 if result.get('success') else 500
-    return jsonify(result), status_code
-
-@app.route('/api/pair-bluetooth', methods=['POST'])
-@admin_login_required
-def api_pair_bluetooth():
-    if not request.is_json: return jsonify({'success': False, 'error': 'JSON isteği gerekli'}), 400
-    data = request.get_json()
-    device_path = data.get('device_path')
-    if not device_path: return jsonify({'success': False, 'error': 'device_path gerekli'}), 400
-
-    logger.info(f"API: Bluetooth eşleştirme/bağlama: {device_path} (ex.py)...")
-    result = _run_command(['pair_bluetooth', '--path', device_path])
-    status_code = 200 if result.get('success') else 500
-    final_result = result.copy()
-    if result.get('success'):
-         sinks_list_res = _run_command(['list_sinks'])
-         bt_list_res = _run_command(['discover_bluetooth', '--duration', '0'])
-         if sinks_list_res.get('success'):
-              final_result['sinks'] = sinks_list_res.get('sinks', [])
-              final_result['default_sink_name'] = sinks_list_res.get('default_sink_name')
-         if bt_list_res.get('success'):
-              all_bt = bt_list_res.get('devices', [])
-              final_result['bluetooth_devices'] = [d for d in all_bt if d.get('paired')]
-         else: final_result['bluetooth_devices'] = []
-    return jsonify(final_result), status_code
-
-@app.route('/api/disconnect-bluetooth', methods=['POST'])
-@admin_login_required
-def api_disconnect_bluetooth():
-    if not request.is_json: return jsonify({'success': False, 'error': 'JSON isteği gerekli'}), 400
-    data = request.get_json()
-    device_path = data.get('device_path')
-    if not device_path: return jsonify({'success': False, 'error': 'device_path gerekli'}), 400
-
-    logger.info(f"API: Bluetooth bağlantısını kesme: {device_path} (ex.py)...")
-    result = _run_command(['disconnect_bluetooth', '--path', device_path])
-    status_code = 200 if result.get('success') else 500
-    final_result = result.copy()
-    if result.get('success'):
-         sinks_list_res = _run_command(['list_sinks'])
-         bt_list_res = _run_command(['discover_bluetooth', '--duration', '0'])
-         if sinks_list_res.get('success'):
-              final_result['sinks'] = sinks_list_res.get('sinks', [])
-              final_result['default_sink_name'] = sinks_list_res.get('default_sink_name')
-         if bt_list_res.get('success'):
-              all_bt = bt_list_res.get('devices', [])
-              final_result['bluetooth_devices'] = [d for d in all_bt if d.get('paired')]
-         else: final_result['bluetooth_devices'] = []
-    return jsonify(final_result), status_code
-
-@app.route('/api/switch-to-alsa', methods=['POST'])
-@admin_login_required
-def api_switch_to_alsa():
-    logger.info("API: ALSA ses çıkışına geçiş isteniyor (ex.py aracılığıyla)...")
-    result = _run_command(['switch_to_alsa'])
-    status_code = 200 if result.get('success') else 500
-    final_result = result.copy()
-    if result.get('success'):
-         sinks_list_res = _run_command(['list_sinks'])
-         bt_list_res = _run_command(['discover_bluetooth', '--duration', '0'])
-         if sinks_list_res.get('success'):
-              final_result['sinks'] = sinks_list_res.get('sinks', [])
-              final_result['default_sink_name'] = sinks_list_res.get('default_sink_name')
-         if bt_list_res.get('success'):
-              all_bt = bt_list_res.get('devices', [])
-              final_result['bluetooth_devices'] = [d for d in all_bt if d.get('paired')]
-         else: final_result['bluetooth_devices'] = []
-    return jsonify(final_result), status_code
-
-@app.route('/api/restart-spotifyd', methods=['POST'])
-@admin_login_required
-def api_restart_spotifyd():
-    logger.info("API: Spotifyd yeniden başlatma isteği alındı (ex.py aracılığıyla)...")
-    success, message = restart_spotifyd()
-    status_code = 200 if success else 500
-    response_data = {'success': success}
-    if success: response_data['message'] = message
-    else: response_data['error'] = message
-    sinks_list_res = _run_command(['list_sinks'])
-    bt_list_res = _run_command(['discover_bluetooth', '--duration', '0'])
-    if sinks_list_res.get('success'):
-        response_data['sinks'] = sinks_list_res.get('sinks', [])
-        response_data['default_sink_name'] = sinks_list_res.get('default_sink_name')
-    if bt_list_res.get('success'):
-        all_bt = bt_list_res.get('devices', [])
-        response_data['bluetooth_devices'] = [d for d in all_bt if d.get('paired')]
-    else: response_data['bluetooth_devices'] = []
-    return jsonify(response_data), status_code
-
 # --- Filtre Yönetimi API Rotaları (Güncellendi) ---
+
 
 @app.route('/api/block', methods=['POST'])
 @admin_login_required
@@ -1648,6 +1995,34 @@ def debug_genre_filter(artist_id):
         return jsonify({'error': str(e)}), 500
 
 
+
+# --- Helper: Broadcast State ---
+def broadcast_state(venue_id=None):
+    """Broadcasts current state (queue + now playing) to venue room"""
+    # 1. Kuyruk Yayınla
+    if venue_id:
+        queue = VenueQueue.get_queue(venue_id)
+        socketio.emit('queueUpdated', queue, room=f'venue_{venue_id}') # Event ismi queueUpdated olarak düzeltildi (frontend ile uyumlu)
+        
+        # 2. Şimdi Çalıyor Yayınla
+        spotify = get_venue_spotify_client(venue_id)
+        if spotify:
+            try:
+                playback = spotify.current_playback(additional_types='track,episode', market='TR')
+                if playback and playback.get('item'):
+                    item = playback['item']
+                    track_data = {
+                        'item': item,
+                        'is_playing': playback['is_playing'],
+                        'progress_ms': playback['progress_ms']
+                    }
+                    socketio.emit('nowPlaying', track_data, room=f'venue_{venue_id}')
+                else:
+                    # Çalıyor bilgisi yoksa boş gönder ya da paused
+                    socketio.emit('nowPlaying', {'item': None, 'is_playing': False}, room=f'venue_{venue_id}')
+            except Exception as e:
+                logger.error(f"Broadcast error (nowPlaying): {e}")
+
 # --- Arka Plan Şarkı Çalma İş Parçacığı ---
 def background_queue_player():
     # DEĞİŞİKLİK: 'time_profiles' yerine 'recently_played_from_playlist' kullanılıyor.
@@ -1655,160 +2030,66 @@ def background_queue_player():
     logger.info("Arka plan şarkı çalma/çalma listesi görevi başlatılıyor...")
     last_played_song_uri = None
     
+    # Tüm aktif mekanları bulup döngüde kontrol etmemiz lazım
+    # Ancak basitlik için şimdilik sadece döngü kuralım
+    # Gerçek uygulamada her venue için ayrı thread veya async yapı gerekir
+    # Burada basitleştirilmiş bir yapı kullanacağız:
+    
     while True:
         try:
-            spotify = get_spotify_client()
-            active_spotify_connect_device_id = settings.get('active_device_id')
+            # Sadece aktif, Spotify bağlı mekanları döngüye al
+            # NOT: Bu kısım normalde veritabanından aktif mekanları çekmeli
+            # Ancak `app.py` tek instance çalışıyorsa global cache kullanılabilir
             
-            if not spotify or not active_spotify_connect_device_id:
-                time.sleep(10)
-                continue
+            # Global Admin (Legacy) Desteği
+            if spotify_client:
+                # ... (Eski mantık buraya eklenebilir ama şu an venue odaklı gidiyoruz)
+                pass
 
-            current_playback = None
-            try:
-                current_playback = spotify.current_playback(additional_types='track,episode', market='TR')
-            except spotipy.SpotifyException as pb_err:
-                logger.error(f"Arka plan: Playback kontrol hatası: {pb_err}")
-                if pb_err.http_status in [401, 403]:
-                    spotify_client = None
-                    if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
-                time.sleep(10)
-                continue
-            except Exception as pb_err:
-                logger.error(f"Arka plan: Playback kontrol genel hata: {pb_err}", exc_info=True)
-                time.sleep(15)
-                continue
-
-            is_playing_now = current_playback.get('is_playing', False) if current_playback else False
+            # Venue bazlı kontrol (Örnek: Cache'deki client'lar üzerinden)
+            # venue_spotify_clients global değişkenini kullanabiliriz
+            # Bu basit bir yaklaşım, production için daha sağlam bir yapı gerekir.
             
-            # Müzik çalmıyorsa ve otomatik ilerleme aktifse
-            if auto_advance_enabled and not is_playing_now:
-                # 1. Önce kuyruğu kontrol et
-                if song_queue:
-                    next_song = song_queue.pop(0)
-                    next_song_uri = next_song.get('id')
+            for venue_id, client in list(venue_spotify_clients.items()):
+                try:
+                    # Durum güncellemesi yayınla (Her 5 saniyede bir veya değişiklikte)
+                    broadcast_state(venue_id)
                     
-                    if not next_song_uri or not next_song_uri.startswith('spotify:track:'):
-                        logger.warning(f"Arka plan: Kuyrukta geçersiz URI formatı: {next_song_uri}")
+                    # Otomatik İlerleme Mantığı (Venue için)
+                    spotify_data = VenueSpotifyData.get_by_venue_id(venue_id)
+                    if not spotify_data or not spotify_data.get('auto_advance_enabled'):
                         continue
+
+                    current_playback = client.current_playback(additional_types='track,episode', market='TR')
+                    is_playing = current_playback.get('is_playing', False) if current_playback else False
                     
-                    if next_song_uri == last_played_song_uri:
-                        logger.debug(f"Şarkı ({next_song.get('name')}) zaten son çalınandı, atlanıyor.")
-                        last_played_song_uri = None
-                        time.sleep(1)
-                        continue
-
-                    logger.info(f"Arka plan: Kuyruktan çalınıyor: {next_song.get('name')} ({next_song_uri})")
-                    try:
-                        spotify.start_playback(device_id=active_spotify_connect_device_id, uris=[next_song_uri])
-                        logger.info(f"===> Şarkı çalmaya başlandı: {next_song.get('name')}")
-                        last_played_song_uri = next_song_uri
-                        user_ip = next_song.get('added_by')
-                        if user_ip and user_ip not in ['admin', 'auto-playlist']:
-                            user_requests[user_ip] = max(0, user_requests.get(user_ip, 0) - 1)
-                            logger.debug(f"Kullanıcı {user_ip} limiti azaltıldı: {user_requests.get(user_ip)}")
-                        time.sleep(1)
-                        continue
-                    except spotipy.SpotifyException as start_err:
-                        logger.error(f"Arka plan: Şarkı başlatılamadı ({next_song_uri}): {start_err}")
-                        song_queue.insert(0, next_song)
-                        if start_err.http_status in [401, 403]:
-                             spotify_client = None
-                             if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
-                        elif start_err.http_status == 404 and 'device_id' in str(start_err).lower():
-                             logger.warning(f"Aktif Spotify Connect cihazı ({active_spotify_connect_device_id}) bulunamadı.");
-                             settings['active_device_id'] = None; save_settings(settings)
-                        time.sleep(5)
-                        continue
-                
-                # 2. Kuyruk boşsa, seçili çalma listesinden rastgele şarkı ekle
-                else:
-                    playlist_uri = settings.get('active_playlist_uri')
-                    if not playlist_uri:
-                        logger.debug("Arka plan: Kuyruk boş ve aktif çalma listesi seçilmemiş. Bekleniyor.")
-                        time.sleep(15)
-                        continue
-                    
-                    logger.info(f"Arka plan: Kuyruk boş. '{playlist_uri}' listesinden rastgele şarkı seçilecek.")
-                    try:
-                        # Çalma listesindeki tüm şarkıları al (sadece URI'ler yeterli)
-                        results = spotify.playlist_items(playlist_uri, fields='items.track.uri,items.track.name', market='TR')
-                        playlist_tracks = [item['track'] for item in results.get('items', []) if item and item.get('track') and item['track'].get('uri')]
-                        
-                        if not playlist_tracks:
-                            logger.warning(f"Çalma listesi '{playlist_uri}' boş veya şarkılar alınamadı.")
-                            time.sleep(30)
-                            continue
-
-                        # Son çalınan şarkıları listeden çıkar
-                        potential_tracks = [track for track in playlist_tracks if track['uri'] not in recently_played_from_playlist]
-                        
-                        # Eğer tüm şarkılar son zamanlarda çalındıysa, listeyi sıfırla
-                        if not potential_tracks:
-                            logger.info("Çalma listesindeki tüm şarkılar yakın zamanda çalındı. Liste sıfırlanıyor.")
-                            recently_played_from_playlist.clear()
-                            potential_tracks = playlist_tracks
-
-                        # Rastgele bir şarkı seç
-                        chosen_track = random.choice(potential_tracks)
-                        chosen_track_uri = chosen_track.get('uri')
-                        chosen_track_name = chosen_track.get('name', '?')
-                        
-                        logger.info(f"Rastgele seçilen şarkı: {chosen_track_name} ({chosen_track_uri})")
-
-                        # Seçilen şarkının filtrelere uygunluğunu kontrol et
-                        is_allowed, reason = check_song_filters(chosen_track_uri, spotify)
-                        if not is_allowed:
-                            logger.info(f"Seçilen şarkı '{chosen_track_name}' filtrelere takıldı: {reason}. Başka bir şarkı denenecek.")
-                            # Bu şarkıyı geçici olarak son çalınanlara ekle ki tekrar seçilmesin
-                            recently_played_from_playlist.append(chosen_track_uri)
-                            time.sleep(1)
-                            continue
-
-                        # Filtreden geçtiyse, tam şarkı bilgisini alıp kuyruğa ekle
-                        song_info = spotify.track(chosen_track_uri, market='TR')
-                        artists = song_info.get('artists', []);
-                        artist_uris = [_ensure_spotify_uri(a.get('id'), 'artist') for a in artists if a.get('id')]
-                        images = song_info.get('album', {}).get('images', [])
-                        image_url = images[0].get('url') if images else None
-
-                        song_queue.append({
-                            'id': chosen_track_uri,
-                            'name': song_info.get('name', '?'),
-                            'artist': ', '.join([a.get('name') for a in artists]),
-                            'artist_ids': artist_uris,
-                            'image_url': image_url,
-                            'added_by': 'auto-playlist',
-                            'added_at': time.time()
-                        })
-                        
-                        # Bu şarkıyı son çalınanlar listesine ekle
-                        recently_played_from_playlist.append(chosen_track_uri)
-                        # Listenin çok büyümesini engelle (çalma listesinin yarısı kadar veya max 50)
-                        max_recent = min(50, len(playlist_tracks) // 2)
-                        if len(recently_played_from_playlist) > max_recent:
-                            recently_played_from_playlist.pop(0)
-
-                        logger.info(f"'{chosen_track_name}' çalınmak üzere kuyruğa eklendi.")
-
-                    except Exception as e:
-                        logger.error(f"Arka plan: Çalma listesinden şarkı alınırken hata: {e}", exc_info=True)
-                        time.sleep(20)
-
-            # Müzik zaten çalıyorsa
-            elif is_playing_now:
-                 current_track_uri_now = current_playback['item'].get('uri') if current_playback.get('item') else None
-                 if current_track_uri_now and current_track_uri_now != last_played_song_uri:
-                     logger.debug(f"Arka plan: Yeni şarkı algılandı: {current_track_uri_now}")
-                     last_played_song_uri = current_track_uri_now
-                 time.sleep(5)
-            # Otomatik ilerleme kapalıysa ve müzik çalmıyorsa
-            else:
-                 time.sleep(10)
+                    if not is_playing:
+                        # Kuyruk kontrol
+                        venue_queue_len = VenueQueue.get_length(venue_id)
+                        if venue_queue_len > 0:
+                            next_song = VenueQueue.pop_first(venue_id)
+                            if next_song:
+                                logger.info(f"[Venue {venue_id}] Kuyruktan çalınıyor: {next_song.get('name')}")
+                                client.start_playback(uris=[next_song['id']])
+                                # Çalmaya başladı, hemen durumu güncelle
+                                time.sleep(1) 
+                                broadcast_state(venue_id)
+                        else:
+                             # Çalma listesinden çal (Eğer ayarlıysa)
+                             playlist_uri = spotify_data.get('active_playlist_uri')
+                             if playlist_uri:
+                                 # (Çalma listesi mantığı burada uygulanacak - basitleştirildi)
+                                 pass
+                                 
+                except Exception as v_err:
+                     logger.error(f"[Venue {venue_id}] Background loop error: {v_err}")
+            
+            time.sleep(5) # 5 saniyede bir kontrol
 
         except Exception as loop_err:
             logger.error(f"Arka plan döngü hatası: {loop_err}", exc_info=True)
             time.sleep(15)
+
 
 
 @app.route('/api/set-active-playlist', methods=['POST'])
@@ -1872,58 +2153,21 @@ def check_port():
         logger.error(f"SSH port kontrolü sırasında hata: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)})
 
-@app.route('/api/open-port', methods=['POST'])
-@admin_login_required
-def open_port():
-    """SSH portunu (22) açar."""
-    try:
-        data = request.get_json()
-        port = data.get('port')
-        
-        if port != 22:
-            return jsonify({'success': False, 'error': 'Sadece SSH portu (22) açılabilir'})
-            
-        # Windows için netsh komutu ile port açma
-        command = f'netsh advfirewall firewall add rule name="Open SSH Port 22" dir=in action=allow protocol=TCP localport=22'
-        result = _run_command(command.split())
-        
-        if result.get('success'):
-            return jsonify({'success': True, 'message': 'SSH portu (22) başarıyla açıldı'})
-        else:
-            return jsonify({'success': False, 'error': result.get('error', 'SSH portu açılamadı')})
-    except Exception as e:
-        logger.error(f"SSH port açma sırasında hata: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)})
-
-@app.route('/api/close-port', methods=['POST'])
-@admin_login_required
-def close_port():
-    """SSH portunu (22) kapatır."""
-    try:
-        data = request.get_json()
-        port = data.get('port')
-        
-        if port != 22:
-            return jsonify({'success': False, 'error': 'Sadece SSH portu (22) kapatılabilir'})
-            
-        # Windows için netsh komutu ile port kapatma
-        command = f'netsh advfirewall firewall delete rule name="Open SSH Port 22"'
-        result = _run_command(command.split())
-        
-        if result.get('success'):
-            return jsonify({'success': True, 'message': 'SSH portu (22) başarıyla kapatıldı'})
-        else:
-            return jsonify({'success': False, 'error': result.get('error', 'SSH portu kapatılamadı')})
-    except Exception as e:
-        logger.error(f"SSH port kapatma sırasında hata: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
     logger.info("=================================================")
     logger.info("       Mekan Müzik Uygulaması Başlatılıyor       ")
     logger.info("=================================================")
+    logger.info(f"Platform: {platform.system()} ({'Windows' if IS_WINDOWS else 'Linux/Mac'})")
     logger.info(f"Ayarlar Yüklendi: {SETTINGS_FILE}")
-    logger.info(f"Harici betik yolu: {EX_SCRIPT_PATH}")
+
+    # Veritabanını başlat
+    logger.info("Veritabanı başlatılıyor...")
+    try:
+        init_db()
+        logger.info("Veritabanı hazır.")
+    except Exception as db_err:
+        logger.error(f"Veritabanı başlatma hatası: {db_err}")
 
     if not SPOTIFY_CLIENT_ID or SPOTIFY_CLIENT_ID.startswith('SENİN_') or \
        not SPOTIFY_CLIENT_SECRET or SPOTIFY_CLIENT_SECRET.startswith('SENİN_') or \
@@ -1934,19 +2178,235 @@ if __name__ == '__main__':
          logger.info(f"Kullanılacak Redirect URI: {SPOTIFY_REDIRECT_URI}")
          logger.info("!!! BU URI'nin Spotify Developer Dashboard'da kayıtlı olduğundan emin olun !!!")
 
-    if not os.path.exists(EX_SCRIPT_PATH):
-        logger.error(f"Kritik Hata: Harici betik '{EX_SCRIPT_PATH}' bulunamadı!")
-    else:
-         logger.info(f"'{EX_SCRIPT_PATH}' betiği test ediliyor...")
-         test_result = _run_command(['list_sinks'], timeout=10)
-         if test_result.get('success'): logger.info(f"'{EX_SCRIPT_PATH}' betiği başarıyla çalıştı.")
-         else: logger.warning(f"'{EX_SCRIPT_PATH}' betiği hatası: {test_result.get('error')}.")
-
     check_token_on_startup()
     start_queue_player()
 
-    port = int(os.environ.get('PORT', 8080))
-    logger.info(f"Uygulama arayüzüne http://<SUNUCU_IP>:{port} adresinden erişilebilir.")
-    logger.info(f"Admin paneline http://<SUNUCU_IP>:{port}/admin adresinden erişilebilir.")
+    # Port: Spotify redirect URI ile aynı olmalı
+    port = int(os.environ.get('PORT', 9187))
+    logger.info(f"Uygulama arayüzüne http://localhost:{port} adresinden erişilebilir.")
+    logger.info(f"Mekan girişi: http://localhost:{port}/venue/login")
+    logger.info(f"Admin paneli: http://localhost:{port}/admin")
 
-    app.run(host='0.0.0.0', port=8080 )
+    # SocketIO ile başlat (WebSocket desteği için)
+    socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=True)
+
+
+# --- QR Kod API ---
+@app.route('/api/venue/qr-code')
+@admin_login_required
+def generate_venue_qr():
+    """Venue için QR kod oluşturur"""
+    venue_id = session.get('venue_id')
+    if not venue_id:
+        return jsonify({'error': 'Venue ID bulunamadı'}), 400
+    
+    venue = Venue.get_by_id(venue_id)
+    if not venue:
+        return jsonify({'error': 'Venue bulunamadı'}), 404
+    
+    # QR kod için URL oluştur
+    base_url = request.host_url.rstrip('/')
+    venue_url = f"{base_url}/?venue={venue_id}"
+    
+    # QR kod oluştur
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(venue_url)
+    qr.make(fit=True)
+    
+    # Görsel olarak oluştur
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    # Base64'e çevir
+    buffer = io.BytesIO()
+    img.save(buffer, format='PNG')
+    buffer.seek(0)
+    img_base64 = base64.b64encode(buffer.getvalue()).decode()
+    
+    return jsonify({
+        'success': True,
+        'qr_code': f"data:image/png;base64,{img_base64}",
+        'url': venue_url,
+        'venue_name': venue.name
+    })
+
+
+@app.route('/api/venue/qr-code/download')
+@admin_login_required
+def download_venue_qr():
+    """Venue QR kodunu PNG olarak indir"""
+    venue_id = session.get('venue_id')
+    if not venue_id:
+        return jsonify({'error': 'Venue ID bulunamadı'}), 400
+    
+    venue = Venue.get_by_id(venue_id)
+    if not venue:
+        return jsonify({'error': 'Venue bulunamadı'}), 404
+    
+    base_url = request.host_url.rstrip('/')
+    venue_url = f"{base_url}/?venue={venue_id}"
+    
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        box_size=15,
+        border=4,
+    )
+    qr.add_data(venue_url)
+    qr.make(fit=True)
+    
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    buffer = io.BytesIO()
+    img.save(buffer, format='PNG')
+    buffer.seek(0)
+    
+    return send_file(
+        buffer, 
+        mimetype='image/png', 
+        as_attachment=True, 
+        download_name=f'qr_{venue.slug or venue_id}.png'
+    )
+
+
+# --- Analytics API ---
+@app.route('/api/analytics')
+@admin_login_required
+def get_analytics():
+    """Venue için analytics verilerini döndürür"""
+    venue_id = session.get('venue_id')
+    if not venue_id:
+        return jsonify({'error': 'Venue ID bulunamadı'}), 400
+    
+    days = request.args.get('days', 30, type=int)
+    
+    return jsonify({
+        'success': True,
+        'summary': SongRequestAnalytics.get_summary(venue_id),
+        'top_tracks': SongRequestAnalytics.get_top_tracks(venue_id, limit=10, days=days),
+        'hourly_stats': SongRequestAnalytics.get_hourly_stats(venue_id, days=7),
+        'daily_stats': SongRequestAnalytics.get_daily_stats(venue_id, days=days)
+    })
+
+
+@app.route('/api/analytics/top-tracks')
+@admin_login_required
+def get_top_tracks_api():
+    """En çok istenen şarkıları döndürür"""
+    venue_id = session.get('venue_id')
+    if not venue_id:
+        return jsonify({'error': 'Venue ID bulunamadı'}), 400
+    
+    limit = request.args.get('limit', 10, type=int)
+    days = request.args.get('days', 30, type=int)
+    
+    return jsonify({
+        'success': True,
+        'tracks': SongRequestAnalytics.get_top_tracks(venue_id, limit=limit, days=days)
+    })
+
+
+# --- Mobile API Endpoints ---
+@app.route('/api/login', methods=['POST'])
+@limiter.limit("5 per minute")
+def api_login():
+    """Mobile app login endpoint"""
+    if not request.is_json:
+        return jsonify({'success': False, 'error': 'JSON gerekli'}), 400
+    
+    data = request.get_json()
+    email = data.get('email', '').strip().lower()
+    password = data.get('password', '')
+    
+    if not email or not password:
+        return jsonify({'success': False, 'error': 'E-posta ve şifre gerekli'}), 400
+    
+    venue = Venue.authenticate(email, password)
+    if venue:
+        # Session oluştur
+        session['venue_id'] = venue.id
+        session['venue_name'] = venue.name
+        session['admin_logged_in'] = True
+        
+        return jsonify({
+            'success': True,
+            'venue': {
+                'id': venue.id,
+                'name': venue.name,
+                'slug': venue.slug
+            },
+            'session_id': session.get('csrf_token') # Basit session check için
+        })
+    else:
+        return jsonify({'success': False, 'error': 'E-posta veya şifre hatalı'}), 401
+
+@app.route('/api/state')
+def api_get_state():
+    """Get current player state and queue"""
+    venue_id = session.get('venue_id')
+    if not venue_id:
+        return jsonify({'success': False, 'error': 'Giriş gerekli'}), 401
+
+    spotify = get_venue_spotify_client(venue_id)
+    if not spotify:
+        return jsonify({'success': False, 'error': 'Spotify bağlı değil', 'spotify_connected': False}), 200
+
+    # Get Queue
+    queue = VenueQueue.get_queue(venue_id)
+    
+    # Get Now Playing
+    currently_playing = None
+    try:
+        playback = spotify.current_playback(additional_types='track,episode', market='TR')
+        if playback and playback.get('item'):
+            item = playback['item']
+            currently_playing = {
+                'id': item.get('uri'),
+                'name': item.get('name'),
+                'artist': ', '.join([a['name'] for a in item['artists']]),
+                'image_url': item['album']['images'][0]['url'] if item['album']['images'] else None,
+                'is_playing': playback['is_playing'],
+                'progress_ms': playback['progress_ms'],
+                'duration_ms': item['duration_ms']
+            }
+    except Exception as e:
+        logger.error(f"State API error: {e}")
+
+    return jsonify({
+        'success': True,
+        'spotify_connected': True,
+        'queue': queue,
+        'now_playing': currently_playing
+    })
+
+
+# --- WebSocket Events ---
+@socketio.on('connect')
+def handle_connect():
+    """Client bağlandığında"""
+    logger.debug(f"WebSocket client bağlandı: {request.sid}")
+
+
+@socketio.on('join_venue')
+def handle_join_venue(data):
+    """Client bir venue odasına katılır"""
+    venue_id = data.get('venue_id')
+    if venue_id:
+        from flask_socketio import join_room
+        join_room(f'venue_{venue_id}')
+        logger.debug(f"Client {request.sid} venue_{venue_id} odasına katıldı")
+
+
+def emit_queue_update(venue_id):
+    """Venue kuyruğu güncellendiğinde tüm client'lara bildir"""
+    queue = VenueQueue.get_queue(venue_id)
+    socketio.emit('queue_updated', {'queue': queue}, room=f'venue_{venue_id}')
+
+
+def emit_now_playing(venue_id, track_info):
+    """Şu an çalan şarkı değiştiğinde bildir"""
+    socketio.emit('now_playing', track_info, room=f'venue_{venue_id}')

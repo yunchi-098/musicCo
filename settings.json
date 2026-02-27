@@ -1,10 +1,10 @@
 {
     "max_queue_length": 20,
     "max_user_requests": 5,
-    "active_device_id": null,
+    "active_device_id": "804f3ceec517a40e0bf72e49afad4c999b1837cf",
     "genre_filter_mode": "blacklist",
     "artist_filter_mode": "blacklist",
-    "song_filter_mode": "blacklist",
+    "track_filter_mode": "blacklist",
     "genre_blacklist": [
         "pop"
     ],
@@ -15,6 +15,5 @@
     "artist_whitelist": [],
     "track_blacklist": [],
     "track_whitelist": [],
-    "active_playlist_uri": "spotify:playlist:4zrldlBX4DEM7VeK6ay3Nn",
-    "track_filter_mode": "blacklist"
+    "active_playlist_uri": "spotify:playlist:4zrldlBX4DEM7VeK6ay3Nn"
 }

@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    container_name: musicco_app
+    ports:
+      - "8000:8000"
+    volumes:
+      # Veritabanı ve ayarların kalıcı olması için volume tanımları
+      - ./musicco.db:/app/musicco.db
+      - ./settings.json:/app/settings.json
+      - ./spotify_token.json:/app/spotify_token.json
+      - ./security_events.log:/app/security_events.log
+    environment:
+      - FLASK_SECRET_KEY=${FLASK_SECRET_KEY}
+      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
+      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
+      - SPOTIFY_REDIRECT_URI=${SPOTIFY_REDIRECT_URI}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - MAIN_DOMAIN=${MAIN_DOMAIN}
+    restart: unless-stopped

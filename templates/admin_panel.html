@@ -1,555 +1,931 @@
 <!DOCTYPE html>
 <html lang="tr">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
     <title>Mekan Müzik Yönetim Paneli</title>
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+        integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg=="
+        crossorigin="anonymous" referrerpolicy="no-referrer" />
+
     <!-- Leaflet.js Harita Kütüphanesi -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-     crossorigin=""/>
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-     crossorigin=""></script>
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
     <!-- YENİ: Leaflet-Geosearch Arama Eklentisi -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet-geosearch@3.11.0/dist/geosearch.css" />
     <script src="https://unpkg.com/leaflet-geosearch@3.11.0/dist/geosearch.umd.js"></script>
 
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
     <style>
         :root {
-            --spotify-green: #1DB954;
-            --primary-blue: #007bff;
-            --bs-body-bg: #f4f7f6;
-            --card-bg: #ffffff;
-            --card-border-color: #dee2e6;
-            --text-muted-color: #6c757d;
+            --bg-dark: #090909;
+            --bg-card: rgba(30, 30, 30, 0.6);
+            --bg-card-hover: rgba(45, 45, 45, 0.7);
+            --primary: #1DB954;
+            --primary-glow: rgba(29, 185, 84, 0.4);
+            --text-main: #ffffff;
+            --text-secondary: #b3b3b3;
+            --border-glass: rgba(255, 255, 255, 0.1);
+            --spacing-unit: 1rem;
         }
 
         body {
-            background-color: var(--bs-body-bg);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg-dark);
+            background-image:
+                radial-gradient(circle at 10% 20%, rgba(29, 185, 84, 0.15) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(100, 100, 255, 0.1) 0%, transparent 40%);
+            font-family: 'Inter', sans-serif;
+            color: var(--text-main);
+            min-height: 100vh;
         }
 
-        /* --- Ana Başlık ve Düzen --- */
-        .main-header {
-            padding-bottom: 1rem;
-            margin-bottom: 2rem;
-            border-bottom: 1px solid var(--card-border-color);
+        /* --- Animations --- */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
-        .main-header h1 {
-            color: #343a40;
+
+        @keyframes pulse-glow {
+            0% {
+                box-shadow: 0 0 0 0 var(--primary-glow);
+            }
+
+            70% {
+                box-shadow: 0 0 20px 10px transparent;
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 transparent;
+            }
+        }
+
+        /* --- Typography --- */
+        h1,
+        h2,
+        h3,
+        h4,
+        h5,
+        h6 {
             font-weight: 700;
+            letter-spacing: -0.02em;
         }
 
-        /* --- Kart Stilleri --- */
-        .card {
-            border: 1px solid rgba(0,0,0,0.08);
-            border-radius: 0.75rem;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-            transition: all 0.3s ease-in-out;
-            height: 100%;
-        }
-        .card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
-        }
-        .card-header {
-            background-color: transparent;
-            border-bottom: 1px solid rgba(0,0,0,0.08);
-            font-weight: 600;
-            padding: 1rem 1.25rem;
-            color: #495057;
-        }
-        .card-footer {
-            background-color: #fcfcfc;
-            border-top: 1px solid rgba(0,0,0,0.06);
-        }
-        .card-body-scrollable {
-            max-height: 350px;
-            overflow-y: auto;
-        }
-
-        /* --- Cihaz Vurgu Stilleri --- */
-        .device-list-item {
-            padding: 0.75rem;
-            border: 2px solid transparent;
-            border-radius: 0.5rem;
-            margin-bottom: 0.5rem;
-            transition: all 0.2s ease;
-            background-color: #f8f9fa;
-        }
-        .active-spotify-device { border-left: 5px solid var(--spotify-green) !important; background-color: #e6f7f0; }
-        .connected-bluetooth-device { border-left: 5px solid var(--primary-blue) !important; background-color: #e7f3ff; }
-        .default-audio-sink { border-left: 5px solid #6f42c1 !important; background-color: #f3eefe; }
-        .running-audio-sink:not(.default-audio-sink) { border-left: 5px solid #ffc107 !important; background-color: #fff9e6; }
-
-        /* --- Özel Bölümler --- */
         .section-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 1.25rem;
+            display: flex;
+            align-items: center;
+        }
+
+        .section-title i {
+            margin-right: 10px;
+            color: var(--primary);
+        }
+
+        /* --- Layout Grid --- */
+        .container-fluid {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        /* --- Glass Cards --- */
+        .card {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border-glass);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+            transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+            overflow: hidden;
+            animation: fadeIn 0.6s ease-out forwards;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.3);
+        }
+
+        .card-header {
+            background: rgba(255, 255, 255, 0.02);
+            border-bottom: 1px solid var(--border-glass);
             font-weight: 600;
-            color: #343a40;
-            margin-bottom: 1.5rem;
-            padding-bottom: 0.5rem;
-            border-bottom: 2px solid var(--spotify-green);
-            display: inline-block;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            padding: 1rem 1.25rem;
         }
-        
-        /* --- Şu an Çalıyor Kartı --- */
-        .currently-playing-img {
-            width: 80px; height: 80px; object-fit: cover;
-            border-radius: 0.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .currently-playing-placeholder {
-            width: 80px; height: 80px; background-color: #e9ecef;
-            display: flex; align-items: center; justify-content: center;
-            border-radius: 0.5rem; color: var(--text-muted-color);
-            font-size: 2rem; font-weight: bold;
-        }
-        .quick-block-btn { font-size: 0.75em; padding: 0.2rem 0.4rem; margin-left: 5px; }
 
-        /* --- Filtre Yönetimi --- */
-        .filter-list {
-            list-style: none; padding: 0; max-height: 200px; overflow-y: auto;
-            border: 1px solid #eee; padding: 10px; border-radius: 5px; margin-bottom: 10px; background-color: #fdfdfd;
+        .card-body {
+            padding: 1.25rem;
         }
-        .filter-list li {
-            display: flex; justify-content: space-between; align-items: center;
-            padding: 8px 10px; border-bottom: 1px solid #f0f0f0;
-            font-size: 0.9rem;
-        }
-        .filter-list li:last-child { border-bottom: none; }
-        .filter-list span { flex-grow: 1; margin-right: 10px; word-break: break-all; }
-        .filter-list .item-name { font-weight: 500; color: #333; }
-        .filter-list .item-id { font-size: 0.8em; color: var(--text-muted-color); display: block; }
 
-        /* --- Çalma Listesi Kartları --- */
-        .playlist-card {
-            cursor: pointer;
-            border: 3px solid transparent;
-            transition: all 0.2s ease-in-out;
+        .card-footer {
+            background: rgba(0, 0, 0, 0.2);
+            border-top: 1px solid var(--border-glass);
+            padding: 1rem;
+        }
+
+        /* --- Hero Player Section (New) --- */
+        .hero-player-section {
+            background: linear-gradient(135deg, rgba(30, 30, 30, 0.8), rgba(10, 10, 10, 0.9)), url('https://images.unsplash.com/photo-1614149162883-504ce4d13909?q=80&w=2574&auto=format&fit=crop');
+            background-size: cover;
+            background-position: center;
+            border-radius: 24px;
+            padding: 2.5rem;
+            margin-bottom: 2.5rem;
+            border: 1px solid var(--border-glass);
             position: relative;
             overflow: hidden;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 2.5rem;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
         }
-        .playlist-card:hover {
-            transform: translateY(-5px) scale(1.03);
-            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+
+        .hero-bg-blur {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            backdrop-filter: blur(50px);
+            z-index: 1;
+            background: rgba(0, 0, 0, 0.7);
         }
-        .playlist-card.selected {
-            border-color: var(--spotify-green);
-            box-shadow: 0 0 20px rgba(29, 185, 84, 0.6);
-        }
-        .playlist-card-img-container {
+
+        .hero-content {
             position: relative;
-            padding-top: 100%; /* 1:1 Aspect Ratio */
-            background-color: #333;
+            z-index: 2;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 2rem;
         }
+
+        .hero-art-wrapper {
+            position: relative;
+            width: 180px;
+            height: 180px;
+            flex-shrink: 0;
+        }
+
+        .hero-art {
+            width: 100%;
+            height: 100%;
+            border-radius: 12px;
+            object-fit: cover;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .hero-art-placeholder {
+            width: 100%;
+            height: 100%;
+            border-radius: 12px;
+            background: #222;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            color: #444;
+        }
+
+        .hero-info {
+            flex: 1;
+        }
+
+        .hero-title {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            line-height: 1.2;
+        }
+
+        .hero-artist {
+            font-size: 1.25rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+            margin-bottom: 1.5rem;
+        }
+
+        .hero-controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .btn-controls {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: white;
+        }
+
+        .btn-controls:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.1);
+        }
+
+        .btn-play-pause {
+            width: 64px;
+            height: 64px;
+            font-size: 1.5rem;
+            background: var(--primary);
+            border: none;
+            color: black;
+            box-shadow: 0 0 20px var(--primary-glow);
+        }
+
+        .btn-play-pause:hover {
+            background: #1ed760;
+            transform: scale(1.05);
+            box-shadow: 0 0 30px var(--primary-glow);
+        }
+
+        /* --- Modern Tables & Lists --- */
+        .list-group-item {
+            background: transparent;
+            border-bottom: 1px solid var(--border-glass);
+            color: var(--text-main);
+            padding: 1rem 0;
+            margin: 0 0.5rem;
+            transition: background 0.2s;
+        }
+
+        .list-group-item:hover {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+            padding-left: 0.5rem;
+            padding-right: 0.5rem;
+            margin: 0;
+        }
+
+        /* --- Forms & Inputs --- */
+        .form-control {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border-glass);
+            border-radius: 8px;
+            color: white;
+            padding: 0.75rem 1rem;
+        }
+
+        .form-control:focus {
+            background: rgba(0, 0, 0, 0.5);
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px var(--primary-glow);
+            color: white;
+        }
+
+        /* --- Map --- */
+        #map {
+            border-radius: 12px;
+            border: 1px solid var(--border-glass);
+            filter: grayscale(100%) invert(0%) brightness(0.8);
+        }
+
+        /* --- Buttons --- */
+        .btn-outline-danger,
+        .btn-outline-primary,
+        .btn-outline-success {
+            border-radius: 8px;
+        }
+
+        /* --- Segmented Controls (Toggle) --- */
+        .segmented-control {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 4px;
+            border-radius: 8px;
+            display: inline-flex;
+            border: 1px solid var(--border-glass);
+        }
+
+        .segmented-control input {
+            display: none;
+        }
+
+        .segmented-control label {
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            margin: 0;
+        }
+
+        .segmented-control input:checked+label {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        /* --- Playlist Grid --- */
+        .playlist-card {
+            aspect-ratio: 1;
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+            cursor: pointer;
+            transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        .playlist-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .playlist-card.selected {
+            outline: 3px solid var(--primary);
+            outline-offset: 2px;
+        }
+
         .playlist-card-img {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Responsive */
+        @media (max-width: 991px) {
+            .hero-player-section {
+                flex-direction: column;
+                text-align: center;
+                padding: 2rem;
+            }
+
+            .hero-content {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .hero-controls {
+                justify-content: center;
+            }
+        }
+
+        /* --- Analytics & QR Styles --- */
+        .analytics-card {
+            background: linear-gradient(135deg, rgba(30, 30, 50, 0.9), rgba(20, 20, 40, 0.95));
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            margin-bottom: 1rem;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: var(--primary);
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .qr-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .qr-modal.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .qr-modal-content {
+            background: #1a1a1a;
+            padding: 2rem;
+            border-radius: 20px;
+            text-align: center;
+            border: 1px solid var(--border-glass);
+            transform: scale(0.9);
             transition: transform 0.3s ease;
         }
-        .playlist-card:hover .playlist-card-img { transform: scale(1.1); }
-        .playlist-card .card-body {
-            position: absolute; bottom: 0; left: 0; right: 0;
-            background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0) 100%);
-            color: white; padding: 0.75rem;
-        }
-        .playlist-card .card-title {
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 0.25rem; font-weight: bold;
-        }
-        .playlist-card .card-text { font-size: 0.8rem; opacity: 0.9; }
-        .selected-checkmark {
-            position: absolute; top: 10px; right: 10px; font-size: 2rem; color: var(--spotify-green);
-            background-color: rgba(255, 255, 255, 0.95); border-radius: 50%;
-            width: 40px; height: 40px; display: none;
-            justify-content: center; align-items: center; text-shadow: 0 0 5px black;
-        }
-        .playlist-card.selected .selected-checkmark { display: flex; }
-        
-        /* Harita Stili */
-        #map { 
-            height: 400px;
-            width: 100%; 
-            border-radius: 0.5rem; 
-            border: 1px solid #ddd; 
-            margin-bottom: 1rem; 
-            cursor: grab;
-        }
-        /* YENİ: Arama çubuğu stili */
-        .geosearch.geosearch-bar {
-            border: 1px solid #ced4da !important;
-            box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25) !important;
-        }
-        .leaflet-geosearch-bar .results {
-            z-index: 1001; /* Arama sonuçlarının harita üzerinde görünmesi için */
-        }
 
-
-        /* --- Diğer Yardımcı Stiller --- */
-        .btn svg, .btn i { margin-right: 0.35em; }
-        .btn-loading .spinner-border { width: 1em; height: 1em; border-width: .15em; }
-        .search-results-filter { max-height: 150px; overflow-y: auto; border: 1px solid #eee; margin-top: 10px; }
-        .search-results-filter .list-group-item { cursor: pointer; }
-        .search-results-filter .list-group-item:hover { background-color: #f0f0f0; }
-        .table-hover tbody tr:hover { background-color: rgba(0,0,0,0.03); }
-
+        .qr-modal.active .qr-modal-content {
+            transform: scale(1);
+        }
     </style>
 </head>
-<body>
-    <div class="container-fluid py-4 px-lg-5">
-        
-        <!-- Tüm sayfa içeriği (mevcut haliyle kalacak) -->
-        <div class="main-header d-flex justify-content-between align-items-center">
-            <h1 class="h2">Mekan Müzik Yönetim Paneli</h1>
-            <div>
-                <a href="{{ url_for('logout') }}" class="btn btn-outline-danger">
-                    <i class="fas fa-sign-out-alt"></i> Çıkış Yap
-                </a>
-            </div>
+
+<div class="container-fluid py-4 px-lg-5">
+
+    <!-- Header -->
+    <div class="main-header d-flex justify-content-between align-items-center border-0 mb-4">
+        <div>
+            <h1 class="h2 mb-0" style="font-weight: 800; letter-spacing: -1px;">MUSIC<span
+                    style="color:var(--primary);">CO</span> PANEL</h1>
+            <p class="text-secondary mb-0" style="font-size: 0.9rem; letter-spacing: 1px;">MEKAN MÜZİK YÖNETİMİ</p>
+        </div>
+        <div>
+            <a href="{{ url_for('logout') }}" class="btn btn-outline-danger btn-sm px-3 ml-2">
+                <i class="fas fa-sign-out-alt"></i> Çıkış
+            </a>
+        </div>
+        <div>
+            <button onclick="showQRModal()" class="btn btn-primary btn-sm px-3 mr-2 shadow-sm">
+                <i class="fas fa-qrcode mr-2"></i> QR Kod
+            </button>
         </div>
 
+        <!-- Flash Messages -->
         <div id="flash-messages">
             {% with messages = get_flashed_messages(with_categories=true) %}
-              {% if messages %}
-                {% for category, message in messages %}
-                  <div class="alert alert-{{ category or 'info' }} alert-dismissible fade show" role="alert">
-                    {{ message }}
-                    <button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">×</span></button>
-                  </div>
-                {% endfor %}
-              {% endif %}
+            {% if messages %}
+            {% for category, message in messages %}
+            <div class="alert alert-{{ category or 'info' }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="close" data-dismiss="alert" aria-label="Close"><span
+                        aria-hidden="true">×</span></button>
+            </div>
+            {% endfor %}
+            {% endif %}
             {% endwith %}
         </div>
 
+        <!-- Spotify Auth Status -->
         {% if not spotify_authenticated %}
-        <div class="alert alert-warning alert-dismissible fade show" role="alert">
-            <i class="fas fa-exclamation-triangle"></i> <strong>Spotify bağlantısı yok!</strong> Lütfen Spotify hesabınızı bağlayın.
-            <a href="{{ url_for('spotify_auth') }}" class="btn btn-sm btn-success ml-2">Şimdi Yetkilendir</a>
-            <button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">×</span></button>
-        </div>
-        {% else %}
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-            <i class="fab fa-spotify"></i> Spotify bağlı: <strong>{{ spotify_user or 'Bilinmeyen Kullanıcı' }}</strong>
-            <button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">×</span></button>
+        <div class="alert alert-warning border-0 shadow-lg mb-4" role="alert">
+            <div class="d-flex align-items-center">
+                <i class="fas fa-exclamation-triangle fa-2x mr-3"></i>
+                <div>
+                    <strong>Spotify Bağlantısı Yok!</strong><br>
+                    Sistemin çalışması için Spotify hesabınızı bağlamanız gerekmektedir.
+                </div>
+                <a href="{{ url_for('spotify_auth') }}" class="btn btn-dark ml-auto">
+                    <i class="fab fa-spotify mr-2"></i>Şimdi Yetkilendir
+                </a>
+            </div>
         </div>
         {% endif %}
 
-        <!-- ANLIK DURUM BÖLÜMÜ -->
-        <div class="row mb-4">
-            <div class="col-lg-6 mb-4">
-                <div class="card">
-                    <div class="card-header"><i class="fas fa-music mr-2 text-success"></i>Şu An Çalıyor</div>
-                    <div class="card-body" id="currently-playing-admin">
-                        {% if currently_playing_info %}
-                            <div class="d-flex align-items-center mb-3">
-                                {% if currently_playing_info.image_url %}
-                                <img src="{{ currently_playing_info.image_url }}" alt="Albüm Kapağı" class="mr-3 currently-playing-img">
-                                {% else %}
-                                <div class="mr-3 currently-playing-placeholder">?</div>
-                                {% endif %}
-                                <div style="min-width: 0;">
-                                    <strong class="d-block text-truncate h5 mb-1">{{ currently_playing_info.name }}</strong>
-                                    <small class="text-muted d-block text-truncate">{{ currently_playing_info.artist }}</small>
-                                    <div class="mt-2">
-                                        {% if currently_playing_info.id %}
-                                        <button class="btn btn-danger btn-sm quick-block-btn" title="Bu Şarkıyı Kara Listeye Ekle" onclick="quickBlockItem(this, 'track', '{{ currently_playing_info.id }}')"><i class="fas fa-ban"></i> Şarkı</button>
-                                        {% endif %}
-                                        {% if currently_playing_info.artist_ids %}{% for artist_id in currently_playing_info.artist_ids %}{% if loop.first %}
-                                        <button class="btn btn-danger btn-sm quick-block-btn" title="Sanatçıyı Kara Listeye Ekle" onclick="quickBlockItem(this, 'artist', '{{ artist_id }}')"><i class="fas fa-user-slash"></i> Sanatçı</button>
-                                        {% endif %}{% endfor %}{% endif %}
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="mt-auto">
-                                {% if currently_playing_info.is_playing %}
-                                <form action="{{ url_for('player_pause') }}" method="GET" class="d-block">
-                                    <button type="submit" class="btn btn-warning btn-block"><i class="fas fa-pause"></i> Durdur & Otomatik Geçişi Kapat</button>
-                                </form>
-                                {% else %}
-                                <form action="{{ url_for('player_resume') }}" method="GET" class="d-block">
-                                    <button type="submit" class="btn btn-success btn-block"><i class="fas fa-play"></i> Devam Et & Otomatik Geçişi Aç</button>
-                                </form>
-                                {% endif %}
-                            </div>
-                            <form action="{{ url_for('player_next') }}" method="POST" class="d-block mt-2">
-                                <button type="submit" class="btn btn-info btn-block"><i class="fas fa-step-forward"></i> Sonraki Şarkı</button>
-                            </form>
-                        {% else %}
-                            <div class="text-center py-4">
-                                <i class="fas fa-info-circle fa-2x text-muted mb-2"></i>
-                                <p class="text-muted mb-0">Şu anda aktif bir şarkı çalınmıyor.</p>
-                            </div>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-            <div class="col-lg-6 mb-4">
-                <div class="card">
-                    <div class="card-header"><i class="fas fa-tasks mr-2 text-info"></i>Şarkı Kuyruğu ({{ queue|length }}/{{ settings.max_queue_length }})</div>
-                    <div class="card-body card-body-scrollable pr-1">
-                        {% if queue %}
-                        <ul class="list-group list-group-flush">
-                            {% for song in queue %}
-                            <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
-                                <div style="min-width: 0;">
-                                    <strong class="d-block text-truncate">{{ song.name }}</strong>
-                                    <small class="text-muted d-block text-truncate">{{ song.artist }}</small>
-                                    <div class="mt-1">
-                                        {% if song.id %}<button class="btn btn-danger btn-sm quick-block-btn" title="Bu Şarkıyı Kara Listeye Ekle" onclick="quickBlockItem(this, 'track', '{{ song.id }}')"><i class="fas fa-ban"></i> Şarkı</button>{% endif %}
-                                        {% if song.artist_ids %}{% for artist_id in song.artist_ids %}{% if loop.first %}<button class="btn btn-danger btn-sm quick-block-btn" title="Sanatçıyı Kara Listeye Ekle" onclick="quickBlockItem(this, 'artist', '{{ artist_id }}')"><i class="fas fa-user-slash"></i> Sanatçı</button>{% endif %}{% endfor %}{% endif %}
-                                    </div>
-                                </div>
-                                <form method="POST" action="{{ url_for('remove_song', song_id_str=song.id) }}" class="ml-2">
-                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Kuyruktan Kaldır"><i class="fas fa-times"></i></button>
-                                </form>
-                            </li>
-                            {% endfor %}
-                        </ul>
-                        {% else %}
-                        <div class="text-center py-5"><p class="text-muted">Kuyruk boş.</p></div>
-                        {% endif %}
-                    </div>
-                    <div class="card-footer">
-                        <form method="POST" action="{{ url_for('add_song') }}">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <input type="text" name="song_id" class="form-control" placeholder="Spotify Şarkı ID veya URL" required>
-                            <div class="input-group-append"><button type="submit" class="btn btn-success"><i class="fas fa-plus"></i> Ekle</button></div>
-                        </form>
-                        <a href="{{ url_for('clear_queue') }}" class="btn btn-sm btn-danger btn-block"><i class="fas fa-trash-alt"></i> Kuyruğu Temizle</a>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <!-- HERO PLAYER SECTION -->
+        <div class="hero-player-section">
+            <div class="hero-bg-blur"></div>
 
-        <!-- CİHAZ YÖNETİMİ BÖLÜMÜ -->
-        <h3 class="section-title">Cihaz ve Ses Çıkış Yönetimi</h3>
-        <div class="row mb-4">
-            <div class="col-lg-4 col-md-6 mb-4">
-                <div class="card">
-                    <div class="card-header"><i class="fab fa-spotify mr-2" style="color: var(--spotify-green);"></i>Spotify Connect Cihazları</div>
-                    <div class="card-body card-body-scrollable" id="spotify-devices-list">
-                         {% if spotify_devices %}
-                            <div class="list-group list-group-flush">
-                                {% for device in spotify_devices %}
-                                <div class="device-list-item {% if device.id == active_spotify_connect_device_id %}active-spotify-device{% endif %}">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div style="min-width: 0;">
-                                            <strong class="d-block text-truncate">{{ device.name }}</strong>
-                                            <small class="text-muted">{{ device.type|upper }} {% if device.is_restricted %}(Kısıtlı){% endif %} {% if device.volume_percent is not none %}- Ses: {{device.volume_percent}}%{% endif %}</small>
-                                        </div>
-                                        <form method="POST" action="{{ url_for('update_settings') }}">
-                                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="hero-content">
+                <!-- Album Art -->
+                <div class="hero-art-wrapper">
+                    {% if currently_playing_info and currently_playing_info.image_url %}
+                    <img src="{{ currently_playing_info.image_url }}" alt="Albüm Kapağı" class="hero-art">
+                    {% else %}
+                    <div class="hero-art-placeholder"><i class="fas fa-music"></i></div>
+                    {% endif %}
+                </div>
 
-                                            <input type="hidden" name="active_spotify_connect_device_id" value="{{ device.id }}">
-                                            <button type="submit" class="btn btn-sm {% if device.id == active_spotify_connect_device_id %}btn-success disabled{% else %}btn-outline-primary{% endif %}" {% if device.id == active_spotify_connect_device_id %}aria-disabled="true"{% endif %} style="white-space: nowrap;">
-                                                {% if device.id == active_spotify_connect_device_id %}Aktif{% else %}Seç{% endif %}
-                                            </button>
-                                        </form>
-                                    </div>
-                                </div>
-                                {% endfor %}
-                            </div>
+                <!-- Info -->
+                <div class="hero-info">
+                    {% if currently_playing_info %}
+                    <div class="hero-title">{{ currently_playing_info.name }}</div>
+                    <div class="hero-artist">{{ currently_playing_info.artist }}</div>
+
+                    <div class="d-flex align-items-center mt-3">
+                        <span class="badge badge-dark p-2 mr-2 border border-secondary"><i
+                                class="fab fa-spotify mr-1"></i>
+                            {{ spotify_user or 'Bağlı' }}</span>
+                        {% if currently_playing_info.is_playing %}
+                        <span class="badge badge-success p-2">Çalıyor</span>
                         {% else %}
-                            <p class="text-muted text-center p-4">Aktif Spotify Connect cihazı bulunamadı.</p>
+                        <span class="badge badge-secondary p-2">Durduruldu</span>
                         {% endif %}
                     </div>
-                    <div class="card-footer text-center">
-                        <a href="{{ url_for('refresh_devices') }}" class="btn btn-sm btn-primary"><i class="fas fa-sync-alt"></i> Connect Cihazlarını Yenile</a>
-                    </div>
-                </div>
-            </div>
-            <div class="col-lg-4 col-md-6 mb-4">
-                <div class="card">
-                    <div class="card-header"><i class="fas fa-volume-up mr-2 text-dark"></i>Ses Çıkışları (Hedef Seçimi)</div>
-                    <div class="card-body card-body-scrollable" id="audio-sinks-list"><p class="text-muted p-3 text-center">Yükleniyor...</p></div>
-                    <div class="card-footer text-center">
-                        <button onclick="refreshAudioSinkList()" class="btn btn-sm btn-dark"><i class="fas fa-sync-alt"></i> Listeyi Yenile</button>
-                        <small class="text-muted mt-2 d-block">Seçilen cihaz sistemin varsayılan ses çıkışı olur.</small>
-                    </div>
-                </div>
-            </div>
-             <div class="col-lg-4 col-md-6 mb-4">
-                <div class="card">
-                    <div class="card-header"><i class="fab fa-bluetooth-b mr-2 text-primary"></i>Bluetooth Cihazları</div>
-                    <div class="card-body card-body-scrollable" id="bluetooth-list"><p class="text-muted p-3 text-center">Yükleniyor...</p></div>
-                    <div class="card-footer text-center">
-                        <button onclick="discoverBluetoothDevices()" id="discover-btn" class="btn btn-sm btn-warning mb-2">
-                            <i class="fas fa-broadcast-tower"></i> Yeni Cihazları Tara (<span id="scan-duration-text">{{ BLUETOOTH_SCAN_DURATION | default(12) }}</span>sn)
+
+                    <!-- Quick Actions -->
+                    <div class="mt-4">
+                        {% if currently_playing_info.id %}
+                        <button class="btn btn-outline-danger btn-sm mr-2"
+                            onclick="quickBlockItem(this, 'track', '{{ currently_playing_info.id }}')">
+                            <i class="fas fa-ban"></i> Şarkıyı Engelle
                         </button>
-                        <small class="text-muted mt-2 d-block">Yeni cihazları görmek için önce tarayın.</small>
+                        {% endif %}
+                        {% if currently_playing_info.artist_ids %}
+                        <button class="btn btn-outline-danger btn-sm"
+                            onclick="quickBlockItem(this, 'artist', '{{ currently_playing_info.artist_ids[0] }}')">
+                            <i class="fas fa-user-slash"></i> Sanatçıyı Engelle
+                        </button>
+                        {% endif %}
                     </div>
+                    {% else %}
+                    <div class="hero-title">Müzik Durduruldu</div>
+                    <div class="hero-artist">Şu anda çalan şarkı yok. Bir çalma listesi seçin veya kuyruğa şarkı
+                        ekleyin.
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Controls -->
+                <div class="hero-controls">
+                    {% if currently_playing_info %}
+                    {% if currently_playing_info.is_playing %}
+                    <form action="{{ url_for('player_pause') }}" method="GET">
+                        <button type="submit" class="btn-controls btn-play-pause" title="Durdur"><i
+                                class="fas fa-pause"></i></button>
+                    </form>
+                    {% else %}
+                    <form action="{{ url_for('player_resume') }}" method="GET">
+                        <button type="submit" class="btn-controls btn-play-pause" title="Oynat"><i
+                                class="fas fa-play"></i></button>
+                    </form>
+                    {% endif %}
+
+                    <form action="{{ url_for('player_next') }}" method="POST">
+                        <button type="submit" class="btn-controls" title="Sonraki"><i
+                                class="fas fa-step-forward"></i></button>
+                    </form>
+                    {% endif %}
                 </div>
             </div>
         </div>
 
-        <!-- ENTEGRE EDİLMİŞ AYARLAR BÖLÜMÜ -->
-        <h3 class="section-title">Filtreler, Konum ve Genel Ayarlar</h3>
+        <div class="dashboard-grid">
 
-        <!-- Genel Ayarlar ve Filtre Modları (Artık kendi formunda) -->
-        <form method="POST" action="{{ url_for('update_settings') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-
-            <div class="row mb-4">
-                <!-- Genel Ayarlar ve Filtre Modları Kartı -->
-                <div class="col-lg-6 offset-lg-3 mb-4">
-                    <div class="card h-100">
-                        <div class="card-header"><i class="fas fa-cogs mr-2 text-warning"></i>Genel Ayarlar ve Filtreler</div>
-                        <div class="card-body">
-                            <div class="form-group">
-                                <label for="max_queue_length">Maks. Kuyruk Uzunluğu</label>
-                                <input type="number" id="max_queue_length" name="max_queue_length" value="{{ settings.max_queue_length }}" class="form-control" min="1" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="max_user_requests">Kullanıcı Başına Maks. İstek</label>
-                                <input type="number" id="max_user_requests" name="max_user_requests" value="{{ settings.max_user_requests }}" class="form-control" min="1" required>
-                            </div>
-                            <hr>
-                            <label class="d-block"><strong>Tür Filtresi:</strong></label>
-                            <div class="custom-control custom-radio custom-control-inline">
-                                <input type="radio" id="genre_mode_blacklist" name="genre_filter_mode" value="blacklist" class="custom-control-input" {% if settings.genre_filter_mode == 'blacklist' %}checked{% endif %}>
-                                <label class="custom-control-label" for="genre_mode_blacklist">Kara Liste</label>
-                            </div>
-                            <div class="custom-control custom-radio custom-control-inline">
-                                <input type="radio" id="genre_mode_whitelist" name="genre_filter_mode" value="whitelist" class="custom-control-input" {% if settings.genre_filter_mode == 'whitelist' %}checked{% endif %}>
-                                <label class="custom-control-label" for="genre_mode_whitelist">Beyaz Liste</label>
-                            </div>
-                            <div class="mt-3">
-                                <label class="d-block"><strong>Sanatçı Filtresi:</strong></label>
-                                <div class="custom-control custom-radio custom-control-inline">
-                                    <input type="radio" id="artist_mode_blacklist" name="artist_filter_mode" value="blacklist" class="custom-control-input" {% if settings.artist_filter_mode == 'blacklist' %}checked{% endif %}>
-                                    <label class="custom-control-label" for="artist_mode_blacklist">Kara Liste</label>
-                                </div>
-                                <div class="custom-control custom-radio custom-control-inline">
-                                    <input type="radio" id="artist_mode_whitelist" name="artist_filter_mode" value="whitelist" class="custom-control-input" {% if settings.artist_filter_mode == 'whitelist' %}checked{% endif %}>
-                                    <label class="custom-control-label" for="artist_mode_whitelist">Beyaz Liste</label>
-                                </div>
+            <!-- 0. ANALYTICS CARD -->
+            <div class="card analytics-card" style="grid-column: span 2;">
+                <div class="card-header"><i class="fas fa-chart-line mr-2 text-info"></i>İstatistikler (Bugün)</div>
+                <div class="card-body">
+                    <div class="row" id="analytics-summary">
+                        <div class="col-md-3 col-6">
+                            <div class="stat-item">
+                                <div class="stat-value" id="stat-today">0</div>
+                                <div class="stat-label">Bugünkü İstek</div>
                             </div>
                         </div>
-                        <div class="card-footer text-center">
-                            <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Genel Ayarları Kaydet</button>
+                        <div class="col-md-3 col-6">
+                            <div class="stat-item">
+                                <div class="stat-value" id="stat-total">0</div>
+                                <div class="stat-label">Toplam İstek</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-6">
+                            <div class="stat-item">
+                                <div class="stat-value" id="stat-users">0</div>
+                                <div class="stat-label">Aktif Kullanıcı</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-6">
+                            <div class="stat-item">
+                                <div class="stat-value" id="stat-tracks">0</div>
+                                <div class="stat-label">Farklı Şarkı</div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </form>
 
-        <!-- Filtre Listeleri ve Sistem İşlemleri -->
-        <div class="row mb-4">
-             <div class="col-md-6 col-lg-4 mb-4">
-                <div class="card">
-                    <div class="card-header">Tür Filtresi (<span id="genre-mode-display">{{ settings.genre_filter_mode|replace('blacklist', 'Kara Liste')|replace('whitelist', 'Beyaz Liste') }}</span>)</div>
-                    <div class="card-body">
-                        <ul class="filter-list" id="genre-filter-list"></ul>
-                        <div class="input-group mt-2">
-                            <input type="text" class="form-control" id="genre-add-input" placeholder="Yeni Tür Ekle...">
-                            <div class="input-group-append"><button class="btn btn-outline-success" type="button" onclick="addFilterItem('genre')">Ekle</button></div>
-                        </div>
+            <!-- 1. QUEUE CARD -->
+            <div class="card" style="grid-row: span 2;">
+                <div class="card-header"><i class="fas fa-tasks mr-2 text-primary"></i>Şarkı Kuyruğu ({{ queue|length
+                    }}/{{
+                    settings.max_queue_length }})</div>
+                <div class="card-body card-body-scrollable pr-1">
+                    {% if queue %}
+                    <ul class="list-group list-group-flush">
+                        {% for song in queue %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                            <div style="min-width: 0;">
+                                <strong class="d-block text-truncate">{{ song.name }}</strong>
+                                <small class="text-secondary d-block text-truncate">{{ song.artist }}</small>
+                                <div class="mt-1">
+                                    {% if song.id %}<button class="btn btn-outline-danger btn-sm quick-block-btn"
+                                        title="Ban Track"
+                                        onclick="quickBlockItem(this, 'track', '{{ song.id }}')">ŞARKIT</button>{% endif
+                                    %}
+                                    {% if song.artist_ids %}{% for artist_id in song.artist_ids %}{% if loop.first
+                                    %}<button class="btn btn-outline-danger btn-sm quick-block-btn ml-1"
+                                        title="Ban Artist"
+                                        onclick="quickBlockItem(this, 'artist', '{{ artist_id }}')">SANATÇI</button>{%
+                                    endif
+                                    %}{% endfor %}{% endif %}
+                                </div>
+                            </div>
+                            <form method="POST" action="{{ url_for('remove_song', song_id_str=song.id) }}" class="ml-2">
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Kuyruktan Kaldır"><i
+                                        class="fas fa-times"></i></button>
+                            </form>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <div class="text-center py-5">
+                        <i class="fas fa-layer-group fa-3x text-secondary mb-3" style="opacity: 0.3;"></i>
+                        <p class="text-secondary">Kuyruk boş.</p>
                     </div>
+                    {% endif %}
                 </div>
-            </div>
-            <div class="col-md-6 col-lg-4 mb-4">
-                <div class="card">
-                    <div class="card-header">Sanatçı Filtresi (<span id="artist-mode-display">{{ settings.artist_filter_mode|replace('blacklist', 'Kara Liste')|replace('whitelist', 'Beyaz Liste') }}</span>)</div>
-                    <div class="card-body">
-                        <ul class="filter-list" id="artist-filter-list"></ul>
-                        <div class="input-group mt-2">
-                            <input type="text" class="form-control" id="artist-add-input" placeholder="Spotify Sanatçı ID Ekle...">
-                            <div class="input-group-append"><button class="btn btn-outline-success" type="button" onclick="addFilterItem('artist')">Ekle</button></div>
-                        </div>
-                        <hr>
-                        <label class="small text-muted">Veya Arama ile Ekle:</label>
+                <div class="card-footer">
+                    <form method="POST" action="{{ url_for('add_song') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <div class="input-group">
-                            <input type="text" class="form-control" id="artist-search-input" placeholder="Sanatçı Ara...">
-                            <div class="input-group-append"><button class="btn btn-outline-primary" type="button" onclick="searchSpotify('artist')">Ara</button></div>
+                            <input type="text" name="song_id" class="form-control" placeholder="Spotify Şarkı ID / URL"
+                                required style="border-top-right-radius: 0; border-bottom-right-radius: 0;">
+                            <div class="input-group-append">
+                                <button type="submit" class="btn btn-success"
+                                    style="border-top-left-radius: 0; border-bottom-left-radius: 0;"><i
+                                        class="fas fa-plus"></i></button>
+                            </div>
                         </div>
-                        <div class="search-results-filter list-group list-group-flush mt-2" id="artist-search-results"></div>
+                    </form>
+                    <a href="{{ url_for('clear_queue') }}" class="btn btn-sm btn-outline-danger btn-block mt-2"><i
+                            class="fas fa-trash-alt"></i> Kuyruğu Temizle</a>
+                </div>
+            </div>
+
+            <!-- 2. SPOTIFY DEVICES CARD -->
+            <div class="card">
+                <div class="card-header"><i class="fab fa-spotify mr-2 text-success"></i>Spotify Connect</div>
+                <div class="card-body card-body-scrollable" id="spotify-devices-list">
+                    {% if spotify_devices %}
+                    <div class="list-group list-group-flush">
+                        {% for device in spotify_devices %}
+                        <div
+                            class="device-list-item {% if device.id == active_spotify_connect_device_id %}active-spotify-device{% endif %}">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div style="min-width: 0;">
+                                    <strong class="d-block text-truncate">{{ device.name }}</strong>
+                                    <small class="text-secondary">{{ device.type|upper }}</small>
+                                </div>
+                                <form method="POST" action="{{ url_for('update_settings') }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <input type="hidden" name="active_spotify_connect_device_id"
+                                        value="{{ device.id }}">
+                                    <button type="submit"
+                                        class="btn btn-sm {% if device.id == active_spotify_connect_device_id %}btn-success disabled{% else %}btn-outline-primary{% endif %}">
+                                        {% if device.id == active_spotify_connect_device_id %}Aktif{% else %}Seç{% endif
+                                        %}
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-secondary text-center p-4">Cihaz bulunamadı.</p>
+                    {% endif %}
+                </div>
+                <div class="card-footer text-center">
+                    <a href="{{ url_for('refresh_devices') }}" class="btn btn-sm btn-outline-primary"><i
+                            class="fas fa-sync-alt"></i> Yenile</a>
+                </div>
+            </div>
+
+            <!-- 3. GENERAL SETTINGS CARD -->
+            <form method="POST" action="{{ url_for('update_settings') }}" class="card h-100" style="margin-bottom: 0;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="card-header"><i class="fas fa-cogs mr-2 text-warning"></i>Ayarlar</div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label class="text-secondary small text-uppercase font-weight-bold">Maks. Kuyruk</label>
+                        <input type="number" name="max_queue_length" value="{{ settings.max_queue_length }}"
+                            class="form-control" min="1" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="text-secondary small text-uppercase font-weight-bold">Kullanıcı Hakkı</label>
+                        <input type="number" name="max_user_requests" value="{{ settings.max_user_requests }}"
+                            class="form-control" min="1" required>
+                    </div>
+
+                    <hr style="border-color: var(--border-glass);">
+
+                    <div class="form-group mb-4">
+                        <label class="d-block text-secondary small text-uppercase font-weight-bold mb-2">Tür Filtresi
+                            Modu</label>
+                        <div class="segmented-control">
+                            <input type="radio" id="gm_bl" name="genre_filter_mode" value="blacklist" {% if
+                                settings.genre_filter_mode=='blacklist' %}checked{% endif %}>
+                            <label for="gm_bl">Kara Liste</label>
+
+                            <input type="radio" id="gm_wl" name="genre_filter_mode" value="whitelist" {% if
+                                settings.genre_filter_mode=='whitelist' %}checked{% endif %}>
+                            <label for="gm_wl">Beyaz Liste</label>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="d-block text-secondary small text-uppercase font-weight-bold mb-2">Sanatçı
+                            Filtresi
+                            Modu</label>
+                        <div class="segmented-control">
+                            <input type="radio" id="am_bl" name="artist_filter_mode" value="blacklist" {% if
+                                settings.artist_filter_mode=='blacklist' %}checked{% endif %}>
+                            <label for="am_bl">Kara Liste</label>
+
+                            <input type="radio" id="am_wl" name="artist_filter_mode" value="whitelist" {% if
+                                settings.artist_filter_mode=='whitelist' %}checked{% endif %}>
+                            <label for="am_wl">Beyaz Liste</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer text-center">
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Kaydet</button>
+                </div>
+            </form>
+
+            <!-- 4. AUDIO SINKS -->
+            <div class="card">
+                <div class="card-header"><i class="fas fa-volume-up mr-2"></i>Ses Çıkışları</div>
+                <div class="card-body card-body-scrollable" id="audio-sinks-list">
+                    <p class="text-center p-3"><span class="spinner-border spinner-border-sm text-secondary"></span></p>
+                </div>
+                <div class="card-footer text-center">
+                    <button onclick="refreshAudioSinkList()" class="btn btn-sm btn-outline-light"><i
+                            class="fas fa-sync-alt"></i> Yenile</button>
+                </div>
+            </div>
+
+            <!-- 5. BLUETOOTH -->
+            <div class="card">
+                <div class="card-header"><i class="fab fa-bluetooth-b mr-2 text-primary"></i>Bluetooth</div>
+                <div class="card-body card-body-scrollable" id="bluetooth-list">
+                    <p class="text-center p-3"><span class="spinner-border spinner-border-sm text-secondary"></span></p>
+                </div>
+                <div class="card-footer text-center">
+                    <button onclick="discoverBluetoothDevices()" id="discover-btn" class="btn btn-sm btn-warning">
+                        <i class="fas fa-search"></i> Tara (<span id="scan-duration-text">{{ BLUETOOTH_SCAN_DURATION |
+                            default(12) }}</span>s)
+                    </button>
+                </div>
+            </div>
+
+            <!-- 6. SYSTEM OPS -->
+            <div class="card">
+                <div class="card-header"><i class="fas fa-power-off mr-2 text-danger"></i>Sistem</div>
+                <div class="card-body">
+                    <button onclick="switchToAlsa(this)" class="btn btn-outline-light btn-block mb-2 text-left"><i
+                            class="fas fa-desktop mr-2"></i> ALSA Geçişi</button>
+                    <button onclick="restartSpotifyd(this)" class="btn btn-outline-danger btn-block mb-3 text-left"><i
+                            class="fas fa-redo mr-2"></i> Spotifyd Restart</button>
+
+                    <h6 class="text-secondary text-uppercase small font-weight-bold mt-4 mb-2">SSH Port (22)</h6>
+                    <div id="port-status" class="alert d-none mb-2 p-2 small"></div>
+                    <div class="btn-group w-100">
+                        <button onclick="checkPort(this)" class="btn btn-outline-primary btn-sm"><i
+                                class="fas fa-question"></i></button>
+                        <button onclick="openPort(this)" class="btn btn-success btn-sm">AÇ</button>
+                        <button onclick="closePort(this)" class="btn btn-outline-danger btn-sm">KAPAT</button>
                     </div>
                 </div>
             </div>
-            <div class="col-md-12 col-lg-4 mb-4">
-                 <div class="card">
-                    <div class="card-header bg-danger text-white"><i class="fas fa-ban mr-2"></i>Engellenmiş Şarkılar (Kara Liste)</div>
-                    <div class="card-body">
-                        <div class="input-group mb-3">
-                            <input type="text" class="form-control" id="blocked-track-search-input" onkeyup="searchBlockedTracks()" placeholder="Engellenmiş şarkılarda ara...">
-                            <div class="input-group-append"><span class="input-group-text"><i class="fas fa-search"></i></span></div>
-                        </div>
-                        <div class="table-responsive" style="max-height: 280px;">
-                            <table class="table table-hover table-sm">
-                                <tbody id="blocked-tracks-list"><!-- JS ile doldurulacak --></tbody>
-                            </table>
-                        </div>
+
+            <!-- 7. GENRE FILTER LIST -->
+            <div class="card">
+                <div class="card-header">Tür Listesi</div>
+                <div class="card-body">
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" id="genre-add-input" placeholder="Tür Ekle..."
+                            style="border-top-right-radius: 0; border-bottom-right-radius: 0;">
+                        <div class="input-group-append"><button class="btn btn-success" onclick="addFilterItem('genre')"
+                                style="border-top-left-radius: 0; border-bottom-left-radius: 0;"><i
+                                    class="fas fa-plus"></i></button></div>
+                    </div>
+                    <ul class="filter-list" id="genre-filter-list"></ul>
+                </div>
+            </div>
+
+            <!-- 8. ARTIST FILTER LIST -->
+            <div class="card" style="grid-row: span 2;">
+                <div class="card-header">Sanatçı Listesi</div>
+                <div class="card-body">
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" id="artist-add-input" placeholder="ID Ekle..."
+                            style="border-top-right-radius: 0; border-bottom-right-radius: 0;">
+                        <div class="input-group-append"><button class="btn btn-success"
+                                onclick="addFilterItem('artist')"
+                                style="border-top-left-radius: 0; border-bottom-left-radius: 0;"><i
+                                    class="fas fa-plus"></i></button></div>
+                    </div>
+
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" id="artist-search-input" placeholder="Spotify'da Ara..."
+                            style="border-top-right-radius: 0; border-bottom-right-radius: 0;">
+                        <div class="input-group-append"><button class="btn btn-primary"
+                                onclick="searchSpotify('artist')"
+                                style="border-top-left-radius: 0; border-bottom-left-radius: 0;"><i
+                                    class="fas fa-search"></i></button></div>
+                    </div>
+                    <div class="search-results-filter list-group list-group-flush mb-3" id="artist-search-results">
+                    </div>
+
+                    <h6 class="text-secondary small mt-3">Kayıtlı Sanatçılar</h6>
+                    <ul class="filter-list" id="artist-filter-list"></ul>
+                </div>
+            </div>
+
+            <!-- 9. BLOCKED TRACKS -->
+            <div class="card">
+                <div class="card-header text-danger"><i class="fas fa-ban mr-2"></i>Engelli Şarkılar</div>
+                <div class="card-body">
+                    <input type="text" class="form-control mb-3" id="blocked-track-search-input"
+                        onkeyup="searchBlockedTracks()" placeholder="Ara...">
+                    <div class="table-responsive" style="max-height: 200px;">
+                        <table class="table table-sm table-borderless text-light">
+                            <tbody id="blocked-tracks-list"></tbody>
+                        </table>
                     </div>
                 </div>
             </div>
-            <div class="col-md-6 col-lg-4 mb-4">
-                 <div class="card">
-                    <div class="card-header"><i class="fas fa-tools mr-2 text-dark"></i>Sistem İşlemleri</div>
-                    <div class="card-body d-flex flex-column justify-content-center">
-                         <button onclick="switchToAlsa(this)" id="alsa-switch-btn" class="btn btn-outline-dark btn-block mb-3"><i class="fas fa-desktop"></i> ALSA Cihazına Geçiş Yap</button>
-                         <button onclick="restartSpotifyd(this)" id="spotifyd-restart-btn" class="btn btn-outline-danger btn-block mb-3"><i class="fas fa-redo"></i> Spotifyd'yi Yeniden Başlat</button>
-                         <hr>
-                         <div class="port-control-section">
-                             <h6 class="mb-3">SSH Port (22) Kontrolü</h6>
-                             <div id="port-status" class="alert d-none mb-3"></div>
-                             <div class="btn-group w-100">
-                                 <button onclick="checkPort(this)" class="btn btn-outline-primary"><i class="fas fa-sync-alt"></i> Durumu Kontrol Et</button>
-                                 <button onclick="openPort(this)" class="btn btn-success"><i class="fas fa-door-open"></i> Portu Aç</button>
-                                 <button onclick="closePort(this)" class="btn btn-danger"><i class="fas fa-door-closed"></i> Portu Kapat</button>
-                             </div>
-                         </div>
-                         <small class="text-muted text-center mt-3">Not: Ses cihazı değişikliklerinden sonra yeniden başlatma gerekebilir.</small>
-                    </div>
-                </div>
-            </div>
+
         </div>
-        
+
         <!-- ÇALMA LİSTESİ BÖLÜMÜ -->
         <hr class="my-4">
         <div>
             <h4 class="mb-3">Otomatik Çalma için Çalma Listesi Seçimi</h4>
-            <p class="text-muted">Kuyruk boşaldığında, buradan seçtiğiniz listeden rastgele bir şarkı çalınır. Seçiminiz otomatik olarak kaydedilir.</p>
-            <input type="hidden" id="active_playlist_uri_input" name="active_playlist_uri" value="{{ active_playlist_uri or '' }}">
+            <p class="text-muted">Kuyruk boşaldığında, buradan seçtiğiniz listeden rastgele bir şarkı çalınır. Seçiminiz
+                otomatik olarak kaydedilir.</p>
+            <input type="hidden" id="active_playlist_uri_input" name="active_playlist_uri"
+                value="{{ active_playlist_uri or '' }}">
 
             <div class="row">
                 {% for playlist in paginated_playlists %}
-                    {% if playlist and playlist.id %}
-                    <div class="col-6 col-md-4 col-lg-3 col-xl-2 mb-4">
-                        <div class="card playlist-card {% if playlist.uri == active_playlist_uri %}selected{% endif %}" data-uri="{{ playlist.uri }}">
-                            <div class="playlist-card-img-container">
-                                {% if playlist.images and playlist.images|length > 0 %}
-                                    <img src="{{ playlist.images[0].url }}" class="playlist-card-img" alt="{{ playlist.name }}">
-                                {% else %}
-                                    <div class="d-flex justify-content-center align-items-center h-100 bg-secondary position-absolute w-100">
-                                        <i class="fas fa-music fa-3x text-light"></i>
-                                    </div>
-                                {% endif %}
+                {% if playlist and playlist.id %}
+                <div class="col-6 col-md-4 col-lg-3 col-xl-2 mb-4">
+                    <div class="card playlist-card {% if playlist.uri == active_playlist_uri %}selected{% endif %}"
+                        data-uri="{{ playlist.uri }}">
+                        <div class="playlist-card-img-container">
+                            {% if playlist.images and playlist.images|length > 0 %}
+                            <img src="{{ playlist.images[0].url }}" class="playlist-card-img" alt="{{ playlist.name }}">
+                            {% else %}
+                            <div
+                                class="d-flex justify-content-center align-items-center h-100 bg-secondary position-absolute w-100">
+                                <i class="fas fa-music fa-3x text-light"></i>
                             </div>
-                            <div class="card-body">
-                                <h6 class="card-title" title="{{ playlist.name }}">{{ playlist.name }}</h6>
-                                <p class="card-text text-light">{{ playlist.tracks.total }} şarkı</p>
-                            </div>
-                            <div class="selected-checkmark"><i class="fas fa-check-circle"></i></div>
+                            {% endif %}
                         </div>
+                        <div class="card-body">
+                            <h6 class="card-title" title="{{ playlist.name }}">{{ playlist.name }}</h6>
+                            <p class="card-text text-light">{{ playlist.tracks.total }} şarkı</p>
+                        </div>
+                        <div class="selected-checkmark"><i class="fas fa-check-circle"></i></div>
                     </div>
-                    {% endif %}
+                </div>
+                {% endif %}
                 {% else %}
-                    <div class="col-12">
-                        <p class="text-center text-muted">Spotify'da hiç çalma listeniz bulunamadı veya yetkilendirme gerekli.</p>
-                    </div>
+                <div class="col-12">
+                    <p class="text-center text-muted">Spotify'da hiç çalma listeniz bulunamadı veya yetkilendirme
+                        gerekli.</p>
+                </div>
                 {% endfor %}
             </div>
 
             {% if total_pages > 1 %}
             <nav aria-label="Playlist Pagination" class="mt-4">
                 <ul class="pagination justify-content-center">
-                    <li class="page-item {% if page <= 1 %}disabled{% endif %}"><a class="page-link" href="{{ url_for('admin_panel', page=page-1) }}">Önceki</a></li>
-                    {% for p in range(1, total_pages + 1) %}<li class="page-item {% if p == page %}active{% endif %}"><a class="page-link" href="{{ url_for('admin_panel', page=p) }}">{{ p }}</a></li>{% endfor %}
-                    <li class="page-item {% if page >= total_pages %}disabled{% endif %}"><a class="page-link" href="{{ url_for('admin_panel', page=page+1) }}">Sonraki</a></li>
+                    <li class="page-item {% if page <= 1 %}disabled{% endif %}"><a class="page-link"
+                            href="{{ url_for('admin_panel', page=page-1) }}">Önceki</a></li>
+                    {% for p in range(1, total_pages + 1) %}<li class="page-item {% if p == page %}active{% endif %}"><a
+                            class="page-link" href="{{ url_for('admin_panel', page=p) }}">{{ p }}</a></li>{% endfor %}
+                    <li class="page-item {% if page >= total_pages %}disabled{% endif %}"><a class="page-link"
+                            href="{{ url_for('admin_panel', page=page+1) }}">Sonraki</a></li>
                 </ul>
             </nav>
             {% endif %}
@@ -567,19 +943,20 @@
         let spotifyNameCache = {}; // ID -> Name eşleşmesi için cache
         let locationSaveTimer; // Konum kaydı için debounce zamanlayıcısı
 
-        $(document).ready(function() {
-        // CSRF token'ını tüm AJAX isteklerine eklemek için jQuery'yi ayarla
-        $.ajaxSetup({
-        beforeSend: function(xhr, settings) {
-            if (!/^(GET|HEAD|OPTIONS|TRACE)$/i.test(settings.type) && !this.crossDomain) {
-            // Meta etiketinden token'ı al
-            const token = $('meta[name="csrf-token"]').attr('content');
-            if (token) {
-                // X-CSRFToken başlığına token'ı ekle
-                xhr.setRequestHeader('X-CSRFToken', token);
-            }
-            }
-        }
+        $(document).ready(function () {
+            // CSRF token'ını tüm AJAX isteklerine eklemek için jQuery'yi ayarla
+            $.ajaxSetup({
+                beforeSend: function (xhr, settings) {
+                    if (!/^(GET|HEAD|OPTIONS|TRACE)$/i.test(settings.type) && !this.crossDomain) {
+                        // Meta etiketinden token'ı al
+                        const token = $('meta[name="csrf-token"]').attr('content');
+                        if (token) {
+                            // X-CSRFToken başlığına token'ı ekle
+                            xhr.setRequestHeader('X-CSRFToken', token);
+                        }
+                    }
+                }
+            });
         });
         // --- Yardımcı Fonksiyonlar ---
         function showFlashMessage(message, category = 'info', duration = 7000) {
@@ -605,11 +982,11 @@
                 if (buttonElement.dataset.originalHtml) { buttonElement.innerHTML = buttonElement.dataset.originalHtml; delete buttonElement.dataset.originalHtml; }
             }
         }
-    
 
-        
+
+
         // --- Sayfa Yüklendiğinde Çalışacak Kodlar ---
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             // Harita Başlatma
             const latInput = document.getElementById('cafe_latitude');
             const lonInput = document.getElementById('cafe_longitude');
@@ -617,44 +994,44 @@
             const initialLat = parseFloat(latInput.value) || 41.015137;
             const initialLon = parseFloat(lonInput.value) || 28.979530;
             const map = L.map('map').setView([initialLat, initialLon], 16);
-            
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
             }).addTo(map);
-    
+
             $('#locationCollapseContent').on('shown.bs.collapse', function () {
                 map.invalidateSize();
             });
-    
+
             const marker = L.marker([initialLat, initialLon], { draggable: true }).addTo(map);
             let circle = L.circle([initialLat, initialLon], {
                 color: 'blue', fillColor: '#3498db', fillOpacity: 0.2, radius: parseInt(radiusInput.value, 10) || 500
             }).addTo(map);
-    
+
             function updateUIAndSave(lat, lng, rad) {
                 latInput.value = lat.toFixed(6);
                 lonInput.value = lng.toFixed(6);
                 circle.setLatLng([lat, lng]);
-                if(rad) circle.setRadius(rad);
+                if (rad) circle.setRadius(rad);
                 saveLocationSettings();
             }
-    
+
             const searchControl = new GeoSearch.GeoSearchControl({
                 provider: new GeoSearch.OpenStreetMapProvider(), style: 'bar', showMarker: false,
                 autoClose: true, keepResult: true, searchLabel: 'Adres veya yer arayın...',
             });
             map.addControl(searchControl);
-    
+
             map.on('geosearch/showlocation', function (result) {
                 const lat = result.location.y;
                 const lng = result.location.x;
                 marker.setLatLng([lat, lng]);
                 updateUIAndSave(lat, lng);
             });
-    
+
             marker.on('dragend', () => updateUIAndSave(marker.getLatLng().lat, marker.getLatLng().lng));
             map.on('click', (e) => { marker.setLatLng(e.latlng); updateUIAndSave(e.latlng.lat, e.latlng.lng); });
-            
+
             radiusInput.addEventListener('input', () => {
                 const newRadius = parseInt(radiusInput.value, 10);
                 if (!isNaN(newRadius) && newRadius > 0) {
@@ -662,11 +1039,11 @@
                     saveLocationSettings();
                 }
             });
-            
-            window.goToMyLocation = () => map.locate({setView: true, maxZoom: 17});
+
+            window.goToMyLocation = () => map.locate({ setView: true, maxZoom: 17 });
             map.on('locationfound', (e) => { marker.setLatLng(e.latlng); updateUIAndSave(e.latlng.lat, e.latlng.lng); });
             map.on('locationerror', (e) => alert("Konum alınamadı: " + e.message));
-    
+
             // Playlist Seçimi
             const playlistCards = document.querySelectorAll('.playlist-card');
             playlistCards.forEach(card => {
@@ -675,32 +1052,32 @@
                     const selectedUri = clickedCard.dataset.uri;
                     let newActiveUri = selectedUri;
                     if (clickedCard.classList.contains('selected')) { newActiveUri = ''; }
-                    
+
                     fetch('{{ url_for("api_set_active_playlist") }}', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ playlist_uri: newActiveUri })
                     })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            showFlashMessage(data.message, 'success');
-                            if (newActiveUri === '') {
-                                clickedCard.classList.remove('selected');
-                            } else {
-                                playlistCards.forEach(c => c.classList.remove('selected'));
-                                clickedCard.classList.add('selected');
-                            }
-                        } else { showFlashMessage(data.error || 'Bir hata oluştu.', 'danger'); }
-                    })
-                    .catch(error => { console.error('API Hatası:', error); showFlashMessage('Ağ hatası, ayar kaydedilemedi.', 'danger'); });
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                showFlashMessage(data.message, 'success');
+                                if (newActiveUri === '') {
+                                    clickedCard.classList.remove('selected');
+                                } else {
+                                    playlistCards.forEach(c => c.classList.remove('selected'));
+                                    clickedCard.classList.add('selected');
+                                }
+                            } else { showFlashMessage(data.error || 'Bir hata oluştu.', 'danger'); }
+                        })
+                        .catch(error => { console.error('API Hatası:', error); showFlashMessage('Ağ hatası, ayar kaydedilemedi.', 'danger'); });
                 });
             });
-    
+
             // Diğer Başlangıç Fonksiyonları
-            refreshAudioSinkList(); 
+            refreshAudioSinkList();
             refreshBluetoothList(0);
-            
+
             const allIdsToFetch = {
                 artist: [...new Set([...(currentSettings.artist_blacklist || []), ...(currentSettings.artist_whitelist || [])])],
                 track: [...new Set([...(currentSettings.track_blacklist || [])])]
@@ -713,23 +1090,23 @@
             }).filter(p => p);
             $.when.apply($, fetchPromises).always(() => renderAllFilterLists());
         });
-    
+
         // --- Listeleri Render Etme Fonksiyonları ---
         function renderAudioSinkList(sinks, defaultSinkName) {
             const listElement = $('#audio-sinks-list'); listElement.empty();
             if (sinks && sinks.length > 0) {
-                 sinks.forEach(sink => {
-                     let stateClass = ''; let isDefault = sink.name === defaultSinkName;
-                     if (isDefault) { stateClass = 'default-audio-sink'; }
-                     else if (sink.state === 'RUNNING') { stateClass = 'running-audio-sink'; }
-                     
-                     let stateBadge = `<span class="badge badge-secondary">${sink.state || 'Bilinmiyor'}</span>`;
-                     if(isDefault) stateBadge = `<span class="badge badge-primary">Varsayılan</span>`;
-                     else if(sink.state === 'RUNNING') stateBadge = `<span class="badge badge-success">Çalışıyor</span>`;
-    
-                     let buttonHtml = !isDefault ? `<button onclick="setDefaultAudioSink(this, '${sink.index}')" class="btn btn-sm btn-outline-primary ml-2" style="white-space: nowrap;">Varsayılan Yap</button>` : '';
-                     
-                     const itemHtml = `
+                sinks.forEach(sink => {
+                    let stateClass = ''; let isDefault = sink.name === defaultSinkName;
+                    if (isDefault) { stateClass = 'default-audio-sink'; }
+                    else if (sink.state === 'RUNNING') { stateClass = 'running-audio-sink'; }
+
+                    let stateBadge = `<span class="badge badge-secondary">${sink.state || 'Bilinmiyor'}</span>`;
+                    if (isDefault) stateBadge = `<span class="badge badge-primary">Varsayılan</span>`;
+                    else if (sink.state === 'RUNNING') stateBadge = `<span class="badge badge-success">Çalışıyor</span>`;
+
+                    let buttonHtml = !isDefault ? `<button onclick="setDefaultAudioSink(this, '${sink.index}')" class="btn btn-sm btn-outline-primary ml-2" style="white-space: nowrap;">Varsayılan Yap</button>` : '';
+
+                    const itemHtml = `
                         <div class="device-list-item ${stateClass}">
                             <div class="d-flex justify-content-between align-items-center">
                                 <div style="min-width: 0;">
@@ -739,29 +1116,29 @@
                                 ${buttonHtml}
                             </div>
                         </div>`;
-                     listElement.append(itemHtml);
-                 });
+                    listElement.append(itemHtml);
+                });
             } else { listElement.html('<p class="text-muted text-center p-4">Ses çıkış cihazı (sink) bulunamadı.</p>'); }
-         }
+        }
         function renderBluetoothList(devices) {
-             const listElement = $('#bluetooth-list'); listElement.empty();
-             if (devices && devices.length > 0) {
-                 devices.forEach(device => {
-                     let cardClass = ''; let actionButtonHtml = ''; let statusBadge = '';
-                     const devicePath = device.path || '';
-                     if (device.paired) {
-                         if (device.connected) {
-                             cardClass = 'connected-bluetooth-device'; statusBadge = '<span class="badge badge-primary ml-1">Bağlı</span>';
-                             actionButtonHtml = `<button onclick="disconnectDevice(this, '${devicePath}')" class="btn btn-sm btn-outline-danger ml-2">Kes</button>`;
-                         } else {
-                             statusBadge = '<span class="badge badge-secondary ml-1">Eşleşmiş</span>';
-                             actionButtonHtml = `<button onclick="pairDevice(this, '${devicePath}')" class="btn btn-sm btn-success ml-2">Bağlan</button>`;
-                         }
-                     } else {
-                         statusBadge = '<span class="badge badge-light ml-1">Yeni</span>';
-                         actionButtonHtml = `<button onclick="pairDevice(this, '${devicePath}')" class="btn btn-sm btn-warning ml-2">Eşleştir</button>`;
-                     }
-                     const itemHtml = `
+            const listElement = $('#bluetooth-list'); listElement.empty();
+            if (devices && devices.length > 0) {
+                devices.forEach(device => {
+                    let cardClass = ''; let actionButtonHtml = ''; let statusBadge = '';
+                    const devicePath = device.path || '';
+                    if (device.paired) {
+                        if (device.connected) {
+                            cardClass = 'connected-bluetooth-device'; statusBadge = '<span class="badge badge-primary ml-1">Bağlı</span>';
+                            actionButtonHtml = `<button onclick="disconnectDevice(this, '${devicePath}')" class="btn btn-sm btn-outline-danger ml-2">Kes</button>`;
+                        } else {
+                            statusBadge = '<span class="badge badge-secondary ml-1">Eşleşmiş</span>';
+                            actionButtonHtml = `<button onclick="pairDevice(this, '${devicePath}')" class="btn btn-sm btn-success ml-2">Bağlan</button>`;
+                        }
+                    } else {
+                        statusBadge = '<span class="badge badge-light ml-1">Yeni</span>';
+                        actionButtonHtml = `<button onclick="pairDevice(this, '${devicePath}')" class="btn btn-sm btn-warning ml-2">Eşleştir</button>`;
+                    }
+                    const itemHtml = `
                         <div class="device-list-item ${cardClass}">
                            <div class="d-flex justify-content-between align-items-center">
                               <div style="min-width: 0;">
@@ -772,75 +1149,80 @@
                            </div>
                         </div>`;
                     listElement.append(itemHtml);
-                 });
-             } else { listElement.html('<p class="text-muted text-center p-4">Bluetooth cihazı bulunamadı.</p>'); }
-         }
-    
+                });
+            } else { listElement.html('<p class="text-muted text-center p-4">Bluetooth cihazı bulunamadı.</p>'); }
+        }
+
         // --- API Çağrıları ve Liste Yenileme ---
         function refreshAudioSinkList() {
             showListLoading('audio-sinks-list', 'Ses çıkışları yenileniyor...');
             $.get('/api/audio-sinks')
-             .done(function(data) { if(data && data.success) { renderAudioSinkList(data.sinks, data.default_sink_name); } else { $('#audio-sinks-list').html(`<p class="text-danger p-4">Ses listesi alınamadı: ${data.error || 'Veri eksik'}</p>`); } })
-             .fail(function(xhr) { $('#audio-sinks-list').html('<p class="text-danger p-4">Ses listesi alınamadı (API Hatası).</p>'); });
+                .done(function (data) { if (data && data.success) { renderAudioSinkList(data.sinks, data.default_sink_name); } else { $('#audio-sinks-list').html(`<p class="text-danger p-4">Ses listesi alınamadı: ${data.error || 'Veri eksik'}</p>`); } })
+                .fail(function (xhr) { $('#audio-sinks-list').html('<p class="text-danger p-4">Ses listesi alınamadı (API Hatası).</p>'); });
         }
         function refreshBluetoothList(duration = 0) {
             const isLoadingKnown = duration === 0; const loadingMessage = isLoadingKnown ? 'Bluetooth cihazları listeleniyor...' : 'Yeni Bluetooth cihazları taranıyor...';
             showListLoading('bluetooth-list', loadingMessage); const discoverBtn = document.getElementById('discover-btn');
             if (!isLoadingKnown && discoverBtn) setButtonLoading(discoverBtn, true);
             $.get(`/api/discover-bluetooth?duration=${duration}`)
-             .done(function(data) { if(data && data.success) { renderBluetoothList(data.devices); if (!isLoadingKnown) showFlashMessage('Bluetooth taraması tamamlandı.', 'info'); } else { $('#bluetooth-list').html(`<p class="text-danger p-4">Cihazlar listelenemedi: ${data.error || 'Veri eksik'}</p>`); } })
-             .fail(function(xhr) { $('#bluetooth-list').html('<p class="text-danger p-4">Bluetooth API\'sine ulaşılamadı.</p>'); })
-             .always(function() { if (!isLoadingKnown && discoverBtn) setButtonLoading(discoverBtn, false); });
+                .done(function (data) { if (data && data.success) { renderBluetoothList(data.devices); if (!isLoadingKnown) showFlashMessage('Bluetooth taraması tamamlandı.', 'info'); } else { $('#bluetooth-list').html(`<p class="text-danger p-4">Cihazlar listelenemedi: ${data.error || 'Veri eksik'}</p>`); } })
+                .fail(function (xhr) { $('#bluetooth-list').html('<p class="text-danger p-4">Bluetooth API\'sine ulaşılamadı.</p>'); })
+                .always(function () { if (!isLoadingKnown && discoverBtn) setButtonLoading(discoverBtn, false); });
         }
         function discoverBluetoothDevices() { const el = document.getElementById('scan-duration-text'); const duration = el ? parseInt(el.textContent || '{{ BLUETOOTH_SCAN_DURATION | default(12) }}', 10) : '{{ BLUETOOTH_SCAN_DURATION | default(12) }}'; refreshBluetoothList(duration); }
         function updateRelevantDeviceLists(data) {
-             if (data.sinks !== undefined) { renderAudioSinkList(data.sinks, data.default_sink_name); } else { refreshAudioSinkList(); }
-             if (data.bluetooth_devices !== undefined) { renderBluetoothList(data.bluetooth_devices); } else { refreshBluetoothList(0); }
-         }
+            if (data.sinks !== undefined) { renderAudioSinkList(data.sinks, data.default_sink_name); } else { refreshAudioSinkList(); }
+            if (data.bluetooth_devices !== undefined) { renderBluetoothList(data.bluetooth_devices); } else { refreshBluetoothList(0); }
+        }
         function setDefaultAudioSink(buttonElement, sinkIdentifier) {
-            let sinkDesc = sinkIdentifier; try { const card = buttonElement.closest('.device-list-item'); if(card) { const strongElement = card.querySelector('strong'); if (strongElement) sinkDesc = strongElement.textContent || sinkIdentifier; } } catch(e) {}
+            let sinkDesc = sinkIdentifier; try { const card = buttonElement.closest('.device-list-item'); if (card) { const strongElement = card.querySelector('strong'); if (strongElement) sinkDesc = strongElement.textContent || sinkIdentifier; } } catch (e) { }
             if (!confirm(`"${sinkDesc}" adlı ses çıkışını sistemin varsayılanı yapmak istediğinizden emin misiniz?`)) { return; }
             setButtonLoading(buttonElement, true);
-            $.ajax({ url: '/api/set-audio-sink', type: 'POST', contentType: 'application/json', data: JSON.stringify({ sink_identifier: sinkIdentifier }),
-                success: function(data) { if (data.success) { showFlashMessage(data.message || 'Varsayılan ses çıkışı başarıyla değiştirildi!', 'success'); updateRelevantDeviceLists(data); } else { showFlashMessage('Hata: ' + (data.error || 'Bilinmeyen hata.'), 'danger'); refreshAudioSinkList(); } },
-                error: function(xhr) { let errorMsg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Sunucu hatası.'; showFlashMessage(`Hata: ${errorMsg}`, 'danger'); refreshAudioSinkList(); }
+            $.ajax({
+                url: '/api/set-audio-sink', type: 'POST', contentType: 'application/json', data: JSON.stringify({ sink_identifier: sinkIdentifier }),
+                success: function (data) { if (data.success) { showFlashMessage(data.message || 'Varsayılan ses çıkışı başarıyla değiştirildi!', 'success'); updateRelevantDeviceLists(data); } else { showFlashMessage('Hata: ' + (data.error || 'Bilinmeyen hata.'), 'danger'); refreshAudioSinkList(); } },
+                error: function (xhr) { let errorMsg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Sunucu hatası.'; showFlashMessage(`Hata: ${errorMsg}`, 'danger'); refreshAudioSinkList(); }
             });
         }
         function pairDevice(buttonElement, devicePath) {
             if (!devicePath) { showFlashMessage('Hata: Cihaz yolu (path) bulunamadı.', 'danger'); return; }
             setButtonLoading(buttonElement, true);
-            $.ajax({ url: '/api/pair-bluetooth', type: 'POST', contentType: 'application/json', data: JSON.stringify({ device_path: devicePath }),
-                success: function(data) { if(data.success) { showFlashMessage(data.message || 'Cihaz başarıyla bağlandı/eşleştirildi!', 'success'); updateRelevantDeviceLists(data); } else { showFlashMessage('Hata: ' + (data.error || 'İşlem başarısız.'), 'danger'); refreshBluetoothList(0); refreshAudioSinkList(); } },
-                error: function(xhr) { let errorMsg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Sunucu hatası.'; showFlashMessage(`Hata: ${errorMsg}`, 'danger'); refreshBluetoothList(0); refreshAudioSinkList(); }
+            $.ajax({
+                url: '/api/pair-bluetooth', type: 'POST', contentType: 'application/json', data: JSON.stringify({ device_path: devicePath }),
+                success: function (data) { if (data.success) { showFlashMessage(data.message || 'Cihaz başarıyla bağlandı/eşleştirildi!', 'success'); updateRelevantDeviceLists(data); } else { showFlashMessage('Hata: ' + (data.error || 'İşlem başarısız.'), 'danger'); refreshBluetoothList(0); refreshAudioSinkList(); } },
+                error: function (xhr) { let errorMsg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Sunucu hatası.'; showFlashMessage(`Hata: ${errorMsg}`, 'danger'); refreshBluetoothList(0); refreshAudioSinkList(); }
             });
         }
         function disconnectDevice(buttonElement, devicePath) {
-             if (!devicePath) { showFlashMessage('Hata: Cihaz yolu (path) bulunamadı.', 'danger'); return; }
-             setButtonLoading(buttonElement, true);
-             $.ajax({ url: '/api/disconnect-bluetooth', type: 'POST', contentType: 'application/json', data: JSON.stringify({ device_path: devicePath }),
-                success: function(data) { if(data.success) { showFlashMessage(data.message || 'Bluetooth bağlantısı kesildi.', 'success'); updateRelevantDeviceLists(data); } else { showFlashMessage('Hata: ' + (data.error || 'Bağlantı kesilemedi.'), 'danger'); refreshBluetoothList(0); refreshAudioSinkList(); } },
-                error: function(xhr) { let errorMsg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Sunucu hatası.'; showFlashMessage(`Hata: ${errorMsg}`, 'danger'); refreshBluetoothList(0); refreshAudioSinkList(); }
+            if (!devicePath) { showFlashMessage('Hata: Cihaz yolu (path) bulunamadı.', 'danger'); return; }
+            setButtonLoading(buttonElement, true);
+            $.ajax({
+                url: '/api/disconnect-bluetooth', type: 'POST', contentType: 'application/json', data: JSON.stringify({ device_path: devicePath }),
+                success: function (data) { if (data.success) { showFlashMessage(data.message || 'Bluetooth bağlantısı kesildi.', 'success'); updateRelevantDeviceLists(data); } else { showFlashMessage('Hata: ' + (data.error || 'Bağlantı kesilemedi.'), 'danger'); refreshBluetoothList(0); refreshAudioSinkList(); } },
+                error: function (xhr) { let errorMsg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Sunucu hatası.'; showFlashMessage(`Hata: ${errorMsg}`, 'danger'); refreshBluetoothList(0); refreshAudioSinkList(); }
             });
         }
         function switchToAlsa(buttonElement) {
             if (!confirm('Varsayılan ses çıkışını ALSA uyumlu bir cihaza değiştirmek istediğinizden emin misiniz?')) { return; }
             setButtonLoading(buttonElement, true);
-            $.ajax({ url: '/api/switch-to-alsa', type: 'POST', contentType: 'application/json', data: JSON.stringify({}),
-                success: function(data) { if (data.success) { showFlashMessage(data.message || 'Başarıyla ALSA ses çıkışına geçildi.', 'success'); updateRelevantDeviceLists(data); } else { showFlashMessage('ALSA Geçiş Hatası: ' + (data.error || 'Bilinmeyen hata.'), 'danger'); refreshAudioSinkList(); } },
-                error: function(xhr) { let errorMsg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Sunucu hatası.'; showFlashMessage(`Hata: ${errorMsg}`, 'danger'); refreshAudioSinkList(); },
-                complete: function() { setButtonLoading(buttonElement, false); }
+            $.ajax({
+                url: '/api/switch-to-alsa', type: 'POST', contentType: 'application/json', data: JSON.stringify({}),
+                success: function (data) { if (data.success) { showFlashMessage(data.message || 'Başarıyla ALSA ses çıkışına geçildi.', 'success'); updateRelevantDeviceLists(data); } else { showFlashMessage('ALSA Geçiş Hatası: ' + (data.error || 'Bilinmeyen hata.'), 'danger'); refreshAudioSinkList(); } },
+                error: function (xhr) { let errorMsg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Sunucu hatası.'; showFlashMessage(`Hata: ${errorMsg}`, 'danger'); refreshAudioSinkList(); },
+                complete: function () { setButtonLoading(buttonElement, false); }
             });
-         }
+        }
         function restartSpotifyd(buttonElement) {
-             if (!confirm('Spotifyd servisini yeniden başlatmak istediğinizden emin misiniz?')) { return; }
-             setButtonLoading(buttonElement, true);
-             $.ajax({ url: '/api/restart-spotifyd', type: 'POST',
-                 success: function(data) { if (data.success) { showFlashMessage(data.message || 'Spotifyd başarıyla yeniden başlatıldı.', 'success'); } else { showFlashMessage('Spotifyd Hatası: ' + (data.error || 'Bilinmeyen hata.'), 'warning'); } },
-                 error: function(xhr) { let errorMsg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Sunucu hatası.'; showFlashMessage(`Hata: ${errorMsg}`, 'danger'); },
-                 complete: function() { setButtonLoading(buttonElement, false); }
-             });
-         }
-    
+            if (!confirm('Spotifyd servisini yeniden başlatmak istediğinizden emin misiniz?')) { return; }
+            setButtonLoading(buttonElement, true);
+            $.ajax({
+                url: '/api/restart-spotifyd', type: 'POST',
+                success: function (data) { if (data.success) { showFlashMessage(data.message || 'Spotifyd başarıyla yeniden başlatıldı.', 'success'); } else { showFlashMessage('Spotifyd Hatası: ' + (data.error || 'Bilinmeyen hata.'), 'warning'); } },
+                error: function (xhr) { let errorMsg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Sunucu hatası.'; showFlashMessage(`Hata: ${errorMsg}`, 'danger'); },
+                complete: function () { setButtonLoading(buttonElement, false); }
+            });
+        }
+
         // --- Filtre Yönetimi Fonksiyonları ---
         function renderFilterList(filterType) {
             const mode = currentSettings[filterType + '_filter_mode']; const listKey = filterType + '_' + mode;
@@ -854,21 +1236,22 @@
                 let html = '';
                 list.forEach(item => {
                     let displayName = item; let displayId = '';
-                    if (filterType === 'artist' || filterType === 'track') { displayName = spotifyNameCache[item] || item; if(spotifyNameCache[item]) { displayId = `<span class="item-id">${item}</span>`; } }
+                    if (filterType === 'artist' || filterType === 'track') { displayName = spotifyNameCache[item] || item; if (spotifyNameCache[item]) { displayId = `<span class="item-id">${item}</span>`; } }
                     else { displayName = item; }
                     html += `<li><span><span class="item-name">${displayName}</span>${displayId}</span><button class="btn btn-xs btn-outline-danger" onclick="removeFilterItem('${filterType}', '${mode}', '${item}')"><i class="fas fa-times"></i></button></li>`;
                 });
                 listElement.html(html);
             };
             if (idsToFetch.length > 0) {
-                $.ajax({ url: '/api/spotify/details', type: 'POST', contentType: 'application/json', data: JSON.stringify({ ids: idsToFetch, type: filterType }),
-                    success: function(data) { if (data.success && data.details) { $.extend(spotifyNameCache, data.details); } },
-                    complete: function() { fetchNamesAndRender(); }
+                $.ajax({
+                    url: '/api/spotify/details', type: 'POST', contentType: 'application/json', data: JSON.stringify({ ids: idsToFetch, type: filterType }),
+                    success: function (data) { if (data.success && data.details) { $.extend(spotifyNameCache, data.details); } },
+                    complete: function () { fetchNamesAndRender(); }
                 });
             } else { fetchNamesAndRender(); }
         }
         function renderAllFilterLists() { renderFilterList('genre'); renderFilterList('artist'); renderBlockedTracksList(); }
-        $('input[name$="_filter_mode"]').on('change', function() {
+        $('input[name$="_filter_mode"]').on('change', function () {
             const filterType = this.name.replace('_filter_mode', ''); const newMode = this.value;
             currentSettings[filterType + '_filter_mode'] = newMode; renderFilterList(filterType);
             $(`#${filterType}-search-results`).html('');
@@ -878,23 +1261,25 @@
             const inputElement = $(`#${filterType}-add-input`); const item = inputElement.val().trim();
             if (!item) { showFlashMessage('Lütfen eklenecek bir değer girin.', 'warning'); inputElement.focus(); return; }
             const buttonElement = inputElement.next('.input-group-append').find('button'); setButtonLoading(buttonElement[0], true);
-            $.ajax({ url: '/api/add-to-list', type: 'POST', contentType: 'application/json', data: JSON.stringify({ filter_type: filterType, list_type: listType, item: item }),
-                success: function(data) {
+            $.ajax({
+                url: '/api/add-to-list', type: 'POST', contentType: 'application/json', data: JSON.stringify({ filter_type: filterType, list_type: listType, item: item }),
+                success: function (data) {
                     if (data.success) { showFlashMessage(data.message || 'Öğe listeye eklendi.', 'success'); currentSettings[filterType + '_' + listType] = data.updated_list; renderFilterList(filterType); inputElement.val(''); }
                     else { showFlashMessage('Hata: ' + (data.error || 'Ekleme başarısız.'), 'danger'); }
                 },
-                error: function(xhr) { let errorMsg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Sunucu hatası.'; showFlashMessage(`Hata: ${errorMsg}`, 'danger'); },
-                complete: function() { setButtonLoading(buttonElement[0], false); }
+                error: function (xhr) { let errorMsg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Sunucu hatası.'; showFlashMessage(`Hata: ${errorMsg}`, 'danger'); },
+                complete: function () { setButtonLoading(buttonElement[0], false); }
             });
         }
         function removeFilterItem(filterType, listType, item) {
             if (!confirm(`'${spotifyNameCache[item] || item}' öğesini listeden çıkarmak istediğinizden emin misiniz?`)) { return; }
-            $.ajax({ url: '/api/remove-from-list', type: 'POST', contentType: 'application/json', data: JSON.stringify({ filter_type: filterType, list_type: listType, item: item }),
-                success: function(data) {
+            $.ajax({
+                url: '/api/remove-from-list', type: 'POST', contentType: 'application/json', data: JSON.stringify({ filter_type: filterType, list_type: listType, item: item }),
+                success: function (data) {
                     if (data.success) { showFlashMessage(data.message || 'Öğe listeden çıkarıldı.', 'success'); currentSettings[filterType + '_' + listType] = data.updated_list; delete spotifyNameCache[item]; renderFilterList(filterType); }
                     else { showFlashMessage('Hata: ' + (data.error || 'Çıkarma başarısız.'), 'danger'); }
                 },
-                error: function(xhr) { let errorMsg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Sunucu hatası.'; showFlashMessage(`Hata: ${errorMsg}`, 'danger'); }
+                error: function (xhr) { let errorMsg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Sunucu hatası.'; showFlashMessage(`Hata: ${errorMsg}`, 'danger'); }
             });
         }
         function searchSpotify(searchType) {
@@ -903,8 +1288,9 @@
             const buttonElement = inputElement.next('.input-group-append').find('button');
             if (!query) { showFlashMessage('Lütfen arama terimi girin.', 'warning'); return; }
             resultsContainer.html('<p class="text-muted p-2 text-center">Aranıyor...</p>'); setButtonLoading(buttonElement[0], true);
-            $.ajax({ url: '/search', type: 'POST', data: `search_query=${encodeURIComponent(query)}&type=${searchType}`,
-                success: function(data) {
+            $.ajax({
+                url: '/search', type: 'POST', data: `search_query=${encodeURIComponent(query)}&type=${searchType}`,
+                success: function (data) {
                     let html = '';
                     if (data.error) { html = `<p class="text-danger p-2 text-center">${data.error}</p>`; }
                     else if (data.results && data.results.length > 0) {
@@ -918,32 +1304,34 @@
                     } else { html = '<p class="text-muted p-2 text-center">Sonuç bulunamadı.</p>'; }
                     resultsContainer.html(html);
                 },
-                error: function(xhr) { let errorMsg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Sunucu hatası.'; resultsContainer.html(`<p class="text-danger p-2 text-center">Hata: ${errorMsg}</p>`); },
-                complete: function() { setButtonLoading(buttonElement[0], false); }
+                error: function (xhr) { let errorMsg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Sunucu hatası.'; resultsContainer.html(`<p class="text-danger p-2 text-center">Hata: ${errorMsg}</p>`); },
+                complete: function () { setButtonLoading(buttonElement[0], false); }
             });
         }
         function addFilterItemFromSearch(event, filterType, itemUri, itemName) {
             event.preventDefault(); const mode = currentSettings[filterType + '_filter_mode'];
             if (!confirm(`'${itemName}' öğesini ${filterType} ${mode} listesine eklemek istiyor musunuz?`)) { return; }
-            $.ajax({ url: '/api/add-to-list', type: 'POST', contentType: 'application/json', data: JSON.stringify({ filter_type: filterType, list_type: mode, item: itemUri }),
-                success: function(data) {
+            $.ajax({
+                url: '/api/add-to-list', type: 'POST', contentType: 'application/json', data: JSON.stringify({ filter_type: filterType, list_type: mode, item: itemUri }),
+                success: function (data) {
                     if (data.success) { showFlashMessage(`'${itemName}' listeye eklendi.`, 'success'); currentSettings[filterType + '_' + mode] = data.updated_list; spotifyNameCache[itemUri] = itemName; renderFilterList(filterType); $(`#${filterType}-search-results`).html(''); $(`#${filterType}-search-input`).val(''); }
                     else { showFlashMessage('Hata: ' + (data.error || 'Ekleme başarısız.'), 'danger'); }
                 },
-                error: function(xhr) { let errorMsg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Sunucu hatası.'; showFlashMessage(`Hata: ${errorMsg}`, 'danger'); }
+                error: function (xhr) { let errorMsg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Sunucu hatası.'; showFlashMessage(`Hata: ${errorMsg}`, 'danger'); }
             });
         }
         function quickBlockItem(buttonElement, itemType, identifier) {
             const itemUri = identifier.startsWith(`spotify:${itemType}:`) ? identifier : `spotify:${itemType}:${identifier}`;
             if (!confirm(`${itemType === 'track' ? 'Şarkıyı' : 'Sanatçıyı'} (${spotifyNameCache[itemUri] || itemUri}) kara listeye eklemek istediğinizden emin misiniz?`)) { return; }
             setButtonLoading(buttonElement, true);
-            $.ajax({ url: '/api/block', type: 'POST', contentType: 'application/json', data: JSON.stringify({ type: itemType, identifier: itemUri }),
-                success: function(data) { if (data.success) { showFlashMessage(data.message || 'Öğe kara listeye eklendi.', 'success'); const listKey = itemType + '_blacklist'; if (!currentSettings[listKey].includes(itemUri)) { currentSettings[listKey].push(itemUri); } renderAllFilterLists(); } else { showFlashMessage('Hata: ' + (data.error || 'Engelleme başarısız.'), 'danger'); } },
-                error: function(xhr) { let errorMsg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Sunucu hatası.'; showFlashMessage(`Hata: ${errorMsg}`, 'danger'); },
-                complete: function() { setButtonLoading(buttonElement, false); }
+            $.ajax({
+                url: '/api/block', type: 'POST', contentType: 'application/json', data: JSON.stringify({ type: itemType, identifier: itemUri }),
+                success: function (data) { if (data.success) { showFlashMessage(data.message || 'Öğe kara listeye eklendi.', 'success'); const listKey = itemType + '_blacklist'; if (!currentSettings[listKey].includes(itemUri)) { currentSettings[listKey].push(itemUri); } renderAllFilterLists(); } else { showFlashMessage('Hata: ' + (data.error || 'Engelleme başarısız.'), 'danger'); } },
+                error: function (xhr) { let errorMsg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Sunucu hatası.'; showFlashMessage(`Hata: ${errorMsg}`, 'danger'); },
+                complete: function () { setButtonLoading(buttonElement, false); }
             });
         }
-    
+
         // --- Engellenmiş Şarkılar Tablosu ---
         function renderBlockedTracksList() {
             const list = currentSettings.track_blacklist || []; const listElement = $('#blocked-tracks-list'); listElement.empty();
@@ -960,20 +1348,21 @@
                 listElement.html(html);
             };
             if (idsToFetch.length > 0) {
-                $.ajax({ url: '/api/spotify/details', type: 'POST', contentType: 'application/json', data: JSON.stringify({ ids: idsToFetch, type: 'track' }),
+                $.ajax({
+                    url: '/api/spotify/details', type: 'POST', contentType: 'application/json', data: JSON.stringify({ ids: idsToFetch, type: 'track' }),
                     success: data => { if (data.success && data.details) $.extend(spotifyNameCache, data.details); },
                     complete: renderTable
                 });
             } else { renderTable(); }
         }
         function searchBlockedTracks() {
-             const filter = $('#blocked-track-search-input').val().toLowerCase();
-             $('#blocked-tracks-list tr').each(function() {
+            const filter = $('#blocked-track-search-input').val().toLowerCase();
+            $('#blocked-tracks-list tr').each(function () {
                 const text = $(this).text().toLowerCase();
                 $(this).toggle(text.indexOf(filter) > -1);
-             });
-         }
-        $(document).on('click', '.remove-blocked-track', function() {
+            });
+        }
+        $(document).on('click', '.remove-blocked-track', function () {
             const trackId = $(this).data('track-id');
             if (trackId && confirm(`"${(spotifyNameCache[trackId] || trackId).split(' - ')[0]}" şarkısını kara listeden kaldırmak istiyor musunuz?`)) {
                 $.ajax({
@@ -991,17 +1380,17 @@
             }
         });
         function escapeHTML(str) { return $('<div>').text(str).html(); }
-    
+
         // --- Port Kontrol Fonksiyonları ---
         function checkPort(buttonElement) {
-            const statusDiv = document.getElementById('port-status');
+            const statusDiv = $('#port-status');
             setButtonLoading(buttonElement, true);
             $.ajax({
                 url: '/api/check-port',
                 type: 'POST',
                 contentType: 'application/json',
                 data: JSON.stringify({ port: 22 }),
-                success: function(data) {
+                success: function (data) {
                     statusDiv.removeClass('d-none alert-success alert-danger');
                     if (data.is_open) {
                         statusDiv.addClass('alert-success').html(`<i class="fas fa-check-circle"></i> SSH Port (22) açık`);
@@ -1009,11 +1398,11 @@
                         statusDiv.addClass('alert-danger').html(`<i class="fas fa-times-circle"></i> SSH Port (22) kapalı`);
                     }
                 },
-                error: function(xhr) { showFlashMessage('Port kontrolü sırasında bir hata oluştu', 'danger'); },
-                complete: function() { setButtonLoading(buttonElement, false); }
+                error: function (xhr) { showFlashMessage('Port kontrolü sırasında bir hata oluştu', 'danger'); },
+                complete: function () { setButtonLoading(buttonElement, false); }
             });
         }
-    
+
         function openPort(buttonElement) {
             if (!confirm('SSH Port (22) açmak istediğinizden emin misiniz?')) { return; }
             setButtonLoading(buttonElement, true);
@@ -1022,17 +1411,17 @@
                 type: 'POST',
                 contentType: 'application/json',
                 data: JSON.stringify({ port: 22 }),
-                success: function(data) {
+                success: function (data) {
                     if (data.success) {
                         showFlashMessage('SSH Port (22) başarıyla açıldı', 'success');
                         checkPort(document.querySelector('.port-control-section .btn-outline-primary'));
                     } else { showFlashMessage('Port açma işlemi başarısız: ' + (data.error || 'Bilinmeyen hata'), 'danger'); }
                 },
-                error: function(xhr) { showFlashMessage('Port açma işlemi sırasında bir hata oluştu', 'danger'); },
-                complete: function() { setButtonLoading(buttonElement, false); }
+                error: function (xhr) { showFlashMessage('Port açma işlemi sırasında bir hata oluştu', 'danger'); },
+                complete: function () { setButtonLoading(buttonElement, false); }
             });
         }
-    
+
         function closePort(buttonElement) {
             if (!confirm('SSH Port (22) kapatmak istediğinizden emin misiniz?')) { return; }
             setButtonLoading(buttonElement, true);
@@ -1041,16 +1430,76 @@
                 type: 'POST',
                 contentType: 'application/json',
                 data: JSON.stringify({ port: 22 }),
-                success: function(data) {
+                success: function (data) {
                     if (data.success) {
                         showFlashMessage('SSH Port (22) başarıyla kapatıldı', 'success');
                         checkPort(document.querySelector('.port-control-section .btn-outline-primary'));
                     } else { showFlashMessage('Port kapatma işlemi başarısız: ' + (data.error || 'Bilinmeyen hata'), 'danger'); }
                 },
-                error: function(xhr) { showFlashMessage('Port kapatma işlemi sırasında bir hata oluştu', 'danger'); },
-                complete: function() { setButtonLoading(buttonElement, false); }
+                error: function (xhr) { showFlashMessage('Port kapatma işlemi sırasında bir hata oluştu', 'danger'); },
+                complete: function () { setButtonLoading(buttonElement, false); }
             });
         }
     </script>
-</body>
+    <!-- QR Modal -->
+    <div id="qr-modal" class="qr-modal">
+        <div class="qr-modal-content">
+            <h3 class="mb-4">Mekan QR Kodunuz</h3>
+            <div id="qr-container" class="mb-4">
+                <div class="spinner-border text-light"></div>
+            </div>
+            <div class="btn-group">
+                <a href="/api/venue/qr-code/download" class="btn btn-success" download>
+                    <i class="fas fa-download mr-2"></i> İndir
+                </a>
+                <button onclick="closeQRModal()" class="btn btn-outline-light">Kapat</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- QR Code Functions ---
+        function showQRModal() {
+            const modal = document.getElementById('qr-modal');
+            const container = document.getElementById('qr-container');
+
+            modal.classList.add('active');
+
+            fetch('/api/venue/qr-code')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        container.innerHTML = `<img src="${data.qr_code}" style="width: 250px; border-radius: 10px;">`;
+                    }
+                });
+        }
+
+        function closeQRModal() {
+            document.getElementById('qr-modal').classList.remove('active');
+        }
+
+        // --- Analytics Functions ---
+        function loadAnalytics() {
+            fetch('/api/analytics')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success && data.summary) {
+                        document.getElementById('stat-today').textContent = data.summary.today_requests;
+                        document.getElementById('stat-total').textContent = data.summary.total_requests;
+                        document.getElementById('stat-tracks').textContent = data.summary.unique_tracks;
+                        // Users stat is placeholder for now as we don't track unique users perfectly yet
+                        document.getElementById('stat-users').innerText = '∞';
+                    }
+                });
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadAnalytics();
+            // Refresh analytics every 30s
+            setInterval(loadAnalytics, 30000);
+        });
+    </script>
+    </body>
+
 </html>
